@@ -3,10 +3,10 @@
 > MVP-2 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Create: `src/ai_engine/integrations/event_center_client.py`
-- Create: `tests/test_event_center_client.py`
+- Create: `server/src/ai_engine/integrations/event_center_client.py`
+- Create: `server/tests/test_event_center_client.py`
 
-- [ ] **Step 1: 写 `src/ai_engine/integrations/event_center_client.py`**
+- [ ] **Step 1: 写 `server/src/ai_engine/integrations/event_center_client.py`**
 
 ```python
 import hmac
@@ -37,7 +37,7 @@ async def push_event_center(payload: dict) -> bool:
 
 ```bash
 pytest tests/test_event_center_client.py -v
-git add src/ai_engine/integrations/event_center_client.py tests/test_event_center_client.py
+git add server/src/ai_engine/integrations/event_center_client.py server/tests/test_event_center_client.py
 git commit -m "feat(mvp-2): 事项中心客户端（HMAC 签名推送 closed/reopen/确认事件）"
 ```
 

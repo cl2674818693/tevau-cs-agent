@@ -3,17 +3,17 @@
 > MVP-1 plan 拆分文件 — 总览见 [README.md](./README.md)，原始合并版见 [../2026-05-18-MVP-1-客服工单AI引擎.md](../2026-05-18-MVP-1-客服工单AI引擎.md)
 
 **Files:**
-- Create: `src/ai_engine/auth/__init__.py`
-- Create: `src/ai_engine/auth/bu_session.py`
-- Create: `src/ai_engine/api/__init__.py`
-- Create: `src/ai_engine/api/health.py`
-- Create: `src/ai_engine/api/chat.py`
-- Create: `src/ai_engine/api/tickets.py`
-- Create: `src/ai_engine/main.py`
-- Create: `tests/test_chat_api.py`
-- Create: `tests/test_tickets_callback.py`
+- Create: `server/src/ai_engine/auth/__init__.py`
+- Create: `server/src/ai_engine/auth/bu_session.py`
+- Create: `server/src/ai_engine/api/__init__.py`
+- Create: `server/src/ai_engine/api/health.py`
+- Create: `server/src/ai_engine/api/chat.py`
+- Create: `server/src/ai_engine/api/tickets.py`
+- Create: `server/src/ai_engine/main.py`
+- Create: `server/tests/test_chat_api.py`
+- Create: `server/tests/test_tickets_callback.py`
 
-- [ ] **Step 1: 写 `src/ai_engine/auth/bu_session.py`**
+- [ ] **Step 1: 写 `server/src/ai_engine/auth/bu_session.py`**
 
 MVP-1 简化：从 `X-BU-ID` header 读取 bu_id，便于本地联调。MVP-2 时换 JWT。
 
@@ -27,7 +27,7 @@ async def require_bu(x_bu_id: str = Header(default="")) -> str:
     return x_bu_id
 ```
 
-- [ ] **Step 2: 写 `src/ai_engine/api/health.py`**
+- [ ] **Step 2: 写 `server/src/ai_engine/api/health.py`**
 
 ```python
 from fastapi import APIRouter
@@ -40,7 +40,7 @@ async def health():
     return {"ok": True}
 ```
 
-- [ ] **Step 3: 写 `tests/test_chat_api.py`**
+- [ ] **Step 3: 写 `server/tests/test_chat_api.py`**
 
 ```python
 import pytest
@@ -79,7 +79,7 @@ async def test_chat_endpoint_rejects_no_bu_header(seeded_db):
         assert resp.status_code == 401
 ```
 
-- [ ] **Step 4: 写 `src/ai_engine/api/chat.py`**
+- [ ] **Step 4: 写 `server/src/ai_engine/api/chat.py`**
 
 ```python
 import json
@@ -119,7 +119,7 @@ async def chat(body: ChatIn, bu_id: str = Depends(require_bu)):
     return EventSourceResponse(gen())
 ```
 
-- [ ] **Step 5: 写 `tests/test_tickets_callback.py`**
+- [ ] **Step 5: 写 `server/tests/test_tickets_callback.py`**
 
 ```python
 import hmac
@@ -170,7 +170,7 @@ async def test_callback_rejects_bad_signature(seeded_db):
     assert resp.status_code == 401
 ```
 
-- [ ] **Step 6: 写 `src/ai_engine/api/tickets.py`**
+- [ ] **Step 6: 写 `server/src/ai_engine/api/tickets.py`**
 
 ```python
 import hmac
@@ -205,7 +205,7 @@ async def receive_event(external_id: str, request: Request, x_signature: str = H
     return {"ok": True}
 ```
 
-- [ ] **Step 7: 写 `src/ai_engine/main.py`**
+- [ ] **Step 7: 写 `server/src/ai_engine/main.py`**
 
 ```python
 from fastapi import FastAPI
@@ -243,7 +243,7 @@ Expected: 4 passed
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/ai_engine/auth src/ai_engine/api src/ai_engine/main.py tests/test_chat_api.py tests/test_tickets_callback.py
+git add server/src/ai_engine/auth server/src/ai_engine/api server/src/ai_engine/main.py server/tests/test_chat_api.py server/tests/test_tickets_callback.py
 git commit -m "feat: HTTP API（/chat SSE 流 + /tickets/:id/events 回调）+ FastAPI 入口"
 ```
 

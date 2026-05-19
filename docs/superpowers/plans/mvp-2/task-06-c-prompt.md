@@ -3,11 +3,11 @@
 > MVP-2 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Create: `src/ai_engine/prompts/reply_style.c.md`
-- Modify: `src/ai_engine/prompts/loader.py`
-- Create: `tests/test_prompts_c_style.py`
+- Create: `server/src/ai_engine/prompts/reply_style.c.md`
+- Modify: `server/src/ai_engine/prompts/loader.py`
+- Create: `server/tests/test_prompts_c_style.py`
 
-- [ ] **Step 1: 写 `src/ai_engine/prompts/reply_style.c.md`**
+- [ ] **Step 1: 写 `server/src/ai_engine/prompts/reply_style.c.md`**
 
 ```markdown
 回复风格（C 端 APP 终端用户 — 不是开发者）：
@@ -21,7 +21,7 @@
 - 内部风控规则名（如 R-217）—— **完全不露**，只翻译为业务原因（如"系统判断该操作存在风险"）
 ```
 
-- [ ] **Step 2: 修改 `src/ai_engine/prompts/loader.py`**
+- [ ] **Step 2: 修改 `server/src/ai_engine/prompts/loader.py`**
 
 ```python
 def build_system_blocks(user_type: str) -> list[dict]:
@@ -37,7 +37,7 @@ def build_system_blocks(user_type: str) -> list[dict]:
     ]
 ```
 
-- [ ] **Step 3: 写 `tests/test_prompts_c_style.py`**
+- [ ] **Step 3: 写 `server/tests/test_prompts_c_style.py`**
 
 ```python
 def test_loader_c_returns_c_style():
@@ -59,7 +59,7 @@ Expected: 全部 passed
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ai_engine/prompts/reply_style.c.md src/ai_engine/prompts/loader.py tests/test_prompts_c_style.py
+git add server/src/ai_engine/prompts/reply_style.c.md server/src/ai_engine/prompts/loader.py server/tests/test_prompts_c_style.py
 git commit -m "feat(mvp-2): C 端语言化回复风格 prompt + loader 按 user_type 切换"
 ```
 

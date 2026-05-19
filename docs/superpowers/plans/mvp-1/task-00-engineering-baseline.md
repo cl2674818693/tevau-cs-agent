@@ -5,7 +5,7 @@
 **目的**：建立 lint / type-check / pre-commit / CI / commit / 架构约束基线。后续所有 task 的代码必须通过这些约束才能提交。**不做 Task 0 直接干 Task 1+ 一定会让后期维护痛苦**。
 
 **Files:**
-- Create: `pyproject.toml`（强化版，覆盖整个 MVP 期间）
+- Create: `server/pyproject.toml`（强化版，覆盖整个 MVP 期间）
 - Create: `.gitignore`
 - Create: `.pre-commit-config.yaml`
 - Create: `.gitleaks.toml`
@@ -13,7 +13,7 @@
 - Create: `CONTRIBUTING.md`
 - Create: `.gitlab-ci.yml`
 
-- [ ] **Step 1: 创建强化版 `pyproject.toml`**
+- [ ] **Step 1: 创建强化版 `server/pyproject.toml`**
 
 ```toml
 [project]
@@ -95,7 +95,7 @@ module = "tests.*"
 disallow_untyped_defs = false   # 测试允许略松
 
 [tool.coverage.run]
-source = ["src/ai_engine"]
+source = ["src/ai_engine"]   # 路径相对 server/（pyproject.toml 与运行 cwd 都在 server/ 下）
 omit = ["*/tests/*", "*/__main__.py"]
 branch = true
 
@@ -127,7 +127,7 @@ dist/
 # Env / secrets
 .env
 .env.*
-!.env.example
+!server/.env.example
 
 # IDE
 .idea/
@@ -171,7 +171,7 @@ repos:
           - pydantic
           - pydantic-settings
           - types-aiofiles
-        args: [src/]
+        args: [server/src/]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
@@ -231,8 +231,9 @@ title = "Tevau AI Engine secret scanning"
 # 默认规则即可。若需要白名单某些文件，在 [allowlist] 里配
 [allowlist]
 paths = [
-    ".env.example",
-    "tests/.+",   # 测试里的 fake key 不算
+    "server/.env.example",
+    "server/tests/.+",   # 测试里的 fake key 不算
+    "web/tests/.+",
 ]
 ```
 
@@ -323,7 +324,7 @@ docs(spec): §13.10 加 tawk.to 并存期
 ### Prompt 与模型
 
 - ❌ prompt 文件**绝不**出现具体人名（嘉豪 / 张三 / CTO 实名等）、内部规则名（R-217）、值班表
-- ❌ 不在 .py 文件里硬编码 prompt 文本（所有 prompt 在 \`src/ai_engine/prompts/\` 下）
+- ❌ 不在 .py 文件里硬编码 prompt 文本（所有 prompt 在 \`server/src/ai_engine/prompts/\` 下）
 - ❌ 不在代码里硬编码模型 ID（通过 \`settings.default_model\` / \`settings.heavy_model\`）
 
 ### 代码结构
@@ -392,6 +393,7 @@ py-lint:
   stage: lint
   image: python:3.12-slim
   script:
+    - cd server
     - pip install -e ".[dev]"
     - ruff check src tests
     - ruff format --check src tests
@@ -400,6 +402,7 @@ py-typecheck:
   stage: lint
   image: python:3.12-slim
   script:
+    - cd server
     - pip install -e ".[dev]"
     - mypy src
 
@@ -413,13 +416,14 @@ py-test:
         MYSQL_ROOT_PASSWORD: rootpass
         MYSQL_DATABASE: unlimitpay_test
   script:
+    - cd server
     - pip install -e ".[dev]"
     - pytest --cov=src/ai_engine --cov-report=term --cov-report=xml --cov-fail-under=75
   artifacts:
     reports:
       coverage_report:
         coverage_format: cobertura
-        path: coverage.xml
+        path: server/coverage.xml      # pytest 在 server/ 下跑，coverage.xml 落在 server/
 
 # ---- Frontend ----（web/ 在 Task 12 创建后开始跑）
 
@@ -455,7 +459,9 @@ web-test:
 - [ ] **Step 8: 初始化 pre-commit + 首次扫描**
 
 ```bash
-uv pip install -e ".[dev]"
+# 后端依赖装在 server/
+(cd server && uv pip install -e ".[dev]")
+# pre-commit 在仓库根装
 pre-commit install
 pre-commit install --hook-type commit-msg
 pre-commit run --all-files
@@ -466,9 +472,9 @@ Expected: 第一次跑可能会有少量"trailing whitespace" / "end of file" �
 - [ ] **Step 9: Commit**
 
 ```bash
-git add pyproject.toml .gitignore .pre-commit-config.yaml .gitleaks.toml \
+git add server/pyproject.toml .gitignore .pre-commit-config.yaml .gitleaks.toml \
     scripts/check_commit_msg.sh CONTRIBUTING.md .gitlab-ci.yml
-git commit -m "chore: Task 0 工程规范基线（ruff/mypy/pre-commit/CI/commit 规范/架构约束）"
+git commit -m "chore: Task 0 工程规范基线（ruff/mypy/pre-commit/CI/commit 规范/架构约束 + server/web 双子项目布局）"
 ```
 
 > **后续要求**：每个 task 的 commit 必须用 Conventional Commits 格式，否则 pre-commit hook 直接拒绝。本 plan 后续所有 `git commit -m "..."` 已遵循此格式。

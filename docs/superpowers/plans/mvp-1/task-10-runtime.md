@@ -3,12 +3,12 @@
 > MVP-1 plan 拆分文件 — 总览见 [README.md](./README.md)，原始合并版见 [../2026-05-18-MVP-1-客服工单AI引擎.md](../2026-05-18-MVP-1-客服工单AI引擎.md)
 
 **Files:**
-- Create: `src/ai_engine/agent/runtime.py`
-- Create: `tests/test_agent_runtime.py`
+- Create: `server/src/ai_engine/agent/runtime.py`
+- Create: `server/tests/test_agent_runtime.py`
 
 agent loop 的核心：拿到用户消息 → 用 system blocks + history + tools 调 Anthropic → 流出文本 + 解析 tool_use → dispatch → 把 tool_result 接回 messages → 再调 → 直到没有 tool_use 或触发 cost guard。
 
-- [ ] **Step 1: 写 `tests/test_agent_runtime.py`（用 mock client 端到端走一遍）**
+- [ ] **Step 1: 写 `server/tests/test_agent_runtime.py`（用 mock client 端到端走一遍）**
 
 ```python
 import pytest
@@ -71,7 +71,7 @@ pytest tests/test_agent_runtime.py -v
 ```
 Expected: FAIL
 
-- [ ] **Step 3: 写 `src/ai_engine/agent/runtime.py`**
+- [ ] **Step 3: 写 `server/src/ai_engine/agent/runtime.py`**
 
 ```python
 import json
@@ -191,7 +191,7 @@ Expected: passed（可能需要调 mock 细节）
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ai_engine/agent/runtime.py tests/test_agent_runtime.py
+git add server/src/ai_engine/agent/runtime.py server/tests/test_agent_runtime.py
 git commit -m "feat: agent runtime (loop + tool 调度 + cost guard)"
 ```
 

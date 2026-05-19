@@ -5,11 +5,11 @@
 替换 MVP-1 的 `X-BU-ID` header 临时方案。
 
 **Files:**
-- Create: `src/ai_engine/api/auth_bu.py`
-- Modify: `src/ai_engine/auth/bu_session.py`（重写 session 模式）
-- Create: `tests/test_auth_bu_login.py`
+- Create: `server/src/ai_engine/api/auth_bu.py`
+- Modify: `server/src/ai_engine/auth/bu_session.py`（重写 session 模式）
+- Create: `server/tests/test_auth_bu_login.py`
 
-- [ ] **Step 1: 写 `tests/test_auth_bu_login.py`**
+- [ ] **Step 1: 写 `server/tests/test_auth_bu_login.py`**
 
 ```python
 import pytest
@@ -56,7 +56,7 @@ async def test_chat_requires_session_cookie(seeded_db, mysql_url):
     assert r.status_code == 401
 ```
 
-- [ ] **Step 2: 写 `src/ai_engine/api/auth_bu.py`**
+- [ ] **Step 2: 写 `server/src/ai_engine/api/auth_bu.py`**
 
 ```python
 import time
@@ -123,7 +123,7 @@ async def bu_logout(response: Response):
     return {"ok": True}
 ```
 
-- [ ] **Step 3: 重写 `src/ai_engine/auth/bu_session.py`**
+- [ ] **Step 3: 重写 `server/src/ai_engine/auth/bu_session.py`**
 
 ```python
 from fastapi import HTTPException, Request
@@ -145,7 +145,7 @@ from ai_engine.api.auth_bu import router as auth_bu_router
 app.include_router(auth_bu_router)
 ```
 
-- [ ] **Step 5: 修 `src/ai_engine/api/chat.py` 把 require_bu 从 header → 改用新版 require_bu**
+- [ ] **Step 5: 修 `server/src/ai_engine/api/chat.py` 把 require_bu 从 header → 改用新版 require_bu**
 
 ```python
 # chat.py 里的 Depends(require_bu) 签名保持不变；require_bu 实现已切到 cookie
@@ -166,7 +166,7 @@ Expected: 全部 passed
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/ai_engine/api/auth_bu.py src/ai_engine/auth/bu_session.py src/ai_engine/main.py src/ai_engine/api/chat.py tests/test_auth_bu_login.py tests/test_chat_api.py
+git add server/src/ai_engine/api/auth_bu.py server/src/ai_engine/auth/bu_session.py server/src/ai_engine/main.py server/src/ai_engine/api/chat.py server/tests/test_auth_bu_login.py server/tests/test_chat_api.py
 git commit -m "feat(mvp-2): B 端主账户 ID 登录 + session cookie + 速率限制（替换 X-BU-ID header）"
 ```
 

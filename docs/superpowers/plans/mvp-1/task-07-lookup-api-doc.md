@@ -5,11 +5,11 @@
 `api-docs.tevau.io` 后端是 Apifox 项目，可导出标准 **OpenAPI 3.0 JSON**。本工具读这个 JSON 做检索（不爬 HTML、不维护自定义 JSON 索引）。
 
 **Files:**
-- Create: `tests/fixtures/openapi_sample.json`
-- Create: `src/ai_engine/agent/tools/lookup_api_doc.py`
-- Create: `tests/test_lookup_api_doc.py`
+- Create: `server/tests/fixtures/openapi_sample.json`
+- Create: `server/src/ai_engine/agent/tools/lookup_api_doc.py`
+- Create: `server/tests/test_lookup_api_doc.py`
 
-- [ ] **Step 1: 写 `tests/fixtures/openapi_sample.json`**（OpenAPI 3.0 最小样例）
+- [ ] **Step 1: 写 `server/tests/fixtures/openapi_sample.json`**（OpenAPI 3.0 最小样例）
 
 ```json
 {
@@ -38,7 +38,7 @@
 }
 ```
 
-- [ ] **Step 2: 写 `tests/test_lookup_api_doc.py`**
+- [ ] **Step 2: 写 `server/tests/test_lookup_api_doc.py`**
 
 ```python
 import pytest
@@ -87,7 +87,7 @@ async def test_lookup_handles_missing_file(monkeypatch, tmp_path):
     assert "openapi doc not loaded" in out.get("note", "").lower()
 ```
 
-- [ ] **Step 3: 写 `src/ai_engine/agent/tools/lookup_api_doc.py`**
+- [ ] **Step 3: 写 `server/src/ai_engine/agent/tools/lookup_api_doc.py`**
 
 ```python
 import json
@@ -185,7 +185,7 @@ Expected: 4 passed
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/fixtures/openapi_sample.json src/ai_engine/agent/tools/lookup_api_doc.py tests/test_lookup_api_doc.py
+git add server/tests/fixtures/openapi_sample.json server/src/ai_engine/agent/tools/lookup_api_doc.py server/tests/test_lookup_api_doc.py
 git commit -m "feat: lookup_api_doc 工具（读 Apifox 导出 OpenAPI 3.0 JSON）"
 ```
 

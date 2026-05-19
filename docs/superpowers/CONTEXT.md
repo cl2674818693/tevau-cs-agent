@@ -131,6 +131,24 @@ SLA 数值表（事项中心配置）：
 | 工具层脱敏（不靠 LLM 自觉） | LLM 看到原文就有泄露风险；脱敏在 handler 内做让 LLM 永远看不到 |
 | MVP-1 SQLite + mock，MVP-2 才接真 MySQL | 验证引擎逻辑不依赖真 DB；接真库前需要后端给 schema、配只读账号、对齐脱敏字段 |
 
+## 项目布局
+
+```
+tevau-cs-engine/                  ← 顶层（共用：README / Makefile / pre-commit / CI / docs / .gitignore）
+├── server/                       ← 后端独立子项目
+│   ├── pyproject.toml
+│   ├── .env.example
+│   ├── src/ai_engine/
+│   └── tests/
+├── web/                          ← 前端独立子项目（Vite + React）
+│   ├── package.json
+│   ├── src/
+│   └── tests/
+└── docs/                         ← 共用设计与计划文档
+```
+
+**命令约定**：后端命令默认在 `server/` 下跑（`cd server && pytest …`）；前端命令默认在 `web/` 下跑（`cd web && pnpm …`）。顶层 `Makefile` 提供聚合 target（如 `make test` = `make -C server test`，`make web-test` = `cd web && pnpm test`）。pre-commit / gitleaks / GitLab CI 都跑在仓库根，但 hook/job 内部按需 `cd server` 或 `cd web`。
+
 ## 工程规范基线
 
 - **后端**：ruff strict + mypy strict + pytest 覆盖率 ≥ 75%

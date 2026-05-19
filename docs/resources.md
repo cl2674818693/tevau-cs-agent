@@ -37,12 +37,12 @@ AI 引擎对接的代码仓库与测试环境。**密码不进本文档**，所�
 - `unlimitpay_test` 必须用 `tevau_test_read` 账号（只读）；不允许用读写账号 `tevau_test`
 - `nexus_test` 项目库在生产前需要 DBA 配一个 `*_read` 只读账号
 
-密码：见本机 `.env`（参考 `.env.example`），或问 z2674818693@gmail.com。**不要把密码写进任何 git 文件**。
+密码：见本机 `.env`（参考 `server/.env.example`），或问 z2674818693@gmail.com。**不要把密码写进任何 git 文件**。
 
 ## 凭证管理约定
 
 - `.env` 必须在 `.gitignore`，禁止提交
-- `.env.example` 进 git，但只放 key 名 + 空值占位
+- `server/.env.example` 进 git，但只放 key 名 + 空值占位
 - 生产凭证不与测试凭证混用，分文件管理（如 `.env.prod` / `.env.test`）
 
 ## 待对接

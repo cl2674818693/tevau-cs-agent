@@ -5,18 +5,18 @@
 **前置依赖**：Sourcegraph 自部署容器必须先跑起来（见 Task 14 docker-compose）。本任务的实现走 Sourcegraph，本机不再装 ripgrep；测试用 `respx` mock HTTP，不依赖真实 Sourcegraph。
 
 **Files:**
-- Create: `src/ai_engine/agent/__init__.py`
-- Create: `src/ai_engine/agent/tools/__init__.py`
-- Create: `src/ai_engine/agent/tools/base.py`
-- Create: `src/ai_engine/integrations/sourcegraph.py`
-- Create: `src/ai_engine/agent/tools/search_code.py`
-- Create: `src/ai_engine/agent/tools/read_file.py`
-- Create: `tests/test_search_code.py`
-- Create: `tests/test_read_file.py`
+- Create: `server/src/ai_engine/agent/__init__.py`
+- Create: `server/src/ai_engine/agent/tools/__init__.py`
+- Create: `server/src/ai_engine/agent/tools/base.py`
+- Create: `server/src/ai_engine/integrations/sourcegraph.py`
+- Create: `server/src/ai_engine/agent/tools/search_code.py`
+- Create: `server/src/ai_engine/agent/tools/read_file.py`
+- Create: `server/tests/test_search_code.py`
+- Create: `server/tests/test_read_file.py`
 
-- [ ] **Step 1: 写 `src/ai_engine/agent/__init__.py` 与 `src/ai_engine/agent/tools/__init__.py`（空文件）**
+- [ ] **Step 1: 写 `server/src/ai_engine/agent/__init__.py` 与 `server/src/ai_engine/agent/tools/__init__.py`（空文件）**
 
-- [ ] **Step 2: 写 `src/ai_engine/agent/tools/base.py`**
+- [ ] **Step 2: 写 `server/src/ai_engine/agent/tools/base.py`**
 
 ```python
 from dataclasses import dataclass
@@ -58,7 +58,7 @@ def all_definitions() -> list[dict]:
             for t in REGISTRY.values()]
 ```
 
-- [ ] **Step 3: 写 `src/ai_engine/integrations/sourcegraph.py`**（统一 client）
+- [ ] **Step 3: 写 `server/src/ai_engine/integrations/sourcegraph.py`**（统一 client）
 
 ```python
 import httpx
@@ -110,7 +110,7 @@ async def raw_file(repo_sg: str, rev: str, path: str) -> bytes:
     return resp.content
 ```
 
-- [ ] **Step 4: 写 `tests/test_search_code.py`（用 respx mock）**
+- [ ] **Step 4: 写 `server/tests/test_search_code.py`（用 respx mock）**
 
 ```python
 import pytest
@@ -172,7 +172,7 @@ pytest tests/test_search_code.py -v
 ```
 Expected: ImportError / FAIL（工具还没写）
 
-- [ ] **Step 6: 写 `src/ai_engine/agent/tools/search_code.py`**
+- [ ] **Step 6: 写 `server/src/ai_engine/agent/tools/search_code.py`**
 
 ```python
 from ai_engine.agent.tools.base import ALLOWED_REPOS, REPO_MAP, Tool, register
@@ -239,7 +239,7 @@ pytest tests/test_search_code.py -v
 ```
 Expected: 4 passed
 
-- [ ] **Step 8: 写 `tests/test_read_file.py`**
+- [ ] **Step 8: 写 `server/tests/test_read_file.py`**
 
 ```python
 import pytest
@@ -298,7 +298,7 @@ async def test_read_file_line_range():
     assert out["content"].strip() == "L2\nL3"
 ```
 
-- [ ] **Step 9: 写 `src/ai_engine/agent/tools/read_file.py`**
+- [ ] **Step 9: 写 `server/src/ai_engine/agent/tools/read_file.py`**
 
 ```python
 from ai_engine.agent.tools.base import ALLOWED_REPOS, REPO_MAP, Tool, register
@@ -367,7 +367,7 @@ Expected: 5 passed
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/ai_engine/agent src/ai_engine/integrations/sourcegraph.py tests/test_search_code.py tests/test_read_file.py
+git add server/src/ai_engine/agent server/src/ai_engine/integrations/sourcegraph.py server/tests/test_search_code.py server/tests/test_read_file.py
 git commit -m "feat: search_code 与 read_file 工具（Sourcegraph GraphQL + raw API；respx mock 测试）"
 ```
 

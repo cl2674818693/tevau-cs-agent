@@ -3,14 +3,14 @@
 > MVP-1 plan 拆分文件 — 总览见 [README.md](./README.md)，原始合并版见 [../2026-05-18-MVP-1-客服工单AI引擎.md](../2026-05-18-MVP-1-客服工单AI引擎.md)
 
 **Files:**
-- Create: `tests/test_e2e_mvp1.py`
+- Create: `server/tests/test_e2e_mvp1.py`
 
 这是 spec §10 的验收标准的可执行表达。用 mock 的 Anthropic client 模拟两个场景：
 
 1. 越权场景：AI 试图查另一个 BU 的卡片 → 服务端拒绝 → AI 回复"无权查询其他 BU"
 2. bug 诊断场景：AI 查 api_call 拿到日志 → search_code 定位代码 → 建工单 → mock event center 收到推送
 
-- [ ] **Step 1: 写 `tests/test_e2e_mvp1.py`**
+- [ ] **Step 1: 写 `server/tests/test_e2e_mvp1.py`**
 
 ```python
 import json
@@ -140,7 +140,7 @@ Expected: 全部 passed
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tests/test_e2e_mvp1.py
+git add server/tests/test_e2e_mvp1.py
 git commit -m "test: MVP-1 端到端验收（bug 诊断建单 + 越权拒绝）"
 ```
 

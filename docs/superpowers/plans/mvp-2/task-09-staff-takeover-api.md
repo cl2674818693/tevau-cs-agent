@@ -3,10 +3,10 @@
 > MVP-2 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Create: `src/ai_engine/api/staff_conversations.py`
-- Create: `tests/test_staff_takeover.py`
+- Create: `server/src/ai_engine/api/staff_conversations.py`
+- Create: `server/tests/test_staff_takeover.py`
 
-- [ ] **Step 1: 写 `tests/test_staff_takeover.py`**
+- [ ] **Step 1: 写 `server/tests/test_staff_takeover.py`**
 
 ```python
 import pytest
@@ -74,7 +74,7 @@ async def test_send_message(temp_db_url, staff_token):
     assert any(m["role"] == "human_agent" and "解锁" in m["content"] for m in msgs)
 ```
 
-- [ ] **Step 2: 写 `src/ai_engine/api/staff_conversations.py`**
+- [ ] **Step 2: 写 `server/src/ai_engine/api/staff_conversations.py`**
 
 ```python
 import asyncio
@@ -173,7 +173,7 @@ async def stream(conv_id: int, staff=Depends(require_staff)):
 
 ```bash
 pytest tests/test_staff_takeover.py -v
-git add src/ai_engine/api/staff_conversations.py tests/test_staff_takeover.py
+git add server/src/ai_engine/api/staff_conversations.py server/tests/test_staff_takeover.py
 git commit -m "feat(mvp-2): 客服 take/release/messages/stream API + 原子接管 409"
 ```
 

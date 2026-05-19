@@ -3,10 +3,10 @@
 > MVP-3 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Modify: `src/ai_engine/api/chat.py`（mode=ai_draft 时 AI 输出不发用户、放到 staff 工作台）
-- Modify: `src/ai_engine/api/staff_conversations.py`（add /ai-draft/{enable} / approve / reject）
+- Modify: `server/src/ai_engine/api/chat.py`（mode=ai_draft 时 AI 输出不发用户、放到 staff 工作台）
+- Modify: `server/src/ai_engine/api/staff_conversations.py`（add /ai-draft/{enable} / approve / reject）
 - Modify: `web/src/routes/staff/...`
-- Create: `tests/test_ai_draft.py`
+- Create: `server/tests/test_ai_draft.py`
 
 - [ ] **Step 1: chat 端点逻辑**
 

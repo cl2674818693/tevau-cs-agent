@@ -3,12 +3,12 @@
 > MVP-2 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Modify: `src/ai_engine/persistence/db.py`（加表 + ALTER）
-- Create: `src/ai_engine/persistence/staff.py`
-- Modify: `src/ai_engine/persistence/conversations.py`
-- Create: `tests/test_conversation_mode.py`
+- Modify: `server/src/ai_engine/persistence/db.py`（加表 + ALTER）
+- Create: `server/src/ai_engine/persistence/staff.py`
+- Modify: `server/src/ai_engine/persistence/conversations.py`
+- Create: `server/tests/test_conversation_mode.py`
 
-- [ ] **Step 1: 改 `src/ai_engine/persistence/db.py`**——加 staff 表 + conversations.mode
+- [ ] **Step 1: 改 `server/src/ai_engine/persistence/db.py`**——加 staff 表 + conversations.mode
 
 ```sql
 -- 在 SCHEMA 字符串末尾追加
@@ -37,7 +37,7 @@ ALTER TABLE messages ADD COLUMN sender_staff_id TEXT;
 
 > SQLite 不支持 CHECK 加在 ALTER 里，所以 mode 在应用层校验。
 
-- [ ] **Step 2: 写 `src/ai_engine/persistence/staff.py`**
+- [ ] **Step 2: 写 `server/src/ai_engine/persistence/staff.py`**
 
 ```python
 import hashlib
@@ -94,7 +94,7 @@ async def get_staff(staff_id: str) -> dict | None:
     return dict(row) if row else None
 ```
 
-- [ ] **Step 3: 扩展 `src/ai_engine/persistence/conversations.py`**
+- [ ] **Step 3: 扩展 `server/src/ai_engine/persistence/conversations.py`**
 
 ```python
 # 加几个新函数
@@ -144,7 +144,7 @@ async def append_human_message(conv_id: int, sender_staff_id: str, content: str)
         return cur.lastrowid
 ```
 
-- [ ] **Step 4: 写 `tests/test_conversation_mode.py`**
+- [ ] **Step 4: 写 `server/tests/test_conversation_mode.py`**
 
 ```python
 import pytest
@@ -195,7 +195,7 @@ Expected: 2 passed
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/ai_engine/persistence/db.py scripts/migrate_v2.sql src/ai_engine/persistence/staff.py src/ai_engine/persistence/conversations.py tests/test_conversation_mode.py
+git add server/src/ai_engine/persistence/db.py scripts/migrate_v2.sql server/src/ai_engine/persistence/staff.py server/src/ai_engine/persistence/conversations.py server/tests/test_conversation_mode.py
 git commit -m "feat(mvp-2): conversations 加 mode/assigned_staff + staff 表 + DAO"
 ```
 

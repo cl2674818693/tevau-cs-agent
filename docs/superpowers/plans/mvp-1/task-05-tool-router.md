@@ -3,12 +3,12 @@
 > MVP-1 plan 拆分文件 — 总览见 [README.md](./README.md)，原始合并版见 [../2026-05-18-MVP-1-客服工单AI引擎.md](../2026-05-18-MVP-1-客服工单AI引擎.md)
 
 **Files:**
-- Create: `src/ai_engine/agent/tool_router.py`
-- Create: `src/ai_engine/agent/cost_guard.py`
-- Create: `tests/test_tool_router_authz.py`
-- Create: `tests/test_cost_guard.py`
+- Create: `server/src/ai_engine/agent/tool_router.py`
+- Create: `server/src/ai_engine/agent/cost_guard.py`
+- Create: `server/tests/test_tool_router_authz.py`
+- Create: `server/tests/test_cost_guard.py`
 
-- [ ] **Step 1: 写 `tests/test_tool_router_authz.py`**
+- [ ] **Step 1: 写 `server/tests/test_tool_router_authz.py`**
 
 ```python
 import pytest
@@ -73,7 +73,7 @@ async def test_router_audits_call(monkeypatch, temp_db_url):
     assert rows and rows[0]["tool_name"] == "echo_tool"
 ```
 
-- [ ] **Step 2: 写 `tests/test_cost_guard.py`**
+- [ ] **Step 2: 写 `server/tests/test_cost_guard.py`**
 
 ```python
 import pytest
@@ -102,7 +102,7 @@ pytest tests/test_tool_router_authz.py tests/test_cost_guard.py -v
 ```
 Expected: FAIL
 
-- [ ] **Step 4: 写 `src/ai_engine/agent/cost_guard.py`**
+- [ ] **Step 4: 写 `server/src/ai_engine/agent/cost_guard.py`**
 
 ```python
 from dataclasses import dataclass
@@ -127,7 +127,7 @@ class CostGuard:
         return b[: self.max_result_bytes].decode("utf-8", errors="ignore"), True
 ```
 
-- [ ] **Step 5: 写 `src/ai_engine/agent/tool_router.py`**
+- [ ] **Step 5: 写 `server/src/ai_engine/agent/tool_router.py`**
 
 ```python
 import json
@@ -193,7 +193,7 @@ Expected: 5 passed
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/ai_engine/agent/tool_router.py src/ai_engine/agent/cost_guard.py tests/test_tool_router_authz.py tests/test_cost_guard.py
+git add server/src/ai_engine/agent/tool_router.py server/src/ai_engine/agent/cost_guard.py server/tests/test_tool_router_authz.py server/tests/test_cost_guard.py
 git commit -m "feat: 工具路由（身份强制注入 + 审计）与 cost guard"
 ```
 

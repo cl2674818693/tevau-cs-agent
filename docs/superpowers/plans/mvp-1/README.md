@@ -37,7 +37,7 @@
 | # | Task | 关键产出 |
 |---|---|---|
 | 0 | [工程规范基线](task-00-engineering-baseline.md) | ruff / mypy / pre-commit / CI / commit 规范 / 架构约束 |
-| 1 | [项目骨架 + 配置加载](task-01-skeleton.md) | `.env.example` / Makefile / `config.py` |
+| 1 | [项目骨架 + 配置加载](task-01-skeleton.md) | `server/.env.example` / Makefile / `config.py` |
 | 2 | [SQLite 持久层](task-02-persistence.md) | schema + conversations/audit/tickets DAO |
 | 3 | [Anthropic 客户端封装](task-03-anthropic-client.md) | prompt cache 标注 + stream API |
 | 4 | [search_code + read_file（Sourcegraph）](task-04-search-readfile.md) | Sourcegraph GraphQL 客户端 + 工具 |

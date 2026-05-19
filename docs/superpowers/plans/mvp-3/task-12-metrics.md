@@ -4,8 +4,8 @@
 
 **Files:**
 - Add deps: `prometheus_client>=0.20`
-- Create: `src/ai_engine/observability/metrics.py`
-- Create: `src/ai_engine/api/metrics.py`
+- Create: `server/src/ai_engine/observability/metrics.py`
+- Create: `server/src/ai_engine/api/metrics.py`
 - 全代码插埋点（runtime / tool_router / chat 端点等）
 
 - [ ] **Step 1: 关键指标定义**

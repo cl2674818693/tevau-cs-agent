@@ -3,16 +3,16 @@
 > MVP-1 plan 拆分文件 — 总览见 [README.md](./README.md)，原始合并版见 [../2026-05-18-MVP-1-客服工单AI引擎.md](../2026-05-18-MVP-1-客服工单AI引擎.md)
 
 **Files:**
-- Create: `src/ai_engine/prompts/__init__.py`
-- Create: `src/ai_engine/prompts/loader.py`
-- Create: `src/ai_engine/prompts/role.md`
-- Create: `src/ai_engine/prompts/classification.md`
-- Create: `src/ai_engine/prompts/tools_usage.md`
-- Create: `src/ai_engine/prompts/reply_style.b.md`
-- Create: `src/ai_engine/prompts/self_check.md`
-- Create: `tests/test_prompts_loader.py`
+- Create: `server/src/ai_engine/prompts/__init__.py`
+- Create: `server/src/ai_engine/prompts/loader.py`
+- Create: `server/src/ai_engine/prompts/role.md`
+- Create: `server/src/ai_engine/prompts/classification.md`
+- Create: `server/src/ai_engine/prompts/tools_usage.md`
+- Create: `server/src/ai_engine/prompts/reply_style.b.md`
+- Create: `server/src/ai_engine/prompts/self_check.md`
+- Create: `server/tests/test_prompts_loader.py`
 
-- [ ] **Step 1: 写 `tests/test_prompts_loader.py`**
+- [ ] **Step 1: 写 `server/tests/test_prompts_loader.py`**
 
 ```python
 import pytest
@@ -35,7 +35,7 @@ def test_loader_b_uses_b_style():
 
 - [ ] **Step 2: 写 5 个 prompt 文件**
 
-`src/ai_engine/prompts/role.md`:
+`server/src/ai_engine/prompts/role.md`:
 ```markdown
 你是 Tevau 客服工单 AI 引擎。你的职责是帮 Tevau 合作伙伴 (B 端 BU) 或 APP 终端用户 (C 端) 在网页对话框里解决 Open API / APP 相关的问题。
 
@@ -48,7 +48,7 @@ def test_loader_b_uses_b_style():
 4. 严禁泄露：内部风控规则名 (如 R-217)、敏感字段明文 (手机号 / 身份证 / 全卡号)。
 ```
 
-`src/ai_engine/prompts/classification.md`:
+`server/src/ai_engine/prompts/classification.md`:
 ```markdown
 问题分类（每次回答前先在心里判断属于哪一类）：
 
@@ -58,7 +58,7 @@ def test_loader_b_uses_b_style():
 - bug：疑似系统缺陷。行为：收集证据（日志、代码引用、复现步骤）→ 用 create_ticket 建 bug 单。
 ```
 
-`src/ai_engine/prompts/tools_usage.md`:
+`server/src/ai_engine/prompts/tools_usage.md`:
 ```markdown
 工具使用规则：
 
@@ -68,7 +68,7 @@ def test_loader_b_uses_b_style():
 - create_ticket 之前必须填 evidence (code_refs / data_refs / conversation 摘要)，severity 按指南判定。
 ```
 
-`src/ai_engine/prompts/reply_style.b.md`:
+`server/src/ai_engine/prompts/reply_style.b.md`:
 ```markdown
 回复风格（B 端 BU 合作伙伴 - 他们是开发者）：
 
@@ -78,7 +78,7 @@ def test_loader_b_uses_b_style():
 - 仍然脱敏：不露内部风控规则名 (用 "风控规则命中" 代替 "R-217")、不露手机号身份证全卡号明文。
 ```
 
-`src/ai_engine/prompts/self_check.md`:
+`server/src/ai_engine/prompts/self_check.md`:
 ```markdown
 在你给出最终回复前，做一次 self-check：
 
@@ -88,7 +88,7 @@ def test_loader_b_uses_b_style():
 4. 是否需要 create_ticket？若需要、本轮还未建 → 现在调。
 ```
 
-- [ ] **Step 3: 写 `src/ai_engine/prompts/loader.py`**
+- [ ] **Step 3: 写 `server/src/ai_engine/prompts/loader.py`**
 
 ```python
 from pathlib import Path
@@ -124,7 +124,7 @@ Expected: 2 passed
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ai_engine/prompts tests/test_prompts_loader.py
+git add server/src/ai_engine/prompts server/tests/test_prompts_loader.py
 git commit -m "feat: prompt 文件资源化 + loader（B 端 system blocks，带 ephemeral cache 标注预留）"
 ```
 

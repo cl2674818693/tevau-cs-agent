@@ -5,7 +5,7 @@
 **Files:**
 - Modify: `staff_conversations.py`：spectate 端点
 - Modify: 前端：`SpectateConversation.tsx`
-- Create: `tests/test_spectate.py`
+- Create: `server/tests/test_spectate.py`
 
 - [ ] **Step 1: spectate 不改 mode**，仅是客服侧加一个订阅项
 

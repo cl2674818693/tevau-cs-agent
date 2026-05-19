@@ -4,7 +4,7 @@
 
 **Files:**
 - Modify: `staff_conversations.py`：`/transfer-to/{role}` 端点
-- Create: `src/ai_engine/api/staff_kpi.py`
+- Create: `server/src/ai_engine/api/staff_kpi.py`
 - Create: 前端 `KpiRoute.tsx`
 
 - [ ] **Step 1: 转工程师 endpoint**

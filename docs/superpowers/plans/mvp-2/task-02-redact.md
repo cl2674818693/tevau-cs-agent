@@ -3,12 +3,12 @@
 > MVP-2 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Create: `src/ai_engine/integrations/redact.py`
-- Create: `tests/test_redact.py`
+- Create: `server/src/ai_engine/integrations/redact.py`
+- Create: `server/tests/test_redact.py`
 
 按 spec §5.4 实施工具层脱敏。
 
-- [ ] **Step 1: 写 `tests/test_redact.py`**
+- [ ] **Step 1: 写 `server/tests/test_redact.py`**
 
 ```python
 import pytest
@@ -60,7 +60,7 @@ def test_scan_text_redacts_loose_pii():
     assert "alice@x.com" not in out
 ```
 
-- [ ] **Step 2: 写 `src/ai_engine/integrations/redact.py`**
+- [ ] **Step 2: 写 `server/src/ai_engine/integrations/redact.py`**
 
 ```python
 import re
@@ -138,7 +138,7 @@ Expected: 6 passed
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/ai_engine/integrations/redact.py tests/test_redact.py
+git add server/src/ai_engine/integrations/redact.py server/tests/test_redact.py
 git commit -m "feat(mvp-2): 数据脱敏 utils + LLM 输出兜底正则扫描（spec §5.4）"
 ```
 

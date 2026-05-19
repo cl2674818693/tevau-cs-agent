@@ -3,11 +3,11 @@
 > MVP-2 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Create: `src/ai_engine/auth/staff_session.py`
-- Create: `src/ai_engine/api/staff_auth.py`
-- Create: `tests/test_staff_auth.py`
+- Create: `server/src/ai_engine/auth/staff_session.py`
+- Create: `server/src/ai_engine/api/staff_auth.py`
+- Create: `server/tests/test_staff_auth.py`
 
-- [ ] **Step 1: `.env.example` 加配置**
+- [ ] **Step 1: `server/.env.example` 加配置**
 
 ```ini
 # 客服 JWT 签名密钥（HS256，本服务签发本服务验证）
@@ -20,7 +20,7 @@ STAFF_JWT_SECRET=
 staff_jwt_secret: str = ""
 ```
 
-- [ ] **Step 3: 写 `src/ai_engine/auth/staff_session.py`**
+- [ ] **Step 3: 写 `server/src/ai_engine/auth/staff_session.py`**
 
 ```python
 import jwt
@@ -55,7 +55,7 @@ async def require_staff(authorization: str = Header(default="")) -> dict:
         raise HTTPException(401, str(e))
 ```
 
-- [ ] **Step 4: 写 `src/ai_engine/api/staff_auth.py`**
+- [ ] **Step 4: 写 `server/src/ai_engine/api/staff_auth.py`**
 
 ```python
 from fastapi import APIRouter, HTTPException
@@ -81,7 +81,7 @@ async def staff_login(body: StaffLoginIn):
     return {"token": token, "staff": s}
 ```
 
-- [ ] **Step 5: 写 `tests/test_staff_auth.py`**
+- [ ] **Step 5: 写 `server/tests/test_staff_auth.py`**
 
 ```python
 import pytest
@@ -130,7 +130,7 @@ async def test_staff_login_wrong_password(temp_db_url, monkeypatch):
 
 ```bash
 pytest tests/test_staff_auth.py -v
-git add src/ai_engine/auth/staff_session.py src/ai_engine/api/staff_auth.py tests/test_staff_auth.py src/ai_engine/config.py .env.example
+git add server/src/ai_engine/auth/staff_session.py server/src/ai_engine/api/staff_auth.py server/tests/test_staff_auth.py server/src/ai_engine/config.py .env.example
 git commit -m "feat(mvp-2): 客服 JWT + 登录端点"
 ```
 

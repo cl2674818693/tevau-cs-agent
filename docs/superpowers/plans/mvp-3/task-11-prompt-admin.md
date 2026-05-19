@@ -3,7 +3,7 @@
 > MVP-3 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Create: `src/ai_engine/api/admin_prompts.py`
+- Create: `server/src/ai_engine/api/admin_prompts.py`
 - Create: `web/src/routes/admin/PromptsRoute.tsx`
 
 简单版：

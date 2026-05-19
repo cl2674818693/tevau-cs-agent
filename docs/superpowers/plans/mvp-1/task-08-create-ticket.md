@@ -3,12 +3,12 @@
 > MVP-1 plan 拆分文件 — 总览见 [README.md](./README.md)，原始合并版见 [../2026-05-18-MVP-1-客服工单AI引擎.md](../2026-05-18-MVP-1-客服工单AI引擎.md)
 
 **Files:**
-- Create: `src/ai_engine/integrations/lark_webhook.py`
-- Create: `src/ai_engine/integrations/event_center_mock.py`
-- Create: `src/ai_engine/agent/tools/create_ticket.py`
-- Create: `tests/test_create_ticket.py`
+- Create: `server/src/ai_engine/integrations/lark_webhook.py`
+- Create: `server/src/ai_engine/integrations/event_center_mock.py`
+- Create: `server/src/ai_engine/agent/tools/create_ticket.py`
+- Create: `server/tests/test_create_ticket.py`
 
-- [ ] **Step 1: 写 `tests/test_create_ticket.py`**
+- [ ] **Step 1: 写 `server/tests/test_create_ticket.py`**
 
 ```python
 import pytest
@@ -74,7 +74,7 @@ async def test_create_ticket_falls_back_to_lark_when_center_down(seeded_db, monk
     assert lark_calls
 ```
 
-- [ ] **Step 2: 写 `src/ai_engine/integrations/lark_webhook.py`**
+- [ ] **Step 2: 写 `server/src/ai_engine/integrations/lark_webhook.py`**
 
 ```python
 import httpx
@@ -91,7 +91,7 @@ async def send(payload: dict) -> None:
         })
 ```
 
-- [ ] **Step 3: 写 `src/ai_engine/integrations/event_center_mock.py`**
+- [ ] **Step 3: 写 `server/src/ai_engine/integrations/event_center_mock.py`**
 
 最简 in-process mock：在 FastAPI 里挂载一个 `/_mock/event-center` 路由，记录收到的请求体。供本地联调。
 
@@ -110,7 +110,7 @@ async def receive(request: Request):
     return {"ok": True, "internal_ticket_id": f"EC-MOCK-{len(INBOX):05d}", "received_at": "now"}
 ```
 
-- [ ] **Step 4: 写 `src/ai_engine/agent/tools/create_ticket.py`**
+- [ ] **Step 4: 写 `server/src/ai_engine/agent/tools/create_ticket.py`**
 
 ```python
 import hmac
@@ -220,7 +220,7 @@ Expected: 2 passed
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/ai_engine/integrations/lark_webhook.py src/ai_engine/integrations/event_center_mock.py src/ai_engine/agent/tools/create_ticket.py src/ai_engine/agent/tool_router.py tests/test_create_ticket.py
+git add server/src/ai_engine/integrations/lark_webhook.py server/src/ai_engine/integrations/event_center_mock.py server/src/ai_engine/agent/tools/create_ticket.py server/src/ai_engine/agent/tool_router.py server/tests/test_create_ticket.py
 git commit -m "feat: create_ticket 工具 + HMAC 推送 + Lark 兜底 + mock event center receiver"
 ```
 

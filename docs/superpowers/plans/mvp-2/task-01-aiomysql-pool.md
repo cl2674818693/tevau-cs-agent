@@ -3,11 +3,11 @@
 > MVP-2 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Modify: `pyproject.toml`（加 aiomysql / asyncmy / testcontainers）
-- Modify: `.env.example`（加 UNLIMITPAY_DB_URL / NEXUS_DB_URL）
-- Modify: `src/ai_engine/config.py`
-- Create: `src/ai_engine/persistence/business_db.py`
-- Create: `tests/test_business_db.py`
+- Modify: `server/pyproject.toml`（加 aiomysql / asyncmy / testcontainers）
+- Modify: `server/.env.example`（加 UNLIMITPAY_DB_URL / NEXUS_DB_URL）
+- Modify: `server/src/ai_engine/config.py`
+- Create: `server/src/ai_engine/persistence/business_db.py`
+- Create: `server/tests/test_business_db.py`
 
 - [ ] **Step 1: pyproject.toml 加依赖**
 
@@ -25,7 +25,7 @@ dev = [
 ]
 ```
 
-- [ ] **Step 2: `.env.example` 追加**
+- [ ] **Step 2: `server/.env.example` 追加**
 
 ```ini
 # 业务只读库（生产用阿里云 RDS，对应 docs/resources.md 的连接信息）
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     nexus_db_url: str | None = None
 ```
 
-- [ ] **Step 4: 写 `tests/test_business_db.py`（先失败）**
+- [ ] **Step 4: 写 `server/tests/test_business_db.py`（先失败）**
 
 ```python
 import pytest
@@ -78,7 +78,7 @@ def test_parse_mysql_url_rejects_invalid():
 pytest tests/test_business_db.py -v
 ```
 
-- [ ] **Step 6: 写 `src/ai_engine/persistence/business_db.py`**
+- [ ] **Step 6: 写 `server/src/ai_engine/persistence/business_db.py`**
 
 ```python
 from dataclasses import dataclass
@@ -176,7 +176,7 @@ Expected: 3 passed
 - [ ] **Step 8: Commit**
 
 ```bash
-git add pyproject.toml .env.example src/ai_engine/config.py src/ai_engine/persistence/business_db.py tests/test_business_db.py
+git add pyproject.toml .env.example server/src/ai_engine/config.py server/src/ai_engine/persistence/business_db.py server/tests/test_business_db.py
 git commit -m "feat(mvp-2): aiomysql 业务库连接池（多库分离 + 2s 慢查询兜底）"
 ```
 

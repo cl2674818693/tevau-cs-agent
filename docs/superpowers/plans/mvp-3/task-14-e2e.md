@@ -3,7 +3,7 @@
 > MVP-3 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Create: `tests/test_e2e_mvp3.py`
+- Create: `server/tests/test_e2e_mvp3.py`
 
 验收剧本：
 

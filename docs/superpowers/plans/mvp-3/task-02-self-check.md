@@ -5,8 +5,8 @@
 按 spec §8.3：agent 在 `stop_reason == "end_turn"` 后追加一轮 self-check 调用。
 
 **Files:**
-- Modify: `src/ai_engine/agent/runtime.py`
-- Create: `tests/test_self_check.py`
+- Modify: `server/src/ai_engine/agent/runtime.py`
+- Create: `server/tests/test_self_check.py`
 
 - [ ] **Step 1: 改 runtime（核心改造）**
 

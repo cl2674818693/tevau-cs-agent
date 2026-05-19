@@ -3,15 +3,15 @@
 > MVP-1 plan 拆分文件 — 总览见 [README.md](./README.md)，原始合并版见 [../2026-05-18-MVP-1-客服工单AI引擎.md](../2026-05-18-MVP-1-客服工单AI引擎.md)
 
 **Files:**
-- Create: `src/ai_engine/persistence/__init__.py`
-- Create: `src/ai_engine/persistence/db.py`
-- Create: `src/ai_engine/persistence/conversations.py`
-- Create: `src/ai_engine/persistence/audit.py`
-- Create: `src/ai_engine/persistence/tickets.py`
-- Create: `tests/test_persistence_schema.py`
-- Create: `tests/conftest.py`
+- Create: `server/src/ai_engine/persistence/__init__.py`
+- Create: `server/src/ai_engine/persistence/db.py`
+- Create: `server/src/ai_engine/persistence/conversations.py`
+- Create: `server/src/ai_engine/persistence/audit.py`
+- Create: `server/src/ai_engine/persistence/tickets.py`
+- Create: `server/tests/test_persistence_schema.py`
+- Create: `server/tests/conftest.py`
 
-- [ ] **Step 1: 写 `tests/conftest.py`（共享 fixture）**
+- [ ] **Step 1: 写 `server/tests/conftest.py`（共享 fixture）**
 
 ```python
 import asyncio
@@ -33,7 +33,7 @@ def temp_db_url(monkeypatch):
     os.remove(path)
 ```
 
-- [ ] **Step 2: 写 `tests/test_persistence_schema.py`（失败测试）**
+- [ ] **Step 2: 写 `server/tests/test_persistence_schema.py`（失败测试）**
 
 ```python
 import pytest
@@ -102,9 +102,9 @@ pytest tests/test_persistence_schema.py -v
 ```
 Expected: ImportError / FAIL
 
-- [ ] **Step 4: 写 `src/ai_engine/persistence/__init__.py`（空文件）**
+- [ ] **Step 4: 写 `server/src/ai_engine/persistence/__init__.py`（空文件）**
 
-- [ ] **Step 5: 写 `src/ai_engine/persistence/db.py`**
+- [ ] **Step 5: 写 `server/src/ai_engine/persistence/db.py`**
 
 ```python
 import aiosqlite
@@ -184,7 +184,7 @@ async def get_conn():
         yield conn
 ```
 
-- [ ] **Step 6: 写 `src/ai_engine/persistence/conversations.py`**
+- [ ] **Step 6: 写 `server/src/ai_engine/persistence/conversations.py`**
 
 ```python
 from ai_engine.persistence.db import get_conn
@@ -227,7 +227,7 @@ async def list_messages(conv_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 ```
 
-- [ ] **Step 7: 写 `src/ai_engine/persistence/audit.py`**
+- [ ] **Step 7: 写 `server/src/ai_engine/persistence/audit.py`**
 
 ```python
 import json
@@ -265,7 +265,7 @@ async def list_audits(conversation_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 ```
 
-- [ ] **Step 8: 写 `src/ai_engine/persistence/tickets.py`**
+- [ ] **Step 8: 写 `server/src/ai_engine/persistence/tickets.py`**
 
 ```python
 import json
@@ -319,7 +319,7 @@ Expected: 5 passed
 - [ ] **Step 10: Commit**
 
 ```bash
-git add src/ai_engine/persistence tests/conftest.py tests/test_persistence_schema.py
+git add server/src/ai_engine/persistence server/tests/conftest.py server/tests/test_persistence_schema.py
 git commit -m "feat: SQLite 持久层（对话/审计/工单 schema 与 DAO）"
 ```
 

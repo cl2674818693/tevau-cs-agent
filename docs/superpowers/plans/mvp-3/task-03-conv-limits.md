@@ -3,10 +3,10 @@
 > MVP-3 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Create: `src/ai_engine/governance/conversation_limits.py`
-- Create: `src/ai_engine/agent/conversation_compactor.py`
+- Create: `server/src/ai_engine/governance/conversation_limits.py`
+- Create: `server/src/ai_engine/agent/conversation_compactor.py`
 - Modify: `runtime.py`
-- Create: `tests/test_conversation_limits.py`
+- Create: `server/tests/test_conversation_limits.py`
 
 - [ ] **Step 1: 写 `conversation_limits.py`**
 

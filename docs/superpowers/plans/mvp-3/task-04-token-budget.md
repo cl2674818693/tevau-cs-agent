@@ -3,10 +3,10 @@
 > MVP-3 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Create: `src/ai_engine/governance/token_budget.py`
+- Create: `server/src/ai_engine/governance/token_budget.py`
 - Modify: 持久层加 `daily_token_usage` 表
 - Modify: `runtime.py`（每轮 LLM 调用后扣减）
-- Create: `tests/test_token_budget.py`
+- Create: `server/tests/test_token_budget.py`
 
 - [ ] **Step 1: 新表**
 

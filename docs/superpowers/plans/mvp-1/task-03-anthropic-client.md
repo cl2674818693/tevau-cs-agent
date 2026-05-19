@@ -3,11 +3,11 @@
 > MVP-1 plan 拆分文件 — 总览见 [README.md](./README.md)，原始合并版见 [../2026-05-18-MVP-1-客服工单AI引擎.md](../2026-05-18-MVP-1-客服工单AI引擎.md)
 
 **Files:**
-- Create: `src/ai_engine/integrations/__init__.py`
-- Create: `src/ai_engine/integrations/anthropic_client.py`
-- Create: `tests/test_anthropic_client.py`
+- Create: `server/src/ai_engine/integrations/__init__.py`
+- Create: `server/src/ai_engine/integrations/anthropic_client.py`
+- Create: `server/tests/test_anthropic_client.py`
 
-- [ ] **Step 1: 写 `tests/test_anthropic_client.py`（失败测试，用 mock client）**
+- [ ] **Step 1: 写 `server/tests/test_anthropic_client.py`（失败测试，用 mock client）**
 
 ```python
 import pytest
@@ -73,9 +73,9 @@ pytest tests/test_anthropic_client.py -v
 ```
 Expected: ImportError / FAIL
 
-- [ ] **Step 3: 写 `src/ai_engine/integrations/__init__.py`（空文件）**
+- [ ] **Step 3: 写 `server/src/ai_engine/integrations/__init__.py`（空文件）**
 
-- [ ] **Step 4: 写 `src/ai_engine/integrations/anthropic_client.py`**
+- [ ] **Step 4: 写 `server/src/ai_engine/integrations/anthropic_client.py`**
 
 ```python
 from anthropic import AsyncAnthropic
@@ -127,7 +127,7 @@ Expected: 2 passed
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/ai_engine/integrations/__init__.py src/ai_engine/integrations/anthropic_client.py tests/test_anthropic_client.py
+git add server/src/ai_engine/integrations/__init__.py server/src/ai_engine/integrations/anthropic_client.py server/tests/test_anthropic_client.py
 git commit -m "feat: Anthropic 客户端封装（含 prompt cache 标注）"
 ```
 

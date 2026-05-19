@@ -7,13 +7,13 @@
 测试用 `testcontainers[mysql]` 起一个真 MySQL 容器跑 seed.sql 做端到端测试。
 
 **Files:**
-- Modify: `src/ai_engine/agent/tools/query_user.py`
-- Modify: `src/ai_engine/agent/tools/query_card.py`
-- Modify: `src/ai_engine/agent/tools/query_api_call.py`
-- Create: `tests/fixtures/unlimitpay_seed.sql`（按推测 schema 写）
-- Create: `tests/test_query_tools_real.py`
+- Modify: `server/src/ai_engine/agent/tools/query_user.py`
+- Modify: `server/src/ai_engine/agent/tools/query_card.py`
+- Modify: `server/src/ai_engine/agent/tools/query_api_call.py`
+- Create: `server/tests/fixtures/unlimitpay_seed.sql`（按推测 schema 写）
+- Create: `server/tests/test_query_tools_real.py`
 
-- [ ] **Step 1: 写 `tests/fixtures/unlimitpay_seed.sql`**（按你给的 schema 后修订）
+- [ ] **Step 1: 写 `server/tests/fixtures/unlimitpay_seed.sql`**（按你给的 schema 后修订）
 
 ```sql
 CREATE TABLE IF NOT EXISTS bu (
@@ -70,7 +70,7 @@ INSERT INTO api_call_log(uid, bu_id, endpoint, status_code, error_code, request_
   ('1765348436409', 'BU00243780', '/v2/card/bind', 500, 'DB_TIMEOUT', '{}', '{"error":"DB_TIMEOUT"}', '2026-05-18 10:00:00');
 ```
 
-- [ ] **Step 2: 写 `tests/test_query_tools_real.py`**
+- [ ] **Step 2: 写 `server/tests/test_query_tools_real.py`**
 
 ```python
 import pytest
@@ -138,7 +138,7 @@ async def test_query_api_call_by_uid():
     assert out["call"]["status_code"] == 500
 ```
 
-- [ ] **Step 3: 重写 `src/ai_engine/agent/tools/query_user.py`**
+- [ ] **Step 3: 重写 `server/src/ai_engine/agent/tools/query_user.py`**
 
 ```python
 from ai_engine.persistence.business_db import get_db
@@ -184,7 +184,7 @@ register(Tool(
 ))
 ```
 
-- [ ] **Step 4: 重写 `src/ai_engine/agent/tools/query_card.py`**
+- [ ] **Step 4: 重写 `server/src/ai_engine/agent/tools/query_card.py`**
 
 ```python
 from ai_engine.persistence.business_db import get_db
@@ -237,7 +237,7 @@ register(Tool(
 ))
 ```
 
-- [ ] **Step 5: 重写 `src/ai_engine/agent/tools/query_api_call.py`**
+- [ ] **Step 5: 重写 `server/src/ai_engine/agent/tools/query_api_call.py`**
 
 ```python
 from ai_engine.persistence.business_db import get_db
@@ -287,7 +287,7 @@ Expected: 4 passed（需要 docker 在跑，testcontainers 自动起 mysql:8.0�
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tests/fixtures/unlimitpay_seed.sql src/ai_engine/agent/tools/query_user.py src/ai_engine/agent/tools/query_card.py src/ai_engine/agent/tools/query_api_call.py tests/test_query_tools_real.py
+git add server/tests/fixtures/unlimitpay_seed.sql server/src/ai_engine/agent/tools/query_user.py server/src/ai_engine/agent/tools/query_card.py server/src/ai_engine/agent/tools/query_api_call.py server/tests/test_query_tools_real.py
 git commit -m "feat(mvp-2): query_* 工具切换 aiomysql + 工具层脱敏（手机/卡号/邮箱/规则名）"
 ```
 

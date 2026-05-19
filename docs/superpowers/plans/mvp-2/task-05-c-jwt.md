@@ -5,13 +5,13 @@
 C 端 APP 通过 webview 加载本前端，APP 客户端用 JS Bridge 向前端注入 JWT；后端用 APP 后端的公钥验签。
 
 **Files:**
-- Modify: `.env.example`（加 APP_JWT_PUBLIC_KEY）
-- Create: `src/ai_engine/auth/c_jwt.py`
-- Create: `tests/test_auth_c_jwt.py`
+- Modify: `server/.env.example`（加 APP_JWT_PUBLIC_KEY）
+- Create: `server/src/ai_engine/auth/c_jwt.py`
+- Create: `server/tests/test_auth_c_jwt.py`
 
 - [ ] **Step 1: 加 pyjwt 依赖**
 
-`pyproject.toml`:
+`server/pyproject.toml`:
 ```toml
 dependencies = [
   # ...
@@ -19,7 +19,7 @@ dependencies = [
 ]
 ```
 
-- [ ] **Step 2: `.env.example` 加配置**
+- [ ] **Step 2: `server/.env.example` 加配置**
 
 ```ini
 # C 端 APP JWT 验签（APP 后端签发，本服务只验签不发签）
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     app_jwt_algorithm: str = "RS256"
 ```
 
-- [ ] **Step 4: 写 `tests/test_auth_c_jwt.py`**
+- [ ] **Step 4: 写 `server/tests/test_auth_c_jwt.py`**
 
 ```python
 import pytest
@@ -98,7 +98,7 @@ async def test_reject_expired(monkeypatch, keypair):
         verify_app_jwt(token)
 ```
 
-- [ ] **Step 5: 写 `src/ai_engine/auth/c_jwt.py`**
+- [ ] **Step 5: 写 `server/src/ai_engine/auth/c_jwt.py`**
 
 ```python
 import jwt
@@ -187,7 +187,7 @@ Expected: 3 passed
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/ai_engine/auth/c_jwt.py src/ai_engine/api/chat.py src/ai_engine/config.py .env.example pyproject.toml tests/test_auth_c_jwt.py
+git add server/src/ai_engine/auth/c_jwt.py server/src/ai_engine/api/chat.py server/src/ai_engine/config.py .env.example pyproject.toml server/tests/test_auth_c_jwt.py
 git commit -m "feat(mvp-2): C 端 APP JWT 验签 + 两端身份识别 + SSE 加 user_type 字段"
 ```
 

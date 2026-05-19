@@ -3,7 +3,7 @@
 > MVP-3 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Create: `src/ai_engine/api/ticket_events_sse.py`
+- Create: `server/src/ai_engine/api/ticket_events_sse.py`
 - Modify: 前端 `ChatRoute.tsx`：换轮询为 SSE
 
 - [ ] **Step 1: 后端端点**

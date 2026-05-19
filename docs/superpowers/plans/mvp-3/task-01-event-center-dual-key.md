@@ -3,10 +3,10 @@
 > MVP-3 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Modify: `src/ai_engine/integrations/event_center_client.py`
-- Modify: `.env.example` / `config.py`（加 `_CURRENT` / `_PREVIOUS`）
-- Modify: `src/ai_engine/api/tickets.py`（验签接受双 key）
-- Create: `tests/test_event_center_dual_key.py`
+- Modify: `server/src/ai_engine/integrations/event_center_client.py`
+- Modify: `server/.env.example` / `config.py`（加 `_CURRENT` / `_PREVIOUS`）
+- Modify: `server/src/ai_engine/api/tickets.py`（验签接受双 key）
+- Create: `server/tests/test_event_center_dual_key.py`
 
 - [ ] **Step 1: 配置加双 key**
 

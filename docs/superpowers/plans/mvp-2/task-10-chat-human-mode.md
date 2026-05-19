@@ -3,11 +3,11 @@
 > MVP-2 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Modify: `src/ai_engine/api/chat.py`
-- Modify: `src/ai_engine/agent/runtime.py`（如有必要）
-- Create: `tests/test_chat_human_mode.py`
+- Modify: `server/src/ai_engine/api/chat.py`
+- Modify: `server/src/ai_engine/agent/runtime.py`（如有必要）
+- Create: `server/tests/test_chat_human_mode.py`
 
-- [ ] **Step 1: 写 `tests/test_chat_human_mode.py`**
+- [ ] **Step 1: 写 `server/tests/test_chat_human_mode.py`**
 
 ```python
 async def test_user_message_in_human_takeover_skips_agent(temp_db_url, monkeypatch):
@@ -44,7 +44,7 @@ async def test_user_message_in_human_takeover_skips_agent(temp_db_url, monkeypat
     assert any(m["role"] == "user" and "锁" in m["content"] for m in msgs)
 ```
 
-- [ ] **Step 2: 修 `src/ai_engine/api/chat.py`**
+- [ ] **Step 2: 修 `server/src/ai_engine/api/chat.py`**
 
 ```python
 # 在 gen() 内加分支：
@@ -76,7 +76,7 @@ async def gen():
 
 ```bash
 pytest tests/test_chat_human_mode.py -v
-git add src/ai_engine/api/chat.py tests/test_chat_human_mode.py
+git add server/src/ai_engine/api/chat.py server/tests/test_chat_human_mode.py
 git commit -m "feat(mvp-2): chat 端点支持 human_takeover 模式（跳过 AI，消息推给客服）"
 ```
 

@@ -3,11 +3,11 @@
 > MVP-2 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Create: `src/ai_engine/api/user_events.py`
-- Create: `tests/test_request_human.py`
-- Create: `tests/test_user_events.py`
+- Create: `server/src/ai_engine/api/user_events.py`
+- Create: `server/tests/test_request_human.py`
+- Create: `server/tests/test_user_events.py`
 
-- [ ] **Step 1: 写 `src/ai_engine/api/user_events.py`**
+- [ ] **Step 1: 写 `server/src/ai_engine/api/user_events.py`**
 
 ```python
 from fastapi import APIRouter, HTTPException, Request, Depends
@@ -84,14 +84,14 @@ async def user_events(external_id: str, body: UserEventIn, request: Request):
     raise HTTPException(400, "unknown event")
 ```
 
-- [ ] **Step 2: 写测试 `tests/test_request_human.py` + `tests/test_user_events.py`**
+- [ ] **Step 2: 写测试 `server/tests/test_request_human.py` + `server/tests/test_user_events.py`**
 
 (测试代码省略 — 模式与上面类似，覆盖：成功路径、跨身份访问 403、未知事件 400)
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/ai_engine/api/user_events.py tests/test_request_human.py tests/test_user_events.py
+git add server/src/ai_engine/api/user_events.py server/tests/test_request_human.py server/tests/test_user_events.py
 git commit -m "feat(mvp-2): 反向 webhook /request-human + /user-events（含身份二次校验）"
 ```
 

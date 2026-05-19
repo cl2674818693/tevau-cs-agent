@@ -3,20 +3,20 @@
 > MVP-1 plan 拆分文件 — 总览见 [README.md](./README.md)，原始合并版见 [../2026-05-18-MVP-1-客服工单AI引擎.md](../2026-05-18-MVP-1-客服工单AI引擎.md)
 
 **Files:**
-- ~~Create: `pyproject.toml`~~ (已在 Task 0 创建)
-- Create: `.env.example`
-- Create: `Makefile`
+- ~~Create: `server/pyproject.toml`~~ (已在 Task 0 创建)
+- Create: `server/.env.example`
+- Create: `Makefile`（顶层聚合，转发给 server/ 与 web/）
 - Create: `README.md`
-- Create: `src/ai_engine/__init__.py`
-- Create: `src/ai_engine/config.py`
-- Create: `tests/__init__.py`
-- Create: `tests/test_config.py`
+- Create: `server/src/ai_engine/__init__.py`
+- Create: `server/src/ai_engine/config.py`
+- Create: `server/tests/__init__.py`
+- Create: `server/tests/test_config.py`
 
-- [ ] **Step 1: ~~创建 `pyproject.toml`~~**
+- [ ] **Step 1: ~~创建 `server/pyproject.toml`~~**
 
-跳过——`pyproject.toml` 已在 Task 0 Step 1 创建为强化版（含完整依赖 + ruff strict + mypy strict + coverage ≥75%）。本 task 直接使用。
+跳过——`server/pyproject.toml` 已在 Task 0 Step 1 创建为强化版（含完整依赖 + ruff strict + mypy strict + coverage ≥75%）。本 task 直接使用。
 
-- [ ] **Step 2: 创建 `.env.example`**
+- [ ] **Step 2: 创建 `server/.env.example`**
 
 ```ini
 # 必填
@@ -42,39 +42,45 @@ MAX_TOOL_RESULT_BYTES=262144
 LOG_LEVEL=INFO
 ```
 
-- [ ] **Step 3: 创建 `Makefile`**
+- [ ] **Step 3: 创建顶层 `Makefile`（聚合 server + web 命令）**
+
+后端命令 `cd server` 后跑（pyproject / src / tests 都在 server/）；前端命令 `cd web` 后跑。这样 `make X` 在仓库根即可一键完成各端任务，不需要手动切目录。
 
 ```makefile
 .PHONY: install hooks run test lint lint-fix format typecheck check \
         web-install web-dev web-build web-lint web-typecheck web-test
 
+# ---- Backend (server/) ----
+
 install:
-	uv pip install -e ".[dev]"
+	cd server && uv pip install -e ".[dev]"
 
 hooks:
 	pre-commit install
 	pre-commit install --hook-type commit-msg
 
 run:
-	uvicorn ai_engine.main:app --reload --port 8000
+	cd server && uvicorn ai_engine.main:app --reload --port 8000
 
 test:
-	pytest --cov=src/ai_engine --cov-report=term --cov-fail-under=75
+	cd server && pytest --cov=src/ai_engine --cov-report=term --cov-fail-under=75
 
 lint:
-	ruff check src tests
-	ruff format --check src tests
+	cd server && ruff check src tests
+	cd server && ruff format --check src tests
 
 lint-fix:
-	ruff check --fix src tests
-	ruff format src tests
+	cd server && ruff check --fix src tests
+	cd server && ruff format src tests
 
 format: lint-fix
 
 typecheck:
-	mypy src
+	cd server && mypy src
 
 check: lint typecheck test     # 一键跑全套（CI 等价）
+
+# ---- Frontend (web/) ----
 
 web-install:
 	cd web && corepack enable && pnpm install
@@ -103,7 +109,7 @@ web-test:
 
 ## 启动
 
-1. 复制 `.env.example` 为 `.env`，填 `ANTHROPIC_API_KEY`
+1. 复制 `server/.env.example` 为 `.env`，填 `ANTHROPIC_API_KEY`
 2. `make install`
 3. `make run`（后端，默认 :8000）
 4. `make web-install && make web-dev`（前端，默认 :5173）
@@ -113,9 +119,9 @@ web-test:
 `make test`
 ```
 
-- [ ] **Step 5: 创建 `src/ai_engine/__init__.py`（空文件）**
+- [ ] **Step 5: 创建 `server/src/ai_engine/__init__.py`（空文件）**
 
-- [ ] **Step 6: 写 `tests/test_config.py`（先写失败测试）**
+- [ ] **Step 6: 写 `server/tests/test_config.py`（先写失败测试）**
 
 ```python
 import os
@@ -144,11 +150,11 @@ def test_config_requires_api_key(monkeypatch):
 - [ ] **Step 7: 跑一次确认失败**
 
 ```bash
-pytest tests/test_config.py -v
+(cd server && pytest tests/test_config.py -v)
 ```
 Expected: ImportError / FAIL（config 还没写）
 
-- [ ] **Step 8: 写 `src/ai_engine/config.py` 让测试过**
+- [ ] **Step 8: 写 `server/src/ai_engine/config.py` 让测试过**
 
 ```python
 from functools import lru_cache
@@ -196,7 +202,7 @@ settings = _SettingsProxy()
 - [ ] **Step 9: 跑测试确认通过**
 
 ```bash
-pytest tests/test_config.py -v
+(cd server && pytest tests/test_config.py -v)
 ```
 Expected: 2 passed
 
@@ -204,7 +210,9 @@ Expected: 2 passed
 
 ```bash
 git init -q
-git add pyproject.toml .env.example Makefile README.md src/ai_engine/__init__.py src/ai_engine/config.py tests/__init__.py tests/test_config.py
+git add server/pyproject.toml server/.env.example Makefile README.md \
+    server/src/ai_engine/__init__.py server/src/ai_engine/config.py \
+    server/tests/__init__.py server/tests/test_config.py
 git commit -m "feat: 项目骨架 + 配置加载"
 ```
 

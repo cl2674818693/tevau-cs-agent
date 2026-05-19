@@ -3,15 +3,15 @@
 > MVP-1 plan 拆分文件 — 总览见 [README.md](./README.md)，原始合并版见 [../2026-05-18-MVP-1-客服工单AI引擎.md](../2026-05-18-MVP-1-客服工单AI引擎.md)
 
 **Files:**
-- Create: `tests/fixtures/seed.sql`
-- Create: `src/ai_engine/agent/tools/query_user.py`
-- Create: `src/ai_engine/agent/tools/query_card.py`
-- Create: `src/ai_engine/agent/tools/query_api_call.py`
-- Create: `tests/test_query_tools.py`
+- Create: `server/tests/fixtures/seed.sql`
+- Create: `server/src/ai_engine/agent/tools/query_user.py`
+- Create: `server/src/ai_engine/agent/tools/query_card.py`
+- Create: `server/src/ai_engine/agent/tools/query_api_call.py`
+- Create: `server/tests/test_query_tools.py`
 
 MVP-1 阶段这三个工具读 SQLite 里的 fixture 表（在主 db 文件里增加几张以 `mock_` 前缀的表）。上线前由后端同学换成真实只读副本的连接。
 
-- [ ] **Step 1: 写 `tests/fixtures/seed.sql`**
+- [ ] **Step 1: 写 `server/tests/fixtures/seed.sql`**
 
 ```sql
 CREATE TABLE IF NOT EXISTS mock_users (
@@ -50,7 +50,7 @@ INSERT OR IGNORE INTO mock_api_calls(uid, bu_id, endpoint, status_code, error_co
   ('1765348436409', 'BU00243780', '/v2/card/bind', 500, 'DB_TIMEOUT', '{}', '{"error":"DB_TIMEOUT"}', '2026-05-18T10:00:00');
 ```
 
-- [ ] **Step 2: 扩展 `tests/conftest.py` 注入 fixture**
+- [ ] **Step 2: 扩展 `server/tests/conftest.py` 注入 fixture**
 
 在 `temp_db_url` fixture 后追加：
 
@@ -67,7 +67,7 @@ async def seeded_db(temp_db_url):
     return temp_db_url
 ```
 
-- [ ] **Step 3: 写 `tests/test_query_tools.py`**
+- [ ] **Step 3: 写 `server/tests/test_query_tools.py`**
 
 ```python
 import pytest
@@ -100,7 +100,7 @@ async def test_query_api_call_by_uid(seeded_db):
     assert out["call"]["error_code"] == "DB_TIMEOUT"
 ```
 
-- [ ] **Step 4: 写 `src/ai_engine/agent/tools/query_user.py`**
+- [ ] **Step 4: 写 `server/src/ai_engine/agent/tools/query_user.py`**
 
 ```python
 from ai_engine.persistence.db import get_conn
@@ -134,7 +134,7 @@ register(Tool(
 ))
 ```
 
-- [ ] **Step 5: 写 `src/ai_engine/agent/tools/query_card.py`**
+- [ ] **Step 5: 写 `server/src/ai_engine/agent/tools/query_card.py`**
 
 ```python
 from ai_engine.persistence.db import get_conn
@@ -168,7 +168,7 @@ register(Tool(
 ))
 ```
 
-- [ ] **Step 6: 写 `src/ai_engine/agent/tools/query_api_call.py`**
+- [ ] **Step 6: 写 `server/src/ai_engine/agent/tools/query_api_call.py`**
 
 ```python
 from ai_engine.persistence.db import get_conn
@@ -213,7 +213,7 @@ Expected: 4 passed
 - [ ] **Step 8: Commit**
 
 ```bash
-git add tests/fixtures/seed.sql tests/conftest.py src/ai_engine/agent/tools/query_user.py src/ai_engine/agent/tools/query_card.py src/ai_engine/agent/tools/query_api_call.py tests/test_query_tools.py
+git add server/tests/fixtures/seed.sql server/tests/conftest.py server/src/ai_engine/agent/tools/query_user.py server/src/ai_engine/agent/tools/query_card.py server/src/ai_engine/agent/tools/query_api_call.py server/tests/test_query_tools.py
 git commit -m "feat: query_user / query_card / query_api_call 工具（mock fixture，BU 强制隔离）"
 ```
 

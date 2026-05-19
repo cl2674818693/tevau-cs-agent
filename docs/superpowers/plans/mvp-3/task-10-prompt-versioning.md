@@ -3,15 +3,15 @@
 > MVP-3 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**
-- Create: `src/ai_engine/prompts/registry.py`
-- Modify: `src/ai_engine/prompts/loader.py`
+- Create: `server/src/ai_engine/prompts/registry.py`
+- Modify: `server/src/ai_engine/prompts/loader.py`
 - 引入新目录：`prompts/v1.0.0/`、`prompts/v1.1.0/`...
-- Create: `tests/test_prompt_registry.py`
+- Create: `server/tests/test_prompt_registry.py`
 
 - [ ] **Step 1: prompts 目录改为按版本组织**
 
 ```
-src/ai_engine/prompts/
+server/src/ai_engine/prompts/
 ├── v1.0.0/        # MVP-1 起始版本
 │   ├── role.md
 │   ├── classification.md
