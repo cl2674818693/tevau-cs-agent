@@ -104,3 +104,48 @@ C 端身份链路已落地（`auth/c_jwt.py` 验签 RS256；`resolve_identity` B
 3. 面板含 4 类视角：实时运营 / 趋势（含成本估算）/ 质量 / 告警（规则在 `alerts.rules.yml`）。
 
 > 成本估算 panel 按 sonnet 价（input $3/M、output $15/M）估算，按实际合同价调整系数；工单 SLA / 接管时长 histogram 待后续埋点补全（当前用接管次数与解决率近似）。
+
+阿里云 Prometheus 抓取配置示例见 `infra/prometheus-scrape-config.example.yaml`。
+
+## MVP-3 上线 checklist
+
+环境变量（compose 的 `api` 服务已就位，生产填实值）：
+
+```bash
+ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL   # 公司网关
+APP_JWT_PUBLIC_KEY                        # C 端 APP RS256 验签公钥（typ=c / sub=user_id）
+STAFF_JWT_SECRET=$(openssl rand -hex 32)
+EVENT_CENTER_URL                          # 真事项中心接收地址
+EVENT_CENTER_SECRET_CURRENT               # 当前 HMAC key；轮换时把旧值挪到 PREVIOUS
+EVENT_CENTER_SECRET_PREVIOUS              # 轮换窗口内的旧 key（平时留空）
+MOCK_EVENT_CENTER=false                   # 生产必须 false
+DAILY_TOKEN_LIMIT=500000                  # 单 BU/单 user 单日 token 上限
+UNLIMITPAY_DB_URL / NEXUS_DB_URL          # 阿里云 RDS 只读账号
+LARK_WEBHOOK_URL                          # 工单兜底通知群
+```
+
+上线步骤：
+
+1. **事项中心连通性**：建一条测试工单确认真事项中心收到并回 `internal_ticket_id`；用 `EVENT_CENTER_SECRET_CURRENT` 签一条 `assigned` 回调到 `POST /api/v1/tickets/{id}/events` 验签通过。
+2. **HMAC 双 key 初始化**：首发只填 `CURRENT`；轮换时新 key 进 `CURRENT`、旧 key 进 `PREVIOUS`，确认两把 key 都验签通过后再清空 `PREVIOUS`（验证：`server/tests/test_event_center_dual_key.py`）。
+3. **Grafana**：导入 `grafana/tevau-ai-engine.dashboard.json`，加载 `grafana/alerts.rules.yml`，确认 `/metrics` 被抓取。
+4. **客服账号批量初始化**（前 2 名 APP 客服 + 嘉豪 + 另一对接人 + 1 个 admin）：
+
+   ```bash
+   docker compose exec api python -c "
+   import asyncio
+   from ai_engine.persistence.db import init_db
+   from ai_engine.persistence.staff import create_staff
+   async def main():
+       await init_db()
+       await create_staff('CS01','客服一','agent','改我')
+       await create_staff('CS02','客服二','agent','改我')
+       await create_staff('JIAHAO','嘉豪','engineer','改我')
+       await create_staff('PARTNER','对接人','senior','改我')
+       await create_staff('ADMIN','管理员','admin','改我')
+   asyncio.run(main())
+   "
+   ```
+
+   admin 登录后可在 `/admin/prompts` 调 prompt 灰度比例（spec §8）。
+5. **冒烟**：B 端 `http://<host>:5173/bu/login` 走一轮问答 + 转人工；客服 `/staff/login` 接管/转派/标记解决；确认工单状态经 SSE 推回对话框。

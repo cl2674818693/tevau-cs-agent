@@ -11,12 +11,25 @@ services:
       - OPENAPI_DOC_PATH=/repos/api-docs/openapi.json
       - PROMPTS_DIR=/app/src/ai_engine/prompts
       - EVENT_CENTER_URL=${EVENT_CENTER_URL:-http://api:8000/_mock/event-center}
-      - EVENT_CENTER_SECRET=${EVENT_CENTER_SECRET:-mvp1-shared-secret}
+      # HMAC 双 key 热轮换（spec §7.4）：先灌 CURRENT，轮换时把旧值移到 PREVIOUS
+      - EVENT_CENTER_SECRET_CURRENT=${EVENT_CENTER_SECRET_CURRENT:-mvp1-shared-secret}
+      - EVENT_CENTER_SECRET_PREVIOUS=${EVENT_CENTER_SECRET_PREVIOUS:-}
+      # 生产保持 false（不挂 /_mock/event-center）；本地联调置 true
+      - MOCK_EVENT_CENTER=${MOCK_EVENT_CENTER:-false}
       - LARK_WEBHOOK_URL=${LARK_WEBHOOK_URL:-}
       - STAFF_JWT_SECRET=${STAFF_JWT_SECRET}
+      # C 端 APP JWT 验签公钥（RS256，仅验签）；上线必填
+      - APP_JWT_PUBLIC_KEY=${APP_JWT_PUBLIC_KEY:-}
+      # 成本治理：单 BU/单 user 单日 token 硬阈值
+      - DAILY_TOKEN_LIMIT=${DAILY_TOKEN_LIMIT:-500000}
       # 本地 dev 连同 compose 的 mysql；生产改为阿里云 RDS 只读账号
       - UNLIMITPAY_DB_URL=${UNLIMITPAY_DB_URL:-mysql://tevau_test_read:${MYSQL_PASSWORD}@mysql:3306/unlimitpay_test}
       - NEXUS_DB_URL=${NEXUS_DB_URL:-}
+    labels:
+      # 供 sidecar/服务发现抓取 /metrics（spec §11 可观测性，端点始终开启）
+      - "prometheus.scrape=true"
+      - "prometheus.port=8000"
+      - "prometheus.path=/metrics"
     volumes:
       - ./data:/data
       - ./repos:/repos:ro
