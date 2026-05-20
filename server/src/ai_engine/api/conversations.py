@@ -1,14 +1,14 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from ai_engine.auth.bu_session import require_bu
+from ai_engine.auth.bu_session import resolve_identity
 from ai_engine.persistence.conversations import create_conversation
 
 router = APIRouter()
 
 
 class ConversationsInitIn(BaseModel):
-    resume: int | None = None  # 可选：传入则恢复历史会话；MVP-1 暂不实现
+    resume: int | None = None  # 可选：传入则恢复历史会话；MVP-2 暂不实现
 
 
 class ConversationsInitOut(BaseModel):
@@ -20,18 +20,21 @@ class ConversationsInitOut(BaseModel):
     limits: dict[str, int]
 
 
+_GREETING = {
+    "c": "您好，我是 Tevau 智能助手，有账户、卡片或使用问题都可以问我。",
+    "b": "您好，我是 Tevau 智能助手，可以帮您查 Open API / 卡片业务相关问题。",
+}
+
+
 @router.post("/api/v1/conversations")
-async def init_conversation(
-    body: ConversationsInitIn,
-    bu_id: str = Depends(require_bu),
-) -> ConversationsInitOut:
-    # MVP-1：B 端固定 greeting；display_name 用 BU_ID（接 query_bu 后再补脱敏名）
-    conv_id = await create_conversation(user_type="b", subject_id=bu_id)
+async def init_conversation(body: ConversationsInitIn, request: Request) -> ConversationsInitOut:
+    user_type, subject_id = await resolve_identity(request)
+    conv_id = await create_conversation(user_type=user_type, subject_id=subject_id)
     return ConversationsInitOut(
         conversation_id=conv_id,
-        user_type="b",
-        display_name=bu_id,
-        greeting="您好，我是 Tevau 智能助手，可以帮您查 Open API / 卡片业务相关问题。",
+        user_type=user_type,
+        display_name=subject_id,  # display_name 后续接 query_user/bu 补脱敏名
+        greeting=_GREETING.get(user_type, _GREETING["b"]),
         history_url=None,
         limits={"daily_token_used_pct": 0, "max_turns": 20},
     )

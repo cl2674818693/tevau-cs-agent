@@ -3,13 +3,13 @@ import secrets
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
 from ai_engine.agent import runtime
 from ai_engine.api import sse_events as se
 from ai_engine.api.staff_conversations import publish_user_message
-from ai_engine.auth.bu_session import require_bu
+from ai_engine.auth.bu_session import require_bu, resolve_identity
 from ai_engine.persistence import conversations as conv_dao
 
 router = APIRouter()
@@ -37,12 +37,13 @@ def _map_runtime_event(ev: dict[str, Any]) -> dict[str, str] | None:
 
 @router.get("/api/v1/chat")
 async def chat(
+    request: Request,
     conversation_id: int = Query(...),
     message: str = Query(...),
-    bu_id: str = Depends(require_bu),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> EventSourceResponse:
-    """SSE 主链路。Last-Event-ID 用于重连补推（MVP-1 简化：仅记录、不实际补推）。"""
+    """SSE 主链路（两端：C 端 Bearer JWT / B 端 cookie）。Last-Event-ID 用于重连补推。"""
+    user_type, subject_id = await resolve_identity(request)
     cancel_evt = asyncio.Event()
     _cancel_signals[conversation_id] = cancel_evt
 
@@ -52,7 +53,7 @@ async def chat(
                 se.EVENT_CONVERSATION,
                 {
                     "conversation_id": conversation_id,
-                    "user_type": "b",
+                    "user_type": user_type,
                     "model": "claude-sonnet-4-6",
                 },
             )
@@ -68,8 +69,8 @@ async def chat(
             yield se.sse_payload(se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)})
             async for ev in runtime.run_turn(
                 conversation_id=conversation_id,
-                user_type="b",
-                subject_id=bu_id,
+                user_type=user_type,
+                subject_id=subject_id,
                 user_message=message,
             ):
                 if cancel_evt.is_set():

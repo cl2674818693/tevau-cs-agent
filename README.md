@@ -82,6 +82,6 @@ docker compose exec api python -c "import asyncio; from ai_engine.persistence.db
 
 客服工作台访问 `http://localhost:5173/staff/login`。
 
-### 待接（task-05，需 APP 团队）
+### C 端 APP JWT（已实现，仅需配公钥）
 
-- C 端 JWT 验签：需要 **APP 的 RS256 公钥** + JWT claims 格式（`typ`/`sub`）。到位后补 `resolve_identity` 的 C 端分支 + C 端 JWT 中间件，反向 webhook / chat 的 C 端身份才完整。
+C 端身份链路已落地（`auth/c_jwt.py` 验签 RS256；`resolve_identity` Bearer C-JWT 优先、cookie/X-BU-ID 回退；chat / conversations / 反向 webhook 两端通用）。**生产上线只需把 APP 后端的 RS256 公钥填进 `APP_JWT_PUBLIC_KEY`**（claims 约定 `typ="c"` / `sub=user_id`，spec §4.1）。前端 `useAppBridge` 已就绪接收 APP 注入的 JWT。

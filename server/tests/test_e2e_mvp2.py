@@ -1,12 +1,14 @@
-"""MVP-2 端到端验收（spec §10）。
+"""MVP-2 端到端验收（spec §10），覆盖剧本 1-5。
 
-覆盖剧本 2-5；剧本 1（C 端 JWT 验签 + c-style）待 task-05 接入 APP 公钥后补
-（c-style prompt 本身已由 test_prompts_c_style 覆盖）。
+剧本 1 用自签 RS256 keypair 验证 C 端 JWT 流程（生产换 APP 真实公钥，仅配置变更）。
 """
 
 from unittest.mock import AsyncMock, MagicMock
 
+import jwt
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import ASGITransport, AsyncClient
 
 
@@ -46,6 +48,52 @@ def _clear_rate():
     from ai_engine.api.auth_bu import _RATE_BUCKET
 
     _RATE_BUCKET.clear()
+
+
+async def test_c_end_jwt_chat_uses_c_user_type(temp_db_url, monkeypatch):
+    """剧本 1：C 端 APP JWT（Bearer）→ 会话识别为 user_type=c。"""
+    priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pub_pem = (
+        priv.public_key()
+        .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        .decode()
+    )
+    priv_pem = priv.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+    monkeypatch.setenv("APP_JWT_PUBLIC_KEY", pub_pem)
+    from ai_engine.config import settings
+
+    settings.reload()
+    from ai_engine.integrations import anthropic_client as ac
+    from ai_engine.persistence.db import init_db
+
+    await init_db()
+    monkeypatch.setattr(
+        ac,
+        "_client",
+        MagicMock(
+            messages=MagicMock(
+                create=AsyncMock(
+                    return_value=_resp([_block("text", text="您好，已为您查询。")], "end_turn")
+                )
+            )
+        ),
+    )
+    token = jwt.encode({"typ": "c", "sub": "U777", "exp": 9999999999}, priv_pem, algorithm="RS256")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with _client() as client:
+        init = await client.post("/api/v1/conversations", json={}, headers=headers)
+        assert init.json()["user_type"] == "c"
+        cid = init.json()["conversation_id"]
+        async with client.stream(
+            "GET", f"/api/v1/chat?conversation_id={cid}&message=你好", headers=headers
+        ) as resp:
+            lines = [line async for line in resp.aiter_lines()]
+    assert any('"user_type": "c"' in line for line in lines)
 
 
 async def test_b_end_real_mysql_diagnosis(temp_db_url, business_mysql, monkeypatch):
