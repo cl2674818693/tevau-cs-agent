@@ -1,0 +1,24 @@
+{
+  "openapi": "3.0.0",
+  "info": { "title": "Tevau Open API", "version": "1.0.0" },
+  "paths": {
+    "/v2/card/bind": {
+      "post": {
+        "summary": "绑定卡片",
+        "description": "绑定卡片到用户。返回卡片 ID 与状态。",
+        "tags": ["卡片", "card"],
+        "operationId": "bindCard",
+        "responses": { "200": { "description": "ok" }, "500": { "description": "DB_TIMEOUT" } }
+      }
+    },
+    "/v2/card/unlock": {
+      "post": {
+        "summary": "解锁卡片",
+        "description": "解锁被风控锁定的卡片（受限调用）。",
+        "tags": ["卡片", "card", "unlock"],
+        "operationId": "unlockCard",
+        "responses": { "200": { "description": "ok" } }
+      }
+    }
+  }
+}
