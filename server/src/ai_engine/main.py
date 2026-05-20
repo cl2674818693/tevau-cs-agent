@@ -31,7 +31,8 @@ app.include_router(tickets_router)
 app.include_router(staff_auth_router)
 app.include_router(staff_conv_router)
 app.include_router(user_events_router)
-app.include_router(mock_ec_router)
+if settings.mock_event_center:  # 仅本地 dev；生产连真实事项中心
+    app.include_router(mock_ec_router)
 
 
 @app.on_event("startup")

@@ -11,8 +11,14 @@ router = APIRouter()
 
 
 def _verify(raw: bytes, sig: str) -> bool:
-    expected = hmac.new(settings.event_center_secret.encode(), raw, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, sig)
+    # spec §7.4 双 key 热轮换：current / previous 任一通过即可
+    for key in (settings.event_center_secret_current, settings.event_center_secret_previous):
+        if not key:
+            continue
+        expected = hmac.new(key.encode(), raw, hashlib.sha256).hexdigest()
+        if hmac.compare_digest(expected, sig):
+            return True
+    return False
 
 
 @router.post("/api/v1/tickets/{external_id}/events")

@@ -22,7 +22,7 @@ def _new_external_id() -> str:
 
 
 def _sign(body: bytes) -> str:
-    return hmac.new(settings.event_center_secret.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.new(settings.event_center_secret_current.encode(), body, hashlib.sha256).hexdigest()
 
 
 async def _post(url: str, json: dict[str, Any], headers: dict[str, str]) -> httpx.Response:

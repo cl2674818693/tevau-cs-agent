@@ -9,7 +9,8 @@ from ai_engine.config import settings
 
 
 def _sign(body: bytes) -> str:
-    return hmac.new(settings.event_center_secret.encode(), body, hashlib.sha256).hexdigest()
+    # 出口签名用 current key（spec §7.4 双 key 轮换）
+    return hmac.new(settings.event_center_secret_current.encode(), body, hashlib.sha256).hexdigest()
 
 
 async def push_event_center(payload: dict[str, Any]) -> bool:

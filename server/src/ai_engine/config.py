@@ -18,7 +18,10 @@ class Settings(BaseSettings):
     prompts_dir: str = "./src/ai_engine/prompts"
     lark_webhook_url: str | None = None
     event_center_url: str = "http://localhost:8000/_mock/event-center"
-    event_center_secret: str = "mvp1-shared-secret"
+    event_center_secret: str = "mvp1-shared-secret"  # deprecated（MVP-3 用 _current/_previous）
+    event_center_secret_current: str = "mvp1-shared-secret"  # HMAC 双 key 轮换（spec §7.4）
+    event_center_secret_previous: str | None = None
+    mock_event_center: bool = False  # 仅本地 dev 挂 /_mock/event-center receiver
     staff_jwt_secret: str = ""  # 客服 JWT 签名密钥（HS256，本服务签发本服务验证）
     unlimitpay_db_url: str | None = None  # 业务只读库（MVP-2 必填；MVP-1 测试时 None）
     nexus_db_url: str | None = None
