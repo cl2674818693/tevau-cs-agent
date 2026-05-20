@@ -21,6 +21,8 @@
 ```ini
 # 必填
 ANTHROPIC_API_KEY=sk-ant-xxx
+# 公司自建 Claude 网关；走官方 API 时留空
+ANTHROPIC_BASE_URL=https://awsclaude.tevaupay.com
 DB_URL=sqlite+aiosqlite:///./ai_engine.db
 
 # Sourcegraph 代码索引（MVP-1 自部署，见 docker-compose）
@@ -166,6 +168,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     anthropic_api_key: str = Field(...)
+    anthropic_base_url: str | None = None    # 公司自建 Claude 网关（如 https://awsclaude.tevaupay.com）；None 走官方 api.anthropic.com
     db_url: str = "sqlite+aiosqlite:///./ai_engine.db"
     default_model: str = "claude-sonnet-4-6"
     heavy_model: str = "claude-opus-4-7"

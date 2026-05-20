@@ -82,7 +82,12 @@ from anthropic import AsyncAnthropic
 from ai_engine.config import settings
 
 
-_client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+# base_url 为 None 时 SDK 默认连官方 api.anthropic.com；
+# 设了就走公司自建网关（如 https://awsclaude.tevaupay.com）
+_client = AsyncAnthropic(
+    api_key=settings.anthropic_api_key,
+    base_url=settings.anthropic_base_url,   # None => SDK 用默认
+)
 
 
 def build_messages_request(
