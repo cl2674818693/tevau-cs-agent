@@ -1114,9 +1114,17 @@ describe("ChatWindow", () => {
 - [ ] **Step 11: 跑测试**
 
 ```bash
-cd web && pnpm install && pnpm test --run
+cd web && CI=true pnpm install && pnpm rebuild esbuild && pnpm test:ci
 ```
-Expected: 2 passed
+Expected: 全绿，覆盖率 ≥ 75%。
+
+> 执行实况（已踩坑，照做）：
+> - 测试按"先 initConversation 再 SSE"流程写：mock 必须同时 mock `initConversation` / `streamChat` / `cancelStream`；`streamChat` mock yield spec §3.3 wire 事件（`content_block_delta` / `tool_use` / `tool_result`）
+> - `vi.mock` 工厂引用外部变量要用 `vi.hoisted`（否则 ReferenceError，测试文件 0 test）
+> - 发送按钮无文字只有 `aria-label="发送"` → 测试用 `getByLabelText("发送")`
+> - jsdom 无 `Element.scrollTo` → MessageList 用可选链 `ref.current?.scrollTo?.(...)`
+> - 2 个示例测试覆盖率不足 75%，补 `tests/components.test.tsx`（MessageBubble 三角色 / ToolCallChip 展开 / TicketCard / HandoffButton）+ useChat 工具事件与 handoff/stop，覆盖率到 81%
+> - pnpm 10 不再读 package.json 的 `pnpm` 字段；`"type":"module"` 必填（消除 eslint.config.js 的 ESM 警告）
 
 - [ ] **Step 12: Commit**
 
