@@ -143,9 +143,11 @@ def test_config_loads_from_env(monkeypatch):
 
 def test_config_requires_api_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    from pydantic import ValidationError
+
     from ai_engine.config import Settings
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):   # 用具体异常避免 ruff B017
         Settings(_env_file=None)
 ```
 
@@ -168,7 +170,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     anthropic_api_key: str = Field(...)
-    anthropic_base_url: str | None = None    # 公司自建 Claude 网关（如 https://awsclaude.tevaupay.com）；None 走官方 api.anthropic.com
+    anthropic_base_url: str | None = None  # 自建 Claude 网关; None 走官方 API（注释用半角标点避免 ruff RUF003）
     db_url: str = "sqlite+aiosqlite:///./ai_engine.db"
     default_model: str = "claude-sonnet-4-6"
     heavy_model: str = "claude-opus-4-7"
@@ -188,15 +190,15 @@ _instance: Settings | None = None
 
 
 class _SettingsProxy:
-    def __getattr__(self, item):
+    def __getattr__(self, item: str) -> object:
         global _instance
         if _instance is None:
-            _instance = Settings()
+            _instance = Settings()  # type: ignore[call-arg]  # pydantic-settings 从 env 读
         return getattr(_instance, item)
 
-    def reload(self):
+    def reload(self) -> None:
         global _instance
-        _instance = Settings()
+        _instance = Settings()  # type: ignore[call-arg]  # pydantic-settings 从 env 读
 
 
 settings = _SettingsProxy()
