@@ -57,3 +57,31 @@ docker compose up --build api web
 - GitLab PAT：配在 Sourcegraph 后台（不进 AI 引擎 .env）
 - `LARK_WEBHOOK_URL`：现"Open Api 问题工单通知群"机器人 webhook
 - `repos/api-docs/openapi.json`：从 Apifox 导出
+
+## MVP-2 增量（业务库 / 客服 / B 端登录）
+
+### 本地 MySQL（compose 自带）
+
+`docker compose up mysql` 会起一个 MySQL 8 并用 `server/tests/fixtures/unlimitpay_seed.sql` 初始化（bu / user / card / api_call_log 样本）。`.env` 设：
+
+```bash
+MYSQL_PASSWORD=readpass                 # compose mysql 的 tevau_test_read 密码
+STAFF_JWT_SECRET=$(openssl rand -hex 32)  # 客服 JWT 签名密钥（≥32 字节）
+# UNLIMITPAY_DB_URL 默认指向 compose 的 mysql；生产改为阿里云 RDS 只读账号（见 docs/resources.md）
+```
+
+> 生产 `UNLIMITPAY_DB_URL` / `NEXUS_DB_URL` 用阿里云 RDS 的**只读账号**（`tevau_test_read`），不是 compose 里的 dev 账号。query_* 工具的表名/字段当前按推测 schema（标 `# TODO`），拿到真实 schema dump 后校对（spec §12.2 第 9 条）。
+
+### 客服账号初始化
+
+客服账号独立系统（spec §12.5 ✅3，不复用 SSO）。手动建账号：
+
+```bash
+docker compose exec api python -c "import asyncio; from ai_engine.persistence.db import init_db; from ai_engine.persistence.staff import create_staff; asyncio.run((lambda: (init_db(), create_staff('S100','客服张三','agent','改我')))())"
+```
+
+客服工作台访问 `http://localhost:5173/staff/login`。
+
+### 待接（task-05，需 APP 团队）
+
+- C 端 JWT 验签：需要 **APP 的 RS256 公钥** + JWT claims 格式（`typ`/`sub`）。到位后补 `resolve_identity` 的 C 端分支 + C 端 JWT 中间件，反向 webhook / chat 的 C 端身份才完整。

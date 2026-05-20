@@ -13,11 +13,16 @@ services:
       - EVENT_CENTER_URL=${EVENT_CENTER_URL:-http://api:8000/_mock/event-center}
       - EVENT_CENTER_SECRET=${EVENT_CENTER_SECRET:-mvp1-shared-secret}
       - LARK_WEBHOOK_URL=${LARK_WEBHOOK_URL:-}
+      - STAFF_JWT_SECRET=${STAFF_JWT_SECRET}
+      # 本地 dev 连同 compose 的 mysql；生产改为阿里云 RDS 只读账号
+      - UNLIMITPAY_DB_URL=${UNLIMITPAY_DB_URL:-mysql://tevau_test_read:${MYSQL_PASSWORD}@mysql:3306/unlimitpay_test}
+      - NEXUS_DB_URL=${NEXUS_DB_URL:-}
     volumes:
       - ./data:/data
       - ./repos:/repos:ro
     depends_on:
       - sourcegraph
+      - mysql
 
   sourcegraph:
     image: sourcegraph/server:5.3.0
@@ -25,6 +30,20 @@ services:
     volumes:
       - sg-config:/etc/sourcegraph
       - sg-data:/var/opt/sourcegraph
+    restart: unless-stopped
+
+  # 本地开发用 MySQL；生产用阿里云 RDS 只读账号（见 docs/resources.md）
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: unlimitpay_test
+      MYSQL_USER: tevau_test_read
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-readpass}
+    ports: ["3306:3306"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./server/tests/fixtures/unlimitpay_seed.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
     restart: unless-stopped
 
   web:
@@ -38,3 +57,4 @@ services:
 volumes:
   sg-config:
   sg-data:
+  mysql-data:
