@@ -1,11 +1,14 @@
 import { useChat } from "../hooks/useChat";
+import { useTicketStream } from "../hooks/useTicketStream";
 import { useKeyboardInset } from "../hooks/useVisualViewport";
 import { HandoffButton } from "./HandoffButton";
 import { InputBox } from "./InputBox";
 import { MessageList } from "./MessageList";
+import { TicketStatusBanner } from "./TicketStatusBanner";
 
 export function ChatWindow() {
-  const { messages, sending, send, requestHandoff, stop } = useChat();
+  const { messages, sending, send, requestHandoff, stop, init } = useChat();
+  const ticketEvents = useTicketStream(init?.conversation_id ?? null);
   const inset = useKeyboardInset();
 
   return (
@@ -27,6 +30,7 @@ export function ChatWindow() {
           </button>
         )}
       </header>
+      <TicketStatusBanner events={ticketEvents} />
       <MessageList messages={messages} />
       <HandoffButton onClick={requestHandoff} disabled={sending} />
       <InputBox onSend={send} disabled={sending} />

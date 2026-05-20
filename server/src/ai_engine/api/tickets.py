@@ -4,8 +4,13 @@ import json
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
+from ai_engine.api.staff_conversations import publish_conversation_event
 from ai_engine.config import settings
-from ai_engine.persistence.tickets import append_ticket_event, update_ticket_severity
+from ai_engine.persistence.tickets import (
+    append_ticket_event,
+    get_ticket,
+    update_ticket_severity,
+)
 
 router = APIRouter()
 
@@ -29,14 +34,27 @@ async def receive_event(
     if not _verify(raw, x_signature):
         raise HTTPException(401, "bad signature")
     body = json.loads(raw)
+    event = body.get("event", "")
     await append_ticket_event(
         external_id=external_id,
-        event=body.get("event", ""),
+        event=event,
         actor=body.get("actor"),
         comment=body.get("comment"),
         raw=body,
     )
     # spec §7.2 修订：event=in_progress 时可带 severity（受理人在事项中心覆盖）
-    if body.get("event") == "in_progress" and body.get("severity"):
+    if event == "in_progress" and body.get("severity"):
         await update_ticket_severity(external_id=external_id, severity=body["severity"])
+    # spec §7.2 + Task 9：推给该会话的 ticket-events-stream（SSE 替换轮询）
+    ticket = await get_ticket(external_id)
+    if ticket is not None:
+        publish_conversation_event(
+            int(ticket["conversation_id"]),  # type: ignore[call-overload]
+            {
+                "type": event,
+                "external_id": external_id,
+                "actor": body.get("actor"),
+                "comment": body.get("comment"),
+            },
+        )
     return {"ok": True}

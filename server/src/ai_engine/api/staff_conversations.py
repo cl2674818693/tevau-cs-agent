@@ -216,9 +216,20 @@ async def ai_draft_reject(
     return {"ok": True}
 
 
-def _subscribe(conv_id: int) -> EventSourceResponse:
+def register_subscriber(conv_id: int) -> asyncio.Queue[dict[str, Any]]:
+    """注册一个会话事件订阅队列（调用方负责 unregister）。"""
     q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)
     _subscribers[conv_id].append(q)
+    return q
+
+
+def unregister_subscriber(conv_id: int, q: asyncio.Queue[dict[str, Any]]) -> None:
+    if q in _subscribers.get(conv_id, []):
+        _subscribers[conv_id].remove(q)
+
+
+def _subscribe(conv_id: int) -> EventSourceResponse:
+    q = register_subscriber(conv_id)
 
     async def gen() -> AsyncIterator[dict[str, str]]:
         try:
@@ -226,7 +237,7 @@ def _subscribe(conv_id: int) -> EventSourceResponse:
                 ev = await q.get()
                 yield {"event": ev["type"], "data": json.dumps(ev, ensure_ascii=False)}
         finally:
-            _subscribers[conv_id].remove(q)
+            unregister_subscriber(conv_id, q)
 
     return EventSourceResponse(gen())
 
