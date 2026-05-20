@@ -85,3 +85,22 @@ docker compose exec api python -c "import asyncio; from ai_engine.persistence.db
 ### C 端 APP JWT（已实现，仅需配公钥）
 
 C 端身份链路已落地（`auth/c_jwt.py` 验签 RS256；`resolve_identity` Bearer C-JWT 优先、cookie/X-BU-ID 回退；chat / conversations / 反向 webhook 两端通用）。**生产上线只需把 APP 后端的 RS256 公钥填进 `APP_JWT_PUBLIC_KEY`**（claims 约定 `typ="c"` / `sub=user_id`，spec §4.1）。前端 `useAppBridge` 已就绪接收 APP 注入的 JWT。
+
+## MVP-3 可观测性（Prometheus + Grafana）
+
+后端 `GET /metrics` 暴露 Prometheus 指标（`ai_engine_*`：active_conversations、tool_calls/duration、llm_calls/tokens、tickets、staff_takeovers、user_resolved）。
+
+### 接入步骤
+
+1. Prometheus 抓取后端 `/metrics`（默认 :8000），并在 `rule_files` 引入 `grafana/alerts.rules.yml`：
+   ```yaml
+   scrape_configs:
+     - job_name: tevau-ai-engine
+       static_configs: [{ targets: ["api:8000"] }]
+   rule_files:
+     - /etc/prometheus/alerts.rules.yml   # 挂载 grafana/alerts.rules.yml
+   ```
+2. Grafana → Dashboards → Import → 上传 `grafana/tevau-ai-engine.dashboard.json`，选择 Prometheus 数据源。
+3. 面板含 4 类视角：实时运营 / 趋势（含成本估算）/ 质量 / 告警（规则在 `alerts.rules.yml`）。
+
+> 成本估算 panel 按 sonnet 价（input $3/M、output $15/M）估算，按实际合同价调整系数；工单 SLA / 接管时长 histogram 待后续埋点补全（当前用接管次数与解决率近似）。

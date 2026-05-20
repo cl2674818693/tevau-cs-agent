@@ -1,0 +1,45 @@
+# Prometheus 告警规则（spec §12.5 ✅17 异常告警）
+# 加载方式：Prometheus 配置 rule_files 指向本文件，或导入 Grafana alerting。
+# 阈值（X/Y）按实际容量与合同价调整。
+groups:
+  - name: tevau-ai-engine
+    rules:
+      - alert: AIEngineDailyTokenBudgetHigh
+        # 成本超阈：日 token 总量 > 5000 万（示例阈值）
+        expr: sum(increase(ai_engine_llm_tokens_total[1d])) > 5e7
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "AI 引擎日 token 消耗超阈"
+          description: "近 1 天 token 总量 {{ $value | humanize }} 超过预算阈值。"
+
+      - alert: AIEngineToolErrorRateHigh
+        # 错误率高：5min 内 tool error rate > 10%
+        expr: |
+          sum(rate(ai_engine_tool_calls_total{ok="false"}[5m]))
+            / clamp_min(sum(rate(ai_engine_tool_calls_total[5m])), 1) > 0.1
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "工具调用错误率 > 10%"
+          description: "近 5 分钟工具错误率 {{ $value | humanizePercentage }}。"
+
+      - alert: AIEngineHumanPendingBacklog
+        # 等待人工积压：human_pending 持续偏高
+        expr: ai_engine_human_pending > 20
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "等待人工接管的会话积压"
+          description: "当前 {{ $value }} 个会话等待人工，超过 20。"
+
+      - alert: AIEngineUserUnresolvedRatioHigh
+        # 质量下滑：用户"未解决"比例 > 30%
+        expr: |
+          sum(increase(ai_engine_user_resolved_total{event="user_rejected_resolved"}[1h]))
+            / clamp_min(sum(increase(ai_engine_user_resolved_total[1h])), 1) > 0.3
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "用户未解决比例偏高"
+          description: "近 1 小时用户标记未解决占比 {{ $value | humanizePercentage }}。"
