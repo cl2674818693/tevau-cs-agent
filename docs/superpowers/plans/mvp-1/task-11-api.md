@@ -185,13 +185,10 @@ async def test_chat_endpoint_streams_events(seeded_db, monkeypatch):
     from ai_engine import main as main_mod
     from ai_engine.agent import runtime
 
+    # runtime 流出领域事件（text/tool_call），chat.py 映射成 spec §3.3 wire 事件
     async def fake_run_turn(**kwargs):
-        yield {"type": "message_start", "message_id": "msg_1"}
-        yield {"type": "content_block_delta", "index": 0,
-               "delta": {"type": "text_delta", "text": "你好"}}
-        yield {"type": "content_block_delta", "index": 0,
-               "delta": {"type": "text_delta", "text": "！"}}
-        yield {"type": "message_stop", "stop_reason": "end_turn", "usage": {}}
+        yield {"type": "text", "text": "你好"}
+        yield {"type": "text", "text": "！"}
 
     monkeypatch.setattr(runtime, "run_turn", fake_run_turn)
 
@@ -211,6 +208,7 @@ async def test_chat_endpoint_streams_events(seeded_db, monkeypatch):
                 chunks.append(line)
     # 必须包含 conversation 首事件 + content_block_delta 文本 + message_stop
     assert any("event: conversation" in l for l in chunks)
+    assert any("content_block_delta" in l for l in chunks)
     assert any("你好" in l for l in chunks)
     assert any("message_stop" in l for l in chunks)
 
@@ -244,21 +242,39 @@ async def test_chat_cancel_stream(seeded_db, monkeypatch):
 
 - [ ] **Step 7: 写 `server/src/ai_engine/api/chat.py`**（含 SSE 完整契约 + 心跳 + 取消生成）
 
+runtime 流出领域事件（text/tool_call/tool_result），chat.py 用 `_map_runtime_event` 映射成 spec §3.3 wire 事件（content_block_delta / tool_use / tool_result），并在前后包 conversation / message_start / message_stop。心跳用 sse-starlette 内置 `ping=` 参数，不手写并发（更可靠）。
+
 ```python
 import asyncio
-import json
-from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request
-from pydantic import BaseModel
+import secrets
+from collections.abc import AsyncIterator
+from typing import Any
+
+from fastapi import APIRouter, Depends, Header, Query
 from sse_starlette.sse import EventSourceResponse
-from ai_engine.auth.bu_session import require_bu
+
 from ai_engine.agent import runtime
 from ai_engine.api import sse_events as se
-
+from ai_engine.auth.bu_session import require_bu
 
 router = APIRouter()
 
 # conversation_id → asyncio.Event（用户点"停止生成"时 set，gen() 检测后退出）
 _cancel_signals: dict[int, asyncio.Event] = {}
+
+
+def _map_runtime_event(ev: dict[str, Any]) -> dict[str, str] | None:
+    """runtime 领域事件 → spec §3.3 wire 事件。"""
+    t = ev.get("type")
+    if t == "text":
+        return se.sse_payload(se.EVENT_CONTENT_BLOCK_DELTA,
+                              {"index": 0, "delta": {"type": "text_delta", "text": ev.get("text", "")}})
+    if t == "tool_call":
+        return se.sse_payload(se.EVENT_TOOL_USE, {"name": ev.get("name"), "input": ev.get("input")})
+    if t == "tool_result":
+        return se.sse_payload(se.EVENT_TOOL_RESULT,
+                              {"name": ev.get("name"), "is_error": not ev.get("ok", False)})
+    return None
 
 
 @router.get("/api/v1/chat")
@@ -267,56 +283,34 @@ async def chat(
     message: str = Query(...),
     bu_id: str = Depends(require_bu),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
-):
+) -> EventSourceResponse:
     """SSE 主链路。Last-Event-ID 用于重连补推（MVP-1 简化：仅记录、不实际补推）。"""
     cancel_evt = asyncio.Event()
     _cancel_signals[conversation_id] = cancel_evt
 
-    async def gen():
+    async def gen() -> AsyncIterator[dict[str, str]]:
         try:
-            # 首事件：conversation（user_type / model）
             yield se.sse_payload(se.EVENT_CONVERSATION, {
-                "conversation_id": conversation_id,
-                "user_type": "b",
-                "model": "claude-sonnet-4-6",
+                "conversation_id": conversation_id, "user_type": "b", "model": "claude-sonnet-4-6",
             })
-
-            # agent runtime 流出的事件本身就是 spec §3.3 的标准类型
-            # （runtime.run_turn 直接 yield message_start / content_block_delta / tool_use / tool_result / message_stop）
-            agent_iter = runtime.run_turn(
+            yield se.sse_payload(se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)})
+            async for ev in runtime.run_turn(
                 conversation_id=conversation_id, user_type="b",
                 subject_id=bu_id, user_message=message,
-            ).__aiter__()
-
-            # 与心跳并发：哪个先来就 yield 哪个
-            ping_task = asyncio.create_task(asyncio.sleep(se.PING_INTERVAL_SECONDS))
-            agent_task = asyncio.create_task(agent_iter.__anext__())
-            while True:
+            ):
                 if cancel_evt.is_set():
                     yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "cancelled"})
-                    agent_task.cancel()
                     return
-                done, _ = await asyncio.wait(
-                    {ping_task, agent_task},
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                if ping_task in done:
-                    yield se.sse_payload(se.EVENT_PING, {})
-                    ping_task = asyncio.create_task(asyncio.sleep(se.PING_INTERVAL_SECONDS))
-                if agent_task in done:
-                    try:
-                        ev = agent_task.result()
-                    except StopAsyncIteration:
-                        ping_task.cancel()
-                        return
-                    yield se.sse_payload(ev["type"], ev, event_id=str(ev.get("event_id", "")))
-                    agent_task = asyncio.create_task(agent_iter.__anext__())
-        except Exception as e:
+                mapped = _map_runtime_event(ev)
+                if mapped is not None:
+                    yield mapped
+            yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "end_turn"})
+        except Exception as e:  # 顶层兜底，错误转 SSE error 事件
             yield se.error_event("INTERNAL_ERROR", str(e))
         finally:
             _cancel_signals.pop(conversation_id, None)
 
-    return EventSourceResponse(gen())
+    return EventSourceResponse(gen(), ping=se.PING_INTERVAL_SECONDS)
 
 
 @router.delete("/api/v1/chat/{conversation_id}/stream", status_code=204)
