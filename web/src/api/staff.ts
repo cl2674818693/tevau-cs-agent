@@ -90,6 +90,24 @@ export async function rejectAiDraft(token: string, id: number, rewrite: string):
   });
 }
 
+export type AiToolResult = { ok: boolean; data?: unknown; error?: string };
+
+/** 客服代查 AI 工具（仅 senior/engineer）；结果只显示给客服。 */
+export async function runAiTool(
+  token: string,
+  id: number,
+  toolName: string,
+  params: Record<string, unknown>,
+): Promise<AiToolResult> {
+  const r = await fetch(`/staff/api/v1/conversations/${id}/ai-tools/${toolName}`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ params }),
+  });
+  if (!r.ok) return { ok: false, error: `请求失败 ${r.status}` };
+  return r.json();
+}
+
 export type StaffStreamEvent = {
   type: string;
   content?: string;

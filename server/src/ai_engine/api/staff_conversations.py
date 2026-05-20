@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from ai_engine.agent.tool_router import dispatch
 from ai_engine.auth.staff_session import require_staff
 from ai_engine.persistence import conversations as conv_dao
 from ai_engine.persistence.db import get_conn
@@ -187,6 +188,44 @@ async def stream(
     conv_id: int, staff: dict[str, Any] = Depends(require_staff)
 ) -> EventSourceResponse:
     return _subscribe(conv_id)
+
+
+_STAFF_TOOL_WHITELIST = {
+    "query_user",
+    "query_card",
+    "query_api_call",
+    "search_code",
+    "lookup_api_doc",
+    "read_file",
+}
+
+
+class AiToolIn(BaseModel):
+    params: dict[str, Any] = {}
+
+
+@router.post("/staff/api/v1/conversations/{conv_id}/ai-tools/{tool_name}")
+async def run_ai_tool(
+    conv_id: int,
+    tool_name: str,
+    body: AiToolIn,
+    staff: dict[str, Any] = Depends(require_staff),
+) -> dict[str, Any]:
+    """客服代查 AI 工具：强制以该会话身份调用（不能跨用户），结果仅返回客服、不进对话流。"""
+    if staff.get("role") not in ("senior", "engineer"):
+        raise HTTPException(403, "ai-tools requires senior/engineer")
+    if tool_name not in _STAFF_TOOL_WHITELIST:
+        raise HTTPException(400, f"tool not allowed: {tool_name}")
+    conv = await conv_dao.get_conversation(conv_id)
+    if conv is None:
+        raise HTTPException(404, "conversation not found")
+    return await dispatch(
+        tool_name=tool_name,
+        params=body.params,
+        user_type=str(conv["user_type"]),
+        subject_id=str(conv["subject_id"]),
+        conversation_id=conv_id,
+    )
 
 
 @router.get("/staff/api/v1/conversations/{conv_id}/spectate-stream")

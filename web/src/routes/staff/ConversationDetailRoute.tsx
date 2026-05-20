@@ -9,6 +9,7 @@ import {
   type StaffStreamEvent,
 } from "../../api/staff";
 import { AiDraftPanel } from "../../components/AiDraftPanel";
+import { AiToolsPanel } from "../../components/AiToolsPanel";
 import { Button } from "../../components/ui/button";
 import { useAiDraft } from "../../hooks/useAiDraft";
 import { useStaffSession } from "../../hooks/useStaffSession";
@@ -40,10 +41,24 @@ function useStaffStream(
   return [events, (e) => setEvents((prev) => [...prev, e])];
 }
 
+function EventLog({ events }: { events: StaffStreamEvent[] }) {
+  return (
+    <ul className="flex-1 overflow-y-auto flex flex-col gap-1 mb-3">
+      {events.map((ev, i) => (
+        <li key={i} className="text-body2 text-ink-primary">
+          <span className="text-footnote text-ink-secondary mr-1">[{ev.type}]</span>
+          {ev.content ?? ev.to ?? ""}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function ConversationDetailRoute() {
   const { id } = useParams();
   const convId = Number(id);
-  const { token } = useStaffSession();
+  const { token, role } = useStaffSession();
+  const canUseTools = role === "senior" || role === "engineer";
   const nav = useNavigate();
   const [events, pushEvent] = useStaffStream(token, convId);
   const [taken, setTaken] = useState(false);
@@ -100,14 +115,12 @@ export function ConversationDetailRoute() {
       </div>
       {notice && <div className="text-body3 text-ink-secondary mb-2">{notice}</div>}
       <AiDraftPanel draft={aiDraft} onApprove={approve} onReject={reject} />
-      <ul className="flex-1 overflow-y-auto flex flex-col gap-1 mb-3">
-        {events.map((ev, i) => (
-          <li key={i} className="text-body2 text-ink-primary">
-            <span className="text-footnote text-ink-secondary mr-1">[{ev.type}]</span>
-            {ev.content ?? ev.to ?? ""}
-          </li>
-        ))}
-      </ul>
+      {canUseTools && token && (
+        <div className="mb-3">
+          <AiToolsPanel token={token} convId={convId} />
+        </div>
+      )}
+      <EventLog events={events} />
       {taken && (
         <div className="flex gap-2">
           <input
