@@ -2,6 +2,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
+from ai_engine.agent.conversation_compactor import compact_conversation
 from ai_engine.agent.cost_guard import CostGuard
 from ai_engine.agent.tool_router import dispatch
 from ai_engine.agent.tools import (  # noqa: F401  import 即注册工具
@@ -15,10 +16,11 @@ from ai_engine.agent.tools import (  # noqa: F401  import 即注册工具
     search_code,
 )
 from ai_engine.config import settings
+from ai_engine.governance.conversation_limits import should_compact
 from ai_engine.integrations import anthropic_client as _ac
 from ai_engine.integrations.anthropic_client import build_messages_request
 from ai_engine.integrations.redact import scan_and_redact_text
-from ai_engine.persistence.conversations import append_message
+from ai_engine.persistence.conversations import append_message, list_messages
 from ai_engine.prompts.loader import _read, build_system_blocks
 
 
@@ -54,6 +56,21 @@ def _collect_blocks(resp: object) -> tuple[list[dict[str, Any]], list[dict[str, 
     return assistant_blocks, tool_calls, texts
 
 
+async def _maybe_compact(
+    conversation_id: int,
+) -> tuple[int, dict[str, Any] | None, list[dict[str, Any]]]:
+    """超限则总结老会话、开新会话。返回 (会话id, 给前端的 system 事件 or None, 预置 messages)。"""
+    if not await should_compact(conversation_id):
+        return conversation_id, None, []
+    new_id = await compact_conversation(conversation_id)
+    summary = next(
+        (str(m["content"]) for m in await list_messages(new_id) if m["role"] == "system"), ""
+    )
+    event = {"type": "system", "text": f"会话过长，已为您开启新对话，conversation_id={new_id}"}
+    seed = [{"role": "user", "content": f"[上文摘要]\n{summary}"}] if summary else []
+    return new_id, event, seed
+
+
 async def run_turn(
     *,
     conversation_id: int,
@@ -66,7 +83,12 @@ async def run_turn(
     system_blocks = build_system_blocks(user_type=user_type)
     tools = base.all_definitions()
 
-    messages: list[dict[str, Any]] = [{"role": "user", "content": user_message}]
+    # spec §8 会话治理：超轮次/token 上限 → 总结老会话、开新会话继承结论
+    conversation_id, compact_event, messages = await _maybe_compact(conversation_id)
+    if compact_event:
+        yield compact_event
+
+    messages.append({"role": "user", "content": user_message})
     await append_message(conversation_id, role="user", content=user_message)
 
     guard = CostGuard(

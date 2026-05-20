@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     mode TEXT NOT NULL DEFAULT 'ai',       -- spec 13.2: ai/human_pending/human_takeover/ai_draft
     assigned_staff_id TEXT,                -- 当前接管客服
     assigned_at TEXT,
+    archived INTEGER NOT NULL DEFAULT 0,   -- spec §8: 会话过长被总结+开新会话后置 1
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_conv_subject ON conversations(subject_id);

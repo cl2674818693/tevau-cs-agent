@@ -44,6 +44,36 @@ async def append_message(conv_id: int, role: str, content: str) -> int:
         return cur.lastrowid
 
 
+async def archive_conversation(conv_id: int) -> None:
+    """spec §8: 会话过长被总结后归档老会话。"""
+    async with get_conn() as conn:
+        await conn.execute("UPDATE conversations SET archived=1 WHERE id=?", (conv_id,))
+        await conn.commit()
+
+
+async def count_user_turns(conv_id: int) -> int:
+    async with get_conn() as conn:
+        row = await (
+            await conn.execute(
+                "SELECT COUNT(*) AS n FROM messages WHERE conversation_id=? AND role='user'",
+                (conv_id,),
+            )
+        ).fetchone()
+    return int(row["n"]) if row else 0
+
+
+async def sum_content_chars(conv_id: int) -> int:
+    async with get_conn() as conn:
+        row = await (
+            await conn.execute(
+                "SELECT COALESCE(SUM(LENGTH(content)),0) AS n "
+                "FROM messages WHERE conversation_id=?",
+                (conv_id,),
+            )
+        ).fetchone()
+    return int(row["n"]) if row else 0
+
+
 async def list_messages(conv_id: int) -> list[dict[str, object]]:
     async with get_conn() as conn:
         rows = await (
