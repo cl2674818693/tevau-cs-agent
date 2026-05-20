@@ -1,21 +1,33 @@
-from pathlib import Path
-
-from ai_engine.config import settings
+from ai_engine.prompts import registry
 
 
-def _read(name: str) -> str:
-    p = Path(settings.prompts_dir) / name
-    return p.read_text(encoding="utf-8")
+def _resolve_version(version: str | None, subject_id: str | None) -> str:
+    if version is not None:
+        return version
+    return registry.pick_version(subject_id) if subject_id else registry.default_version()
 
 
-def build_system_blocks(user_type: str) -> list[dict[str, str]]:
-    role = _read("role.md")
-    topic_scope = _read("topic_scope.md")  # spec §6.4 话题边界第一层（MVP-1 唯一防御）
-    classification = _read("classification.md")
-    tools_usage = _read("tools_usage.md")
+def read_prompt(key: str, version: str | None = None, subject_id: str | None = None) -> str:
+    """读取某版本的 prompt 文件。version 优先；否则按 subject_id 灰度；都缺省取 default。"""
+    v = _resolve_version(version, subject_id)
+    return registry.file_path(v, key).read_text(encoding="utf-8")
+
+
+def build_system_blocks(
+    user_type: str, subject_id: str | None = None, version: str | None = None
+) -> list[dict[str, str]]:
+    v = _resolve_version(version, subject_id)
+
+    def rd(key: str) -> str:
+        return read_prompt(key, version=v)
+
+    role = rd("role")
+    topic_scope = rd("topic_scope")  # spec §6.4 话题边界第一层（MVP-1 唯一防御）
+    classification = rd("classification")
+    tools_usage = rd("tools_usage")
     # MVP-2：按 user_type 切换回复风格（C 端语言化 / B 端技术化）
-    style = _read("reply_style.c.md") if user_type == "c" else _read("reply_style.b.md")
-    self_check = _read("self_check.md")
+    style = rd("reply_style_c") if user_type == "c" else rd("reply_style_b")
+    self_check = rd("self_check")
     # 多个 system 块，每块单独缓存；topic_scope 与 reply_style 放靠前，让模型先看到约束
     return [
         {"type": "text", "text": role + "\n\n" + topic_scope},

@@ -1,0 +1,26 @@
+# Prompt 版本声明 + 灰度配置（spec §8 prompt 版本化）
+# rollout 百分比按 subject_id 哈希分桶；总和 < 100 时余量回落到 default。
+versions:
+  v1.0.0:
+    model: claude-sonnet-4-6
+    files:
+      role: v1.0.0/role.md
+      topic_scope: v1.0.0/topic_scope.md
+      classification: v1.0.0/classification.md
+      tools_usage: v1.0.0/tools_usage.md
+      reply_style_b: v1.0.0/reply_style.b.md
+      reply_style_c: v1.0.0/reply_style.c.md
+      self_check: v1.0.0/self_check.md
+  v1.1.0:
+    model: claude-sonnet-4-6
+    files:
+      role: v1.1.0/role.md
+      topic_scope: v1.1.0/topic_scope.md
+      classification: v1.1.0/classification.md
+      tools_usage: v1.1.0/tools_usage.md
+      reply_style_b: v1.1.0/reply_style.b.md
+      reply_style_c: v1.1.0/reply_style.c.md
+      self_check: v1.1.0/self_check.md
+default: v1.1.0
+rollout:
+  v1.1.0: 100

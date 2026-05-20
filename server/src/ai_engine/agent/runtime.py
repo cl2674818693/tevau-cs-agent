@@ -22,7 +22,8 @@ from ai_engine.integrations import anthropic_client as _ac
 from ai_engine.integrations.anthropic_client import build_messages_request
 from ai_engine.integrations.redact import scan_and_redact_text
 from ai_engine.persistence.conversations import append_message, list_messages
-from ai_engine.prompts.loader import _read, build_system_blocks
+from ai_engine.prompts.loader import build_system_blocks, read_prompt
+from ai_engine.prompts.registry import model_for, pick_version
 
 
 def _block_to_dict(b: object) -> dict[str, Any]:
@@ -107,8 +108,10 @@ async def run_turn(
     user_message: str,
     model: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    model = model or settings.default_model
-    system_blocks = build_system_blocks(user_type=user_type)
+    # spec §8 prompt 版本化：按 subject_id 哈希分桶选版本；该版本贯穿本轮
+    prompt_version = pick_version(subject_id)
+    model = model or model_for(prompt_version) or settings.default_model
+    system_blocks = build_system_blocks(user_type=user_type, version=prompt_version)
     tools = base.all_definitions()
 
     # spec §8 会话治理：超轮次/token 上限 → 总结老会话、开新会话继承结论
@@ -155,7 +158,7 @@ async def run_turn(
         # 最终回复轮：end_turn 后强制一轮 self-check（spec §8.3），不计工具深度
         if resp.stop_reason == "end_turn" and not self_check_done and texts:
             self_check_done = True
-            _inject_self_check(messages)
+            _inject_self_check(messages, prompt_version)
             continue
 
         # self-check 后（或无文本）：流出最终文本
@@ -201,8 +204,8 @@ async def _persist_assistant(
     )
 
 
-def _inject_self_check(messages: list[dict[str, Any]]) -> None:
-    self_check_md = _read("self_check.md")
+def _inject_self_check(messages: list[dict[str, Any]], version: str) -> None:
+    self_check_md = read_prompt("self_check", version=version)
     messages.append(
         {
             "role": "user",
