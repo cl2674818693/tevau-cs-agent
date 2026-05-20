@@ -2,6 +2,9 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { BuLoginRoute } from "./routes/BuLoginRoute";
 import { ChatRoute } from "./routes/ChatRoute";
+import { ConversationDetailRoute } from "./routes/staff/ConversationDetailRoute";
+import { ConversationsListRoute } from "./routes/staff/ConversationsListRoute";
+import { StaffLoginRoute } from "./routes/staff/StaffLoginRoute";
 import "./styles/globals.css";
 
 export default function App() {
@@ -10,7 +13,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<ChatRoute />} />
         <Route path="/bu/login" element={<BuLoginRoute />} />
-        {/* /staff/* 路由在 Task 15 加 */}
+        <Route path="/staff/login" element={<StaffLoginRoute />} />
+        <Route path="/staff/conversations" element={<ConversationsListRoute />} />
+        <Route path="/staff/conversations/:id" element={<ConversationDetailRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
