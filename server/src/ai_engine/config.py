@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -26,7 +28,7 @@ _instance: Settings | None = None
 
 
 class _SettingsProxy:
-    def __getattr__(self, item: str) -> object:
+    def __getattr__(self, item: str) -> Any:  # 代理转发, 类型由 Settings 字段决定
         global _instance
         if _instance is None:
             _instance = Settings()  # type: ignore[call-arg]  # pydantic-settings 从 env 读
