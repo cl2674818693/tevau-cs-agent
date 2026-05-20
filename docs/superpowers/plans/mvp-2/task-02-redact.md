@@ -64,7 +64,8 @@ def test_scan_text_redacts_loose_pii():
 
 ```python
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 
 def mask_phone(s: str | None) -> str:
@@ -72,7 +73,7 @@ def mask_phone(s: str | None) -> str:
         return ""
     if len(s) < 7:
         return "*" * len(s)
-    return f"{s[:3]}{'*' * (len(s) - 5)}{s[-2:]}"
+    return f"{s[:3]}****{s[-2:]}"  # spec §5.4 示例 138****12：固定 4 星（与测试一致，不随长度变）
 
 
 def mask_id_card(s: str | None) -> str:
@@ -98,9 +99,9 @@ def mask_email(s: str | None) -> str:
     if "@" not in s:
         return "*" * len(s)
     local, domain = s.split("@", 1)
-    if len(local) <= 2:
+    if len(local) <= 1:
         return f"{'*' * len(local)}@{domain}"
-    return f"{local[:2]}***@{domain}"
+    return f"{local[:2]}***@{domain}"  # spec §5.4: 本地保留 2 字符 + ***（"ab"→"ab***"）
 
 
 def scrub_dict(d: Any, rules: dict[str, Callable[[str], str]]) -> Any:
