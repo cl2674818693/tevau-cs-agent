@@ -7,7 +7,8 @@ import { useStaffSession } from "../../hooks/useStaffSession";
 const FILTERS = ["human_pending", "human_takeover", "all"] as const;
 
 export function ConversationsListRoute() {
-  const { token, logout } = useStaffSession();
+  const { token, role, logout } = useStaffSession();
+  const canSpectate = role === "senior" || role === "engineer";
   const [status, setStatus] = useState<string>("human_pending");
   const [items, setItems] = useState<StaffConversation[]>([]);
   const [err, setErr] = useState("");
@@ -47,16 +48,24 @@ export function ConversationsListRoute() {
       {err && <div className="text-body3 text-status-error">{err}</div>}
       <ul className="flex flex-col gap-2">
         {items.map((c) => (
-          <li key={c.id}>
+          <li key={c.id} className="flex items-center gap-2">
             <Link
               to={`/staff/conversations/${c.id}`}
-              className="block rounded border border-line bg-surface-card px-3 py-2"
+              className="block flex-1 rounded border border-line bg-surface-card px-3 py-2"
             >
               <span className="text-body1 text-ink-primary">
                 #{c.id} · {c.user_type === "c" ? "C 端用户" : "BU"} {c.subject_id}
               </span>
               <span className="ml-2 text-body3 text-ink-secondary">{c.mode}</span>
             </Link>
+            {canSpectate && (
+              <Link
+                to={`/staff/conversations/${c.id}/spectate`}
+                className="text-body3 text-ink-secondary px-2 py-1 rounded bg-surface-container"
+              >
+                旁观
+              </Link>
+            )}
           </li>
         ))}
         {items.length === 0 && !err && <li className="text-body3 text-ink-secondary">暂无会话</li>}

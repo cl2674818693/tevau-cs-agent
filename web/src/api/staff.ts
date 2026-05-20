@@ -98,13 +98,17 @@ export type StaffStreamEvent = {
 };
 
 /** 订阅会话事件总线（user_message / human_message / mode_change）。带 Bearer，故用 fetch-stream。 */
-export async function* streamStaffEvents(
-  token: string,
-  id: number,
-): AsyncGenerator<StaffStreamEvent> {
-  const resp = await fetch(`/staff/api/v1/conversations/${id}/stream`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export function streamStaffEvents(token: string, id: number): AsyncGenerator<StaffStreamEvent> {
+  return streamSse(`/staff/api/v1/conversations/${id}/stream`, token);
+}
+
+/** 旁观订阅（senior/engineer）：只读看 AI 处理过程，不接管。 */
+export function streamSpectateEvents(token: string, id: number): AsyncGenerator<StaffStreamEvent> {
+  return streamSse(`/staff/api/v1/conversations/${id}/spectate-stream`, token);
+}
+
+async function* streamSse(url: string, token: string): AsyncGenerator<StaffStreamEvent> {
+  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!resp.ok || !resp.body) throw new Error(`stream failed ${resp.status}`);
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();

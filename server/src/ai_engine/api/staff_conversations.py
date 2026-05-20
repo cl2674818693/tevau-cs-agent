@@ -36,6 +36,12 @@ def publish_ai_draft(conv_id: int, draft: str) -> None:
     _publish(conv_id, {"type": "ai_draft_ready", "draft": draft})
 
 
+def publish_conversation_event(conv_id: int, event: dict[str, Any]) -> None:
+    """把会话事件推到订阅总线（旁观客服可见 AI 处理过程）。无订阅者时近乎零成本。"""
+    if _subscribers.get(conv_id):
+        _publish(conv_id, event)
+
+
 @router.get("/staff/api/v1/conversations")
 async def list_conversations(
     status: str = Query("human_pending"),
@@ -161,10 +167,7 @@ async def ai_draft_reject(
     return {"ok": True}
 
 
-@router.get("/staff/api/v1/conversations/{conv_id}/stream")
-async def stream(
-    conv_id: int, staff: dict[str, Any] = Depends(require_staff)
-) -> EventSourceResponse:
+def _subscribe(conv_id: int) -> EventSourceResponse:
     q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)
     _subscribers[conv_id].append(q)
 
@@ -177,3 +180,20 @@ async def stream(
             _subscribers[conv_id].remove(q)
 
     return EventSourceResponse(gen())
+
+
+@router.get("/staff/api/v1/conversations/{conv_id}/stream")
+async def stream(
+    conv_id: int, staff: dict[str, Any] = Depends(require_staff)
+) -> EventSourceResponse:
+    return _subscribe(conv_id)
+
+
+@router.get("/staff/api/v1/conversations/{conv_id}/spectate-stream")
+async def spectate_stream(
+    conv_id: int, staff: dict[str, Any] = Depends(require_staff)
+) -> EventSourceResponse:
+    """旁观（不接管）：仅 senior/engineer 可订阅 AI 处理过程。"""
+    if staff.get("role") not in ("senior", "engineer"):
+        raise HTTPException(403, "spectate requires senior/engineer")
+    return _subscribe(conv_id)

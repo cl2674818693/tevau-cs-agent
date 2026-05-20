@@ -8,7 +8,11 @@ from sse_starlette.sse import EventSourceResponse
 
 from ai_engine.agent import runtime
 from ai_engine.api import sse_events as se
-from ai_engine.api.staff_conversations import publish_ai_draft, publish_user_message
+from ai_engine.api.staff_conversations import (
+    publish_ai_draft,
+    publish_conversation_event,
+    publish_user_message,
+)
 from ai_engine.auth.bu_session import require_bu, resolve_identity
 from ai_engine.persistence import conversations as conv_dao
 
@@ -35,6 +39,13 @@ def _map_runtime_event(ev: dict[str, Any]) -> dict[str, str] | None:
     if t == "system":  # 会话治理 / 成本治理等系统提示（spec §8）
         return se.sse_payload(se.EVENT_WARNING, {"text": ev.get("text", "")})
     return None
+
+
+def _spectator_event(ev: dict[str, Any]) -> dict[str, Any]:
+    """把 runtime 事件转成旁观总线事件（assistant 文本改名以区分用户消息）。"""
+    if ev.get("type") == "text":
+        return {"type": "assistant_text", "content": ev.get("text", "")}
+    return ev
 
 
 @router.get("/api/v1/chat")
@@ -83,6 +94,9 @@ async def chat(
                 return
 
             yield se.sse_payload(se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)})
+            publish_conversation_event(
+                conversation_id, {"type": "user_message", "content": message}
+            )
             async for ev in runtime.run_turn(
                 conversation_id=conversation_id,
                 user_type=user_type,
@@ -92,6 +106,7 @@ async def chat(
                 if cancel_evt.is_set():
                     yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "cancelled"})
                     return
+                publish_conversation_event(conversation_id, _spectator_event(ev))
                 mapped = _map_runtime_event(ev)
                 if mapped is not None:
                     yield mapped
