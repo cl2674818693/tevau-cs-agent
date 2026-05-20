@@ -17,6 +17,7 @@ from ai_engine.agent.tools import (  # noqa: F401  import 即注册工具
 from ai_engine.config import settings
 from ai_engine.integrations import anthropic_client as _ac
 from ai_engine.integrations.anthropic_client import build_messages_request
+from ai_engine.integrations.redact import scan_and_redact_text
 from ai_engine.persistence.conversations import append_message
 from ai_engine.prompts.loader import build_system_blocks
 
@@ -71,7 +72,8 @@ async def run_turn(
         for b in blocks:
             if b["type"] == "text":
                 assistant_blocks.append(b)
-                yield {"type": "text", "text": b["text"]}
+                # spec §5.4 兜底：LLM 输出再过一遍正则脱敏（手机/卡号/邮箱/规则名）
+                yield {"type": "text", "text": scan_and_redact_text(b["text"])}
             elif b["type"] == "tool_use":
                 assistant_blocks.append(b)
                 tool_calls_in_round.append(b)
