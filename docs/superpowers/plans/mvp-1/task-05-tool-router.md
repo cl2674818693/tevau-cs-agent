@@ -14,10 +14,12 @@
 import pytest
 
 
-async def test_router_injects_subject_id_for_subject_required_tool(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-    from ai_engine.agent.tools import base
+async def test_router_injects_subject_id_for_subject_required_tool(monkeypatch, temp_db_url):
     from ai_engine.agent.tool_router import dispatch
+    from ai_engine.agent.tools import base
+    from ai_engine.persistence.db import init_db
+
+    await init_db()  # dispatch 总会 log_tool_call，需要审计表
 
     async def fake_handler(bu_id: str):
         return {"bu_id": bu_id}
@@ -42,9 +44,11 @@ async def test_router_injects_subject_id_for_subject_required_tool(monkeypatch):
     assert result["data"]["bu_id"] == "BU00243780"
 
 
-async def test_router_rejects_unknown_tool(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+async def test_router_rejects_unknown_tool(monkeypatch, temp_db_url):
     from ai_engine.agent.tool_router import dispatch
+    from ai_engine.persistence.db import init_db
+
+    await init_db()  # 未知工具也会 log_tool_call，需要审计表
     out = await dispatch(
         tool_name="nope", params={}, user_type="b", subject_id="BU1", conversation_id=1,
     )
