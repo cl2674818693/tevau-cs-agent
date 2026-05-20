@@ -61,6 +61,15 @@ CREATE TABLE IF NOT EXISTS tickets (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS staff_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL,
+    staff_id TEXT NOT NULL,
+    action TEXT NOT NULL,                  -- take/release/transfer_out/transfer_in/resolved
+    at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_staff_actions_staff ON staff_actions(staff_id, at);
+
 CREATE TABLE IF NOT EXISTS daily_token_usage (
     subject_id TEXT NOT NULL,              -- bu_id 或 user_id
     user_type TEXT NOT NULL,

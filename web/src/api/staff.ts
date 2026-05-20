@@ -108,6 +108,49 @@ export async function runAiTool(
   return r.json();
 }
 
+export async function transferConversation(
+  token: string,
+  id: number,
+  targetStaffId: string,
+): Promise<boolean> {
+  const r = await fetch(`/staff/api/v1/conversations/${id}/transfer-to/${targetStaffId}`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  return r.ok;
+}
+
+export async function resolveConversation(token: string, id: number): Promise<void> {
+  await fetch(`/staff/api/v1/conversations/${id}/resolve`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}
+
+export type StaffKpi = {
+  staff_id: string;
+  takeovers: number;
+  releases: number;
+  resolved: number;
+  release_ratio: number;
+  resolved_ratio: number;
+  avg_handle_seconds: number;
+};
+
+export async function getKpi(
+  token: string,
+  from?: string,
+  to?: string,
+): Promise<StaffKpi[]> {
+  const qs = new URLSearchParams();
+  if (from) qs.set("from", from);
+  if (to) qs.set("to", to);
+  const r = await fetch(`/staff/api/v1/kpi?${qs.toString()}`, { headers: authHeaders(token) });
+  if (!r.ok) throw new Error(`kpi failed ${r.status}`);
+  const body = await r.json();
+  return body.staff as StaffKpi[];
+}
+
 export type StaffStreamEvent = {
   type: string;
   content?: string;

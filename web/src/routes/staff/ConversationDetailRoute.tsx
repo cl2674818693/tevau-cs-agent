@@ -3,13 +3,13 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import {
   releaseConversation,
-  sendStaffMessage,
   streamStaffEvents,
   takeConversation,
   type StaffStreamEvent,
 } from "../../api/staff";
 import { AiDraftPanel } from "../../components/AiDraftPanel";
 import { AiToolsPanel } from "../../components/AiToolsPanel";
+import { TakeoverFooter } from "../../components/TakeoverFooter";
 import { Button } from "../../components/ui/button";
 import { useAiDraft } from "../../hooks/useAiDraft";
 import { useStaffSession } from "../../hooks/useStaffSession";
@@ -62,7 +62,6 @@ export function ConversationDetailRoute() {
   const nav = useNavigate();
   const [events, pushEvent] = useStaffStream(token, convId);
   const [taken, setTaken] = useState(false);
-  const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState("");
   const { draftMode, aiDraft, toggleDraftMode, approve, reject } = useAiDraft(token, convId, events);
 
@@ -87,13 +86,6 @@ export function ConversationDetailRoute() {
     await releaseConversation(token, convId);
     setTaken(false);
     setNotice("已释放回 AI");
-  }
-
-  async function onSend() {
-    if (!token || !draft.trim()) return;
-    await sendStaffMessage(token, convId, draft.trim());
-    pushEvent({ type: "human_message", content: draft.trim() });
-    setDraft("");
   }
 
   return (
@@ -121,18 +113,13 @@ export function ConversationDetailRoute() {
         </div>
       )}
       <EventLog events={events} />
-      {taken && (
-        <div className="flex gap-2">
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="回复用户…"
-            className="flex-1 rounded border border-line px-3 py-2 text-body1 outline-none"
-          />
-          <Button size="md" onClick={onSend} disabled={!draft.trim()}>
-            发送
-          </Button>
-        </div>
+      {taken && token && (
+        <TakeoverFooter
+          token={token}
+          convId={convId}
+          onLocalEvent={pushEvent}
+          onNotice={setNotice}
+        />
       )}
     </div>
   );

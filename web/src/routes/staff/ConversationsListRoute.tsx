@@ -28,6 +28,9 @@ export function ConversationsListRoute() {
     <div className="mx-auto max-w-[720px] px-page py-block-lg">
       <div className="flex items-center mb-3">
         <h2 className="text-sh2 text-ink-primary flex-1">客服工作台</h2>
+        <Link to="/staff/kpi" className="text-body3 text-ink-secondary mr-3">
+          KPI
+        </Link>
         <button onClick={logout} className="text-body3 text-ink-secondary">
           退出
         </button>

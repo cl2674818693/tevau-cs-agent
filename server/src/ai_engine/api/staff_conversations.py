@@ -12,6 +12,8 @@ from ai_engine.agent.tool_router import dispatch
 from ai_engine.auth.staff_session import require_staff
 from ai_engine.persistence import conversations as conv_dao
 from ai_engine.persistence.db import get_conn
+from ai_engine.persistence.staff import get_staff
+from ai_engine.persistence.staff_metrics import log_staff_action
 
 router = APIRouter()
 
@@ -64,6 +66,7 @@ async def take(conv_id: int, staff: dict[str, Any] = Depends(require_staff)) -> 
         await conn.commit()
         if cur.rowcount == 0:
             raise HTTPException(409, "already taken by another staff")
+    await log_staff_action(conv_id, staff["sub"], "take")
     _publish(conv_id, {"type": "mode_change", "to": "human_takeover", "by_staff_id": staff["sub"]})
     return {"ok": True}
 
@@ -79,7 +82,52 @@ async def release(conv_id: int, staff: dict[str, Any] = Depends(require_staff)) 
         await conn.commit()
         if cur.rowcount == 0:
             raise HTTPException(409, "not assigned to you")
+    await log_staff_action(conv_id, staff["sub"], "release")
     _publish(conv_id, {"type": "mode_change", "to": "ai"})
+    return {"ok": True}
+
+
+@router.post("/staff/api/v1/conversations/{conv_id}/resolve")
+async def resolve(conv_id: int, staff: dict[str, Any] = Depends(require_staff)) -> dict[str, bool]:
+    """客服标记已解决：释放回 AI 并记 resolved（用于 KPI 解决率）。"""
+    async with get_conn() as conn:
+        cur = await conn.execute(
+            "UPDATE conversations SET mode='ai', assigned_staff_id=NULL, assigned_at=NULL "
+            "WHERE id=? AND assigned_staff_id=?",
+            (conv_id, staff["sub"]),
+        )
+        await conn.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(409, "not assigned to you")
+    await log_staff_action(conv_id, staff["sub"], "resolved")
+    _publish(conv_id, {"type": "mode_change", "to": "ai", "resolved": True})
+    return {"ok": True}
+
+
+@router.post("/staff/api/v1/conversations/{conv_id}/transfer-to/{target_staff_id}")
+async def transfer_to(
+    conv_id: int,
+    target_staff_id: str,
+    staff: dict[str, Any] = Depends(require_staff),
+) -> dict[str, bool]:
+    """转派：当前 staff 释放并直接分给目标。agent 只能转 engineer；senior/engineer 可转任意。"""
+    target = await get_staff(target_staff_id)
+    if target is None or int(target["active"]) != 1:
+        raise HTTPException(404, "target staff not found")
+    if staff.get("role") == "agent" and target["role"] != "engineer":
+        raise HTTPException(403, "agent can only transfer to engineer")
+    async with get_conn() as conn:
+        cur = await conn.execute(
+            "UPDATE conversations SET mode='human_takeover', assigned_staff_id=?, "
+            "assigned_at=datetime('now') WHERE id=? AND assigned_staff_id=?",
+            (target_staff_id, conv_id, staff["sub"]),
+        )
+        await conn.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(409, "not assigned to you")
+    await log_staff_action(conv_id, staff["sub"], "transfer_out")
+    await log_staff_action(conv_id, target_staff_id, "take")
+    _publish(conv_id, {"type": "transferred", "to_staff_id": target_staff_id})
     return {"ok": True}
 
 

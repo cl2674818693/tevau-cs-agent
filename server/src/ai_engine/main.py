@@ -7,6 +7,7 @@ from ai_engine.api.conversations import router as conversations_router
 from ai_engine.api.health import router as health_router
 from ai_engine.api.staff_auth import router as staff_auth_router
 from ai_engine.api.staff_conversations import router as staff_conv_router
+from ai_engine.api.staff_kpi import router as staff_kpi_router
 from ai_engine.api.tickets import router as tickets_router
 from ai_engine.api.user_events import router as user_events_router
 from ai_engine.config import settings
@@ -30,6 +31,7 @@ app.include_router(chat_router)
 app.include_router(tickets_router)
 app.include_router(staff_auth_router)
 app.include_router(staff_conv_router)
+app.include_router(staff_kpi_router)
 app.include_router(user_events_router)
 if settings.mock_event_center:  # 仅本地 dev；生产连真实事项中心
     app.include_router(mock_ec_router)

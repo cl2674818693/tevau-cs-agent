@@ -4,6 +4,7 @@ import { BuLoginRoute } from "./routes/BuLoginRoute";
 import { ChatRoute } from "./routes/ChatRoute";
 import { ConversationDetailRoute } from "./routes/staff/ConversationDetailRoute";
 import { ConversationsListRoute } from "./routes/staff/ConversationsListRoute";
+import { KpiRoute } from "./routes/staff/KpiRoute";
 import { SpectateRoute } from "./routes/staff/SpectateRoute";
 import { StaffLoginRoute } from "./routes/staff/StaffLoginRoute";
 import "./styles/globals.css";
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/bu/login" element={<BuLoginRoute />} />
         <Route path="/staff/login" element={<StaffLoginRoute />} />
         <Route path="/staff/conversations" element={<ConversationsListRoute />} />
+        <Route path="/staff/kpi" element={<KpiRoute />} />
         <Route path="/staff/conversations/:id" element={<ConversationDetailRoute />} />
         <Route path="/staff/conversations/:id/spectate" element={<SpectateRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />
