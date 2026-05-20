@@ -31,6 +31,11 @@ def publish_user_message(conv_id: int, content: str) -> None:
     _publish(conv_id, {"type": "user_message", "content": content})
 
 
+def publish_ai_draft(conv_id: int, draft: str) -> None:
+    """ai_draft 模式：AI 草稿推到客服侧待 review。"""
+    _publish(conv_id, {"type": "ai_draft_ready", "draft": draft})
+
+
 @router.get("/staff/api/v1/conversations")
 async def list_conversations(
     status: str = Query("human_pending"),
@@ -86,6 +91,72 @@ async def send_message(
     _publish(
         conv_id,
         {"type": "human_message", "content": body.content, "sender_staff_id": staff["sub"]},
+    )
+    return {"ok": True}
+
+
+async def _require_assigned(conv_id: int, staff_sub: str) -> None:
+    _, sid = await conv_dao.get_mode(conv_id)
+    if sid != staff_sub:
+        raise HTTPException(403, "not your conversation")
+
+
+@router.post("/staff/api/v1/conversations/{conv_id}/ai-draft/enable")
+async def ai_draft_enable(
+    conv_id: int, staff: dict[str, Any] = Depends(require_staff)
+) -> dict[str, bool]:
+    """切到 ai_draft：AI 出草稿、客服 review 后发。先把会话指派给本客服。"""
+    async with get_conn() as conn:
+        await conn.execute(
+            "UPDATE conversations SET mode='ai_draft', assigned_staff_id=?, "
+            "assigned_at=COALESCE(assigned_at, datetime('now')) WHERE id=?",
+            (staff["sub"], conv_id),
+        )
+        await conn.commit()
+    _publish(conv_id, {"type": "mode_change", "to": "ai_draft", "by_staff_id": staff["sub"]})
+    return {"ok": True}
+
+
+@router.post("/staff/api/v1/conversations/{conv_id}/ai-draft/disable")
+async def ai_draft_disable(
+    conv_id: int, staff: dict[str, Any] = Depends(require_staff)
+) -> dict[str, bool]:
+    await _require_assigned(conv_id, staff["sub"])
+    await conv_dao.set_mode(conv_id, "ai", assigned_staff_id=None)
+    _publish(conv_id, {"type": "mode_change", "to": "ai"})
+    return {"ok": True}
+
+
+@router.post("/staff/api/v1/conversations/{conv_id}/ai-draft/approve")
+async def ai_draft_approve(
+    conv_id: int, staff: dict[str, Any] = Depends(require_staff)
+) -> dict[str, bool]:
+    """通过草稿：把最新草稿作为 assistant 消息发给用户。"""
+    await _require_assigned(conv_id, staff["sub"])
+    draft = await conv_dao.get_latest_ai_draft(conv_id)
+    if draft is None:
+        raise HTTPException(404, "no pending draft")
+    await conv_dao.append_message(conv_id, role="assistant", content=draft)
+    await conv_dao.clear_ai_drafts(conv_id)
+    _publish(conv_id, {"type": "assistant_message", "content": draft})
+    return {"ok": True}
+
+
+class RewriteIn(BaseModel):
+    rewrite: str
+
+
+@router.post("/staff/api/v1/conversations/{conv_id}/ai-draft/reject")
+async def ai_draft_reject(
+    conv_id: int, body: RewriteIn, staff: dict[str, Any] = Depends(require_staff)
+) -> dict[str, bool]:
+    """否决草稿：客服改写后以 human_agent 身份发给用户。"""
+    await _require_assigned(conv_id, staff["sub"])
+    await conv_dao.clear_ai_drafts(conv_id)
+    await conv_dao.append_human_message(conv_id, staff["sub"], body.rewrite)
+    _publish(
+        conv_id,
+        {"type": "human_message", "content": body.rewrite, "sender_staff_id": staff["sub"]},
     )
     return {"ok": True}
 

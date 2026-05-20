@@ -164,6 +164,28 @@ async def run_turn(
         return
 
 
+async def collect_full_response(
+    *,
+    conversation_id: int,
+    user_type: str,
+    subject_id: str,
+    user_message: str,
+    model: str | None = None,
+) -> str:
+    """跑完整一轮，只收集最终文本（ai_draft 模式：不流给用户，攒成草稿）。"""
+    parts: list[str] = []
+    async for ev in run_turn(
+        conversation_id=conversation_id,
+        user_type=user_type,
+        subject_id=subject_id,
+        user_message=user_message,
+        model=model,
+    ):
+        if ev["type"] == "text":
+            parts.append(ev["text"])
+    return "".join(parts)
+
+
 async def _persist_assistant(
     conversation_id: int, messages: list[dict[str, Any]], assistant_blocks: list[dict[str, Any]]
 ) -> None:

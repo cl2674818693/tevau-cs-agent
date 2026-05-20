@@ -61,7 +61,41 @@ export async function sendStaffMessage(token: string, id: number, content: strin
   });
 }
 
-export type StaffStreamEvent = { type: string; content?: string; to?: string };
+export async function enableAiDraft(token: string, id: number): Promise<void> {
+  await fetch(`/staff/api/v1/conversations/${id}/ai-draft/enable`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}
+
+export async function disableAiDraft(token: string, id: number): Promise<void> {
+  await fetch(`/staff/api/v1/conversations/${id}/ai-draft/disable`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}
+
+export async function approveAiDraft(token: string, id: number): Promise<void> {
+  await fetch(`/staff/api/v1/conversations/${id}/ai-draft/approve`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}
+
+export async function rejectAiDraft(token: string, id: number, rewrite: string): Promise<void> {
+  await fetch(`/staff/api/v1/conversations/${id}/ai-draft/reject`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ rewrite }),
+  });
+}
+
+export type StaffStreamEvent = {
+  type: string;
+  content?: string;
+  to?: string;
+  draft?: string;
+};
 
 /** 订阅会话事件总线（user_message / human_message / mode_change）。带 Bearer，故用 fetch-stream。 */
 export async function* streamStaffEvents(

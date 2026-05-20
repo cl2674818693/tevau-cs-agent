@@ -8,7 +8,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from ai_engine.agent import runtime
 from ai_engine.api import sse_events as se
-from ai_engine.api.staff_conversations import publish_user_message
+from ai_engine.api.staff_conversations import publish_ai_draft, publish_user_message
 from ai_engine.auth.bu_session import require_bu, resolve_identity
 from ai_engine.persistence import conversations as conv_dao
 
@@ -32,6 +32,8 @@ def _map_runtime_event(ev: dict[str, Any]) -> dict[str, str] | None:
         return se.sse_payload(
             se.EVENT_TOOL_RESULT, {"name": ev.get("name"), "is_error": not ev.get("ok", False)}
         )
+    if t == "system":  # 会话治理 / 成本治理等系统提示（spec §8）
+        return se.sse_payload(se.EVENT_WARNING, {"text": ev.get("text", "")})
     return None
 
 
@@ -64,6 +66,20 @@ async def chat(
                 publish_user_message(conversation_id, message)
                 yield se.sse_payload(se.EVENT_MODE_CHANGE, {"to": mode})
                 yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "handed_to_human"})
+                return
+
+            if mode == "ai_draft":
+                # spec §13.2：AI 出草稿不发用户，落库 + 推客服侧待 review
+                draft = await runtime.collect_full_response(
+                    conversation_id=conversation_id,
+                    user_type=user_type,
+                    subject_id=subject_id,
+                    user_message=message,
+                )
+                await conv_dao.save_ai_draft(conversation_id, draft)
+                publish_ai_draft(conversation_id, draft)
+                yield se.sse_payload(se.EVENT_WARNING, {"text": "客服正在 review 您的回答…"})
+                yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "ai_draft_pending"})
                 return
 
             yield se.sse_payload(se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)})

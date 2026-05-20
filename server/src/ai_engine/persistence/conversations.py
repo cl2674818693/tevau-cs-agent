@@ -134,6 +134,31 @@ async def list_for_staff(filter_status: str = "all") -> list[dict[str, object]]:
     return [dict(r) for r in rows]
 
 
+async def save_ai_draft(conv_id: int, content: str) -> int:
+    """spec §13.2 ai_draft：AI 草稿不发用户，落库待客服 review。"""
+    return await append_message(conv_id, role="ai_draft", content=content)
+
+
+async def get_latest_ai_draft(conv_id: int) -> str | None:
+    async with get_conn() as conn:
+        row = await (
+            await conn.execute(
+                "SELECT content FROM messages WHERE conversation_id=? AND role='ai_draft' "
+                "ORDER BY id DESC LIMIT 1",
+                (conv_id,),
+            )
+        ).fetchone()
+    return str(row["content"]) if row else None
+
+
+async def clear_ai_drafts(conv_id: int) -> None:
+    async with get_conn() as conn:
+        await conn.execute(
+            "DELETE FROM messages WHERE conversation_id=? AND role='ai_draft'", (conv_id,)
+        )
+        await conn.commit()
+
+
 async def append_human_message(conv_id: int, sender_staff_id: str, content: str) -> int:
     async with get_conn() as conn:
         cur = await conn.execute(

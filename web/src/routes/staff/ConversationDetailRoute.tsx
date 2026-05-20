@@ -8,7 +8,9 @@ import {
   takeConversation,
   type StaffStreamEvent,
 } from "../../api/staff";
+import { AiDraftPanel } from "../../components/AiDraftPanel";
 import { Button } from "../../components/ui/button";
+import { useAiDraft } from "../../hooks/useAiDraft";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 /** 订阅会话事件总线，返回累积的事件列表 + 追加器。 */
@@ -47,10 +49,16 @@ export function ConversationDetailRoute() {
   const [taken, setTaken] = useState(false);
   const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState("");
+  const { draftMode, aiDraft, toggleDraftMode, approve, reject } = useAiDraft(token, convId, events);
 
   useEffect(() => {
     if (!token) nav("/staff/login");
   }, [token, nav]);
+
+  async function onToggleDraftMode() {
+    const msg = await toggleDraftMode();
+    if (msg) setNotice(msg);
+  }
 
   async function onTake() {
     if (!token) return;
@@ -77,6 +85,9 @@ export function ConversationDetailRoute() {
     <div className="mx-auto flex h-full max-w-[720px] flex-col px-page py-block-lg">
       <div className="flex items-center gap-2 mb-3">
         <h2 className="text-sh2 text-ink-primary flex-1">会话 #{convId}</h2>
+        <Button size="sm" variant="ghost" onClick={onToggleDraftMode}>
+          {draftMode ? "关闭草稿模式" : "AI 草稿模式"}
+        </Button>
         {taken ? (
           <Button size="sm" variant="ghost" onClick={onRelease}>
             释放回 AI
@@ -88,6 +99,7 @@ export function ConversationDetailRoute() {
         )}
       </div>
       {notice && <div className="text-body3 text-ink-secondary mb-2">{notice}</div>}
+      <AiDraftPanel draft={aiDraft} onApprove={approve} onReject={reject} />
       <ul className="flex-1 overflow-y-auto flex flex-col gap-1 mb-3">
         {events.map((ev, i) => (
           <li key={i} className="text-body2 text-ink-primary">
