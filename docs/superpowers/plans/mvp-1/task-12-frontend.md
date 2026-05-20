@@ -4,6 +4,12 @@
 
 **接入 Tevau APP 设计系统**：源文档 `tevau-pay-flutter/docs/UI_DESIGN_SYSTEM.md`。把色系（品牌色 `#C8F833` 荧光绿、深色 `#042834` 等）、字阶（Source Sans 3 全 13 档）、圆角、间距、动画完整映射到 Tailwind theme，让 webview 视觉与 APP 一致。前端组件用 shadcn/ui 风格（自有源码、可定制）；AI 输出走 react-markdown 渲染。
 
+**对齐 spec 修订（MVP-1 必做）**：
+- §6.2 会话初始化：首屏先 `POST /api/v1/conversations` 拿 `{conversation_id, user_type, display_name, greeting, limits}` 再开 SSE
+- §3.3 SSE 主链路改 `GET /api/v1/chat?conversation_id=...&message=...`；事件类型 = `conversation` / `message_start` / `content_block_delta` / `tool_use` / `tool_result` / `message_stop` / `error` / `warning` / `ping`；客户端 60s 无任何事件视为断线，重连用 `Last-Event-ID` 头
+- §3.3 取消生成：用户点"停止生成" → `DELETE /api/v1/chat/{conversation_id}/stream`
+- §13.7 + §11 line 551 转人工：每条 AI 回复底部固定按钮 `没解决？转人工 →`，点击后**前端发送一条固定 user message** `"我想转人工"` 进对话流，AI 通过 prompt 识别意图自动建工单。**MVP-1 不调 `/request-human` 端点**。
+
 **Files:**
 - Create: `web/package.json` / `web/tsconfig.json` / `web/vite.config.ts` / `web/index.html`
 - Create: `web/postcss.config.js` / `web/tailwind.config.ts`
@@ -22,6 +28,7 @@
 - Create: `web/src/components/ToolCallChip.tsx`
 - Create: `web/src/components/TicketCard.tsx`
 - Create: `web/src/components/InputBox.tsx`
+- Create: `web/src/components/HandoffButton.tsx`（spec §13.7 转人工按钮）
 - Create: `web/tests/useChat.test.ts` / `web/tests/ChatWindow.test.tsx`
 
 - [ ] **Step 1: 写 `web/package.json`**（含 ESLint + Prettier，对齐 Task 0 工程规范）
@@ -462,14 +469,35 @@ export function useKeyboardInset(): number {
 - [ ] **Step 5: 写 `web/src/types.ts`**
 
 ```ts
-export type ChatEvent =
-  | { type: "conversation"; conversation_id: number }
-  | { type: "text"; text: string }
-  | { type: "tool_call"; name: string; input: Record<string, unknown> }
-  | { type: "tool_result"; name: string; ok: boolean }
-  | { type: "done" };
+// SSE 事件类型，对齐 spec §3.3 表
+export type ChatEvent = ({
+  _eventId?: string;     // 来自 SSE 的 id: 字段，用于断线重连 Last-Event-ID
+}) & (
+  | { type: "conversation"; conversation_id: number; user_type: "c" | "b"; model: string }
+  | { type: "message_start"; message_id: string }
+  | { type: "content_block_delta"; index: number; delta: { type: "text_delta"; text: string } }
+  | { type: "tool_use"; tool_use_id: string; name: string; input: Record<string, unknown> }
+  | { type: "tool_result"; tool_use_id: string; output: unknown; is_error: boolean }
+  | { type: "message_stop"; stop_reason: string; usage?: Record<string, unknown> }
+  | { type: "ticket_event"; [k: string]: unknown }
+  | { type: "mode_change"; from: string; to: string; by_staff_id?: string }
+  | { type: "human_message"; message_id: string; sender_staff_id: string; display_name: string; content: string }
+  | { type: "error"; code: string; message: string; retry_after_ms?: number }
+  | { type: "warning"; pct?: number; [k: string]: unknown }
+);
+
+// 会话初始化端点响应（spec §6.2）
+export type ConversationInit = {
+  conversation_id: number;
+  user_type: "c" | "b";
+  display_name: string;
+  greeting: string;
+  history_url: string | null;
+  limits: { daily_token_used_pct: number; max_turns: number };
+};
 
 export type Message =
+  | { role: "system"; content: string }
   | { role: "user"; content: string }
   | { role: "assistant"; content: string; tool_calls?: ToolCallShown[] };
 
@@ -483,18 +511,36 @@ export type ToolCallShown = {
 - [ ] **Step 6: 写 `web/src/api/chat.ts`**
 
 ```ts
-import type { ChatEvent } from "../types";
+import type { ChatEvent, ConversationInit } from "../types";
 
+/**
+ * 会话初始化（spec §6.2）。首屏调一次，拿 user_type / display_name / greeting / limits。
+ */
+export async function initConversation(buId: string): Promise<ConversationInit> {
+  const resp = await fetch("/api/v1/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-BU-ID": buId },
+    body: JSON.stringify({}),
+  });
+  if (!resp.ok) throw new Error(`init http ${resp.status}`);
+  return resp.json();
+}
+
+/**
+ * SSE 主链路（spec §3.3）。GET 请求 + 携带 Last-Event-ID（断线重连后由 caller 传入）。
+ * 事件类型见 spec §3.3 表：conversation / message_start / content_block_delta /
+ * tool_use / tool_result / message_stop / error / warning / ping。
+ */
 export async function* streamChat(args: {
-  conversationId: number | null;
+  conversationId: number;
   message: string;
   buId: string;
+  lastEventId?: string;
 }): AsyncGenerator<ChatEvent> {
-  const resp = await fetch("/api/v1/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-BU-ID": args.buId },
-    body: JSON.stringify({ conversation_id: args.conversationId, message: args.message }),
-  });
+  const url = `/api/v1/chat?conversation_id=${args.conversationId}&message=${encodeURIComponent(args.message)}`;
+  const headers: Record<string, string> = { "X-BU-ID": args.buId };
+  if (args.lastEventId) headers["Last-Event-ID"] = args.lastEventId;
+  const resp = await fetch(url, { headers });
   if (!resp.ok || !resp.body) throw new Error(`chat http ${resp.status}`);
 
   const reader = resp.body.getReader();
@@ -509,70 +555,123 @@ export async function* streamChat(args: {
     while ((idx = buffer.indexOf("\n\n")) !== -1) {
       const frame = buffer.slice(0, idx);
       buffer = buffer.slice(idx + 2);
+      const eventLine = frame.split("\n").find(l => l.startsWith("event:"));
       const dataLine = frame.split("\n").find(l => l.startsWith("data:"));
-      if (!dataLine) continue;
+      const idLine = frame.split("\n").find(l => l.startsWith("id:"));
+      if (!eventLine || !dataLine) continue;
+      const eventName = eventLine.slice("event:".length).trim();
+      if (eventName === "ping") continue;       // 心跳直接跳过
       const json = dataLine.slice("data:".length).trim();
       try {
-        yield JSON.parse(json) as ChatEvent;
-      } catch { /* ignore parse error of keepalives */ }
+        const data = JSON.parse(json);
+        yield { type: eventName, ...data, _eventId: idLine?.slice("id:".length).trim() } as ChatEvent;
+      } catch { /* ignore parse error */ }
     }
   }
+}
+
+/**
+ * 取消生成（spec §3.3）。用户点"停止生成"按钮调。
+ */
+export async function cancelStream(conversationId: number, buId: string): Promise<void> {
+  await fetch(`/api/v1/chat/${conversationId}/stream`, {
+    method: "DELETE",
+    headers: { "X-BU-ID": buId },
+  });
 }
 ```
 
 - [ ] **Step 7: 写 `web/src/hooks/useChat.ts`**
 
 ```ts
-import { useCallback, useState } from "react";
-import { streamChat } from "../api/chat";
-import type { Message, ToolCallShown } from "../types";
+import { useCallback, useEffect, useState } from "react";
+import { initConversation, streamChat, cancelStream } from "../api/chat";
+import type { Message, ToolCallShown, ConversationInit } from "../types";
 
 const BU_ID = "BU00243780"; // MVP-1 写死，MVP-2 接 SSO/JWT
 
+// spec §13.7 + §11 line 551：MVP-1"转人工"按钮发的固定文本
+export const HANDOFF_TRIGGER_TEXT = "我想转人工";
+
 export function useChat() {
-  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [init, setInit] = useState<ConversationInit | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [sending, setSending] = useState(false);
+  const [lastEventId, setLastEventId] = useState<string | undefined>();
+
+  // 首屏调 init（spec §6.2）拿 conversation_id + greeting
+  useEffect(() => {
+    initConversation(BU_ID).then(info => {
+      setInit(info);
+      setMessages([{ role: "system", content: info.greeting }]);
+    }).catch(e => console.error("init failed", e));
+  }, []);
 
   const send = useCallback(async (text: string) => {
+    if (!init) return;
     setSending(true);
     setMessages(prev => [...prev, { role: "user", content: text }]);
     const assistant: Message = { role: "assistant", content: "", tool_calls: [] };
     setMessages(prev => [...prev, assistant]);
 
     try {
-      for await (const ev of streamChat({ conversationId, message: text, buId: BU_ID })) {
-        if (ev.type === "conversation") {
-          setConversationId(ev.conversation_id);
-        } else if (ev.type === "text") {
-          setMessages(prev => {
-            const last = prev[prev.length - 1];
-            const next = { ...last, content: (last as any).content + ev.text } as Message;
-            return [...prev.slice(0, -1), next];
-          });
-        } else if (ev.type === "tool_call") {
-          const tc: ToolCallShown = { name: ev.name, input: ev.input };
-          setMessages(prev => {
-            const last = prev[prev.length - 1] as Extract<Message, { role: "assistant" }>;
-            const next = { ...last, tool_calls: [...(last.tool_calls ?? []), tc] };
-            return [...prev.slice(0, -1), next];
-          });
-        } else if (ev.type === "tool_result") {
-          setMessages(prev => {
-            const last = prev[prev.length - 1] as Extract<Message, { role: "assistant" }>;
-            const calls = (last.tool_calls ?? []).slice();
-            const i = calls.map(c => c.name).lastIndexOf(ev.name);
-            if (i >= 0) calls[i] = { ...calls[i], ok: ev.ok };
-            return [...prev.slice(0, -1), { ...last, tool_calls: calls }];
-          });
+      for await (const ev of streamChat({
+        conversationId: init.conversation_id, message: text, buId: BU_ID,
+        lastEventId,
+      })) {
+        if (ev._eventId) setLastEventId(ev._eventId);
+        switch (ev.type) {
+          case "content_block_delta": {
+            const text = ev.delta?.text ?? "";
+            setMessages(prev => {
+              const last = prev[prev.length - 1];
+              const next = { ...last, content: (last as any).content + text } as Message;
+              return [...prev.slice(0, -1), next];
+            });
+            break;
+          }
+          case "tool_use": {
+            const tc: ToolCallShown = { name: ev.name, input: ev.input };
+            setMessages(prev => {
+              const last = prev[prev.length - 1] as Extract<Message, { role: "assistant" }>;
+              return [...prev.slice(0, -1),
+                      { ...last, tool_calls: [...(last.tool_calls ?? []), tc] }];
+            });
+            break;
+          }
+          case "tool_result": {
+            setMessages(prev => {
+              const last = prev[prev.length - 1] as Extract<Message, { role: "assistant" }>;
+              const calls = (last.tool_calls ?? []).slice();
+              const i = calls.length - 1;
+              if (i >= 0) calls[i] = { ...calls[i], ok: !ev.is_error };
+              return [...prev.slice(0, -1), { ...last, tool_calls: calls }];
+            });
+            break;
+          }
+          case "error":   // spec §3.3 错误码：AUTH_EXPIRED / RATE_LIMITED / ... 由 UI 状态层处理（task-12 §13.6）
+            console.warn("sse error", ev);
+            break;
+          case "warning": // 80% token 阈值
+            console.warn("sse warning", ev);
+            break;
+          // message_start / message_stop / conversation：仅记录，不直接渲染
         }
       }
     } finally {
       setSending(false);
     }
-  }, [conversationId]);
+  }, [init, lastEventId]);
 
-  return { messages, sending, send };
+  // spec §13.7 + §11 line 551："没解决？转人工"按钮 onClick
+  const requestHandoff = useCallback(() => send(HANDOFF_TRIGGER_TEXT), [send]);
+
+  // spec §3.3 取消生成
+  const stop = useCallback(() => {
+    if (init) cancelStream(init.conversation_id, BU_ID);
+  }, [init]);
+
+  return { messages, sending, send, requestHandoff, stop, init };
 }
 ```
 
@@ -878,9 +977,10 @@ import { useChat } from "../hooks/useChat";
 import { useKeyboardInset } from "../hooks/useVisualViewport";
 import { MessageList } from "./MessageList";
 import { InputBox } from "./InputBox";
+import { HandoffButton } from "./HandoffButton";
 
 export function ChatWindow() {
-  const { messages, sending, send } = useChat();
+  const { messages, sending, send, requestHandoff, stop } = useChat();
   const inset = useKeyboardInset();
 
   return (
@@ -896,9 +996,36 @@ export function ChatWindow() {
           <div className="text-sh3 text-ink-primary">Tevau AI 客服</div>
           <div className="text-footnote text-ink-secondary">由 AI 驱动 · 复杂问题转人工</div>
         </div>
+        {sending && (
+          <button onClick={stop} className="text-body2 text-ink-secondary px-2">
+            停止生成
+          </button>
+        )}
       </header>
       <MessageList messages={messages} />
+      <HandoffButton onClick={requestHandoff} disabled={sending} />
       <InputBox onSend={send} disabled={sending} />
+    </div>
+  );
+}
+```
+
+`web/src/components/HandoffButton.tsx`（spec §13.7 + §11 line 551，MVP-1 兜底）:
+```tsx
+/**
+ * "没解决？转人工 →" 按钮。MVP-1 不调 /request-human 端点（spec §13.7）——
+ * 点击后由 useChat 发送固定 user message "我想转人工"，AI 通过 prompt 识别意图自动建工单。
+ */
+export function HandoffButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+  return (
+    <div className="px-page py-2 border-t border-line bg-surface-card">
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        className="w-full text-body2 text-ink-secondary py-2 rounded border border-line hover:bg-surface-hover disabled:opacity-50"
+      >
+        没解决？转人工 →
+      </button>
     </div>
   );
 }

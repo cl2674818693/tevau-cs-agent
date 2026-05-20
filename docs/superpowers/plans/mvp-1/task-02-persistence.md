@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_type TEXT NOT NULL CHECK(user_type IN ('c','b')),
     subject_id TEXT NOT NULL,
+    inferred_locale TEXT,                  -- spec §6.2: AI 镜像用户消息语言，每次回复后由 runtime 更新（zh/en/...）
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_conv_subject ON conversations(subject_id);
@@ -148,6 +149,7 @@ CREATE TABLE IF NOT EXISTS tickets (
     external_id TEXT PRIMARY KEY,
     conversation_id INTEGER NOT NULL,
     payload_json TEXT NOT NULL,
+    current_severity TEXT,                 -- spec §7.2 修订: 受理人在事项中心可覆盖 severity，本地镜像最新值
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -275,8 +277,10 @@ from ai_engine.persistence.db import get_conn
 async def create_ticket(external_id: str, conversation_id: int, payload: dict) -> None:
     async with get_conn() as conn:
         await conn.execute(
-            "INSERT INTO tickets(external_id, conversation_id, payload_json) VALUES (?, ?, ?)",
-            (external_id, conversation_id, json.dumps(payload, ensure_ascii=False)),
+            """INSERT INTO tickets(external_id, conversation_id, payload_json, current_severity)
+               VALUES (?, ?, ?, ?)""",
+            (external_id, conversation_id, json.dumps(payload, ensure_ascii=False),
+             payload.get("severity")),
         )
         await conn.commit()
 
@@ -292,10 +296,21 @@ async def append_ticket_event(external_id: str, event: str, actor: str | None, c
         await conn.commit()
 
 
+async def update_ticket_severity(external_id: str, severity: str) -> None:
+    """spec §7.2 修订: 受理人在事项中心覆盖 severity → 更新本地镜像"""
+    async with get_conn() as conn:
+        await conn.execute(
+            "UPDATE tickets SET current_severity=? WHERE external_id=?",
+            (severity, external_id),
+        )
+        await conn.commit()
+
+
 async def get_ticket(external_id: str) -> dict | None:
     async with get_conn() as conn:
         row = await (await conn.execute(
-            "SELECT external_id, conversation_id, payload_json, created_at FROM tickets WHERE external_id=?",
+            """SELECT external_id, conversation_id, payload_json, current_severity, created_at
+               FROM tickets WHERE external_id=?""",
             (external_id,),
         )).fetchone()
         if not row:
