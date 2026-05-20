@@ -110,6 +110,48 @@ async def _maybe_compact(
     return new_id, event, seed
 
 
+def _history_text(role: str, content: str) -> str:
+    if role == "human_agent":
+        return content
+    # assistant 入库的是 json.dumps([{"type":"text","text":...}])，还原为纯文本
+    try:
+        blocks = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return content
+    if isinstance(blocks, list):
+        return "".join(
+            b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text"
+        )
+    return content
+
+
+def _coalesce(msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """合并相邻同 role 消息（Anthropic messages 需 user/assistant 交替）。"""
+    out: list[dict[str, Any]] = []
+    for m in msgs:
+        if out and out[-1]["role"] == m["role"]:
+            out[-1]["content"] += "\n" + m["content"]
+        else:
+            out.append(dict(m))
+    return out
+
+
+async def _load_history(conv_id: int) -> list[dict[str, Any]]:
+    """把已落库的会话历史还原成 Anthropic messages（多轮上下文）。"""
+    msgs: list[dict[str, Any]] = []
+    for m in await list_messages(conv_id):
+        role = str(m["role"])
+        content = str(m["content"])
+        if role == "user":
+            msgs.append({"role": "user", "content": content})
+        elif role in ("assistant", "human_agent"):
+            text = _history_text(role, content)
+            if text:
+                msgs.append({"role": "assistant", "content": text})
+        # system（压缩摘要走 seed）/ ai_draft（未发出）跳过
+    return _coalesce(msgs)
+
+
 async def run_turn(
     *,
     conversation_id: int,
@@ -127,7 +169,10 @@ async def run_turn(
     # spec §8 会话治理：超轮次/token 上限 → 总结老会话、开新会话继承结论
     conversation_id, compact_event, messages = await _maybe_compact(conversation_id)
     if compact_event:
-        yield compact_event
+        yield compact_event  # 压缩后用摘要 seed 作上下文
+    else:
+        # 未压缩：回放该会话已有历史，让模型看到多轮上下文
+        messages = await _load_history(conversation_id)
 
     messages.append({"role": "user", "content": user_message})
     await append_message(conversation_id, role="user", content=user_message)
