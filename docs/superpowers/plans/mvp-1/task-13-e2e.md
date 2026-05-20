@@ -8,7 +8,9 @@
 这是 spec §10 的验收标准的可执行表达。用 mock 的 Anthropic client 模拟两个场景：
 
 1. 越权场景：AI 试图查另一个 BU 的卡片 → 服务端拒绝 → AI 回复"无权查询其他 BU"
-2. bug 诊断场景：AI 查 api_call 拿到日志 → search_code 定位代码 → 建工单 → mock event center 收到推送
+2. bug 诊断场景：AI 查 api_call 拿到日志 → search_code 定位代码 → 建工单 → 推送 payload 为 bug
+
+> 实现实况（与系统对齐，照做）：chat 端点是 **GET**（先 POST /api/v1/conversations 拿 conversation_id）；wire 事件统计按 `event: tool_result` 行；`_block` 用 setattr 设 name（避免 MagicMock 陷阱）；search_code 用 respx mock Sourcegraph；create_ticket 推送用 monkeypatch `_post` 记录 payload。
 
 - [ ] **Step 1: 写 `server/tests/test_e2e_mvp1.py`**
 
