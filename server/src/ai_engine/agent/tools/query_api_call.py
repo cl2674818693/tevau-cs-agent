@@ -1,22 +1,22 @@
 from typing import Any
 
 from ai_engine.agent.tools.base import Tool, register
-from ai_engine.persistence.db import get_conn
+from ai_engine.persistence.business_db import get_db
+
+# TODO: 接到真实 schema 后校对表名/字段；并明确 request_json/response_json 内需脱敏的字段
+SQL = """
+SELECT uid, bu_id, endpoint, status_code, error_code, request_json, response_json, created_at
+FROM api_call_log
+WHERE uid=%s AND bu_id=%s
+"""
 
 
 async def run(bu_id: str, uid: str) -> dict[str, Any]:
-    async with get_conn() as conn:
-        row = await (
-            await conn.execute(
-                "SELECT uid, endpoint, status_code, error_code, request_json, "
-                "response_json, created_at "
-                "FROM mock_api_calls WHERE uid=? AND bu_id=?",
-                (uid, bu_id),
-            )
-        ).fetchone()
+    db = get_db("unlimitpay")
+    row = await db.fetch_one(SQL, (uid, bu_id))
     if not row:
         return {"call": None, "note": f"uid {uid} not found for BU {bu_id}"}
-    return {"call": dict(row)}
+    return {"call": row}
 
 
 register(
