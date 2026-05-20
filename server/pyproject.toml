@@ -50,6 +50,9 @@ ignore = [
     "S101",   # 测试里 assert 没问题
     "S105",   # 测试 fake 密码
     "S106",   # 测试 fake 密码（kwarg）
+    "RUF001", # 中文项目: 字符串里的全角标点是正常的
+    "RUF002", # 中文项目: docstring 里的全角标点是正常的
+    "RUF003", # 中文项目: 注释里的全角标点是正常的
 ]
 mccabe = { max-complexity = 10 }
 
