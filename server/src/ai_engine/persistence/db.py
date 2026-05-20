@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS conversations (
     user_type TEXT NOT NULL CHECK(user_type IN ('c','b')),
     subject_id TEXT NOT NULL,
     inferred_locale TEXT,                  -- spec 6.2: AI 镜像用户消息语言, runtime 每次回复后更新
+    mode TEXT NOT NULL DEFAULT 'ai',       -- spec 13.2: ai/human_pending/human_takeover/ai_draft
+    assigned_staff_id TEXT,                -- 当前接管客服
+    assigned_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_conv_subject ON conversations(subject_id);
@@ -19,10 +22,21 @@ CREATE INDEX IF NOT EXISTS idx_conv_subject ON conversations(subject_id);
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     conversation_id INTEGER NOT NULL,
-    role TEXT NOT NULL,
+    role TEXT NOT NULL,                    -- user / assistant / human_agent / system
     content TEXT NOT NULL,
+    sender_staff_id TEXT,                  -- 仅 role=human_agent 填
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY(conversation_id) REFERENCES conversations(id)
+);
+
+CREATE TABLE IF NOT EXISTS staff (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    staff_id TEXT UNIQUE NOT NULL,
+    display_name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('agent','senior','engineer')),
+    password_hash TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS tool_audits (
