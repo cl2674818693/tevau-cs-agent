@@ -8,7 +8,9 @@ from sse_starlette.sse import EventSourceResponse
 
 from ai_engine.agent import runtime
 from ai_engine.api import sse_events as se
+from ai_engine.api.staff_conversations import publish_user_message
 from ai_engine.auth.bu_session import require_bu
+from ai_engine.persistence import conversations as conv_dao
 
 router = APIRouter()
 
@@ -54,6 +56,15 @@ async def chat(
                     "model": "claude-sonnet-4-6",
                 },
             )
+            # spec §13：客服已接管 / 待接管时不调 AI，用户消息只入库 + 推给客服侧
+            mode, _ = await conv_dao.get_mode(conversation_id)
+            if mode in ("human_takeover", "human_pending"):
+                await conv_dao.append_message(conversation_id, role="user", content=message)
+                publish_user_message(conversation_id, message)
+                yield se.sse_payload(se.EVENT_MODE_CHANGE, {"to": mode})
+                yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "handed_to_human"})
+                return
+
             yield se.sse_payload(se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)})
             async for ev in runtime.run_turn(
                 conversation_id=conversation_id,

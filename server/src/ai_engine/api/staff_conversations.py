@@ -26,6 +26,11 @@ def _publish(conv_id: int, event: dict[str, Any]) -> None:
             pass
 
 
+def publish_user_message(conv_id: int, content: str) -> None:
+    """human_takeover/pending 时，chat 端点把用户消息推到订阅该会话的客服侧。"""
+    _publish(conv_id, {"type": "user_message", "content": content})
+
+
 @router.get("/staff/api/v1/conversations")
 async def list_conversations(
     status: str = Query("human_pending"),
