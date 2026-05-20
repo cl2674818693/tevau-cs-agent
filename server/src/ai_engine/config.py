@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     event_center_url: str = "http://localhost:8000/_mock/event-center"
     event_center_secret: str = "mvp1-shared-secret"
     staff_jwt_secret: str = ""  # 客服 JWT 签名密钥（HS256，本服务签发本服务验证）
+    unlimitpay_db_url: str | None = None  # 业务只读库（MVP-2 必填；MVP-1 测试时 None）
+    nexus_db_url: str | None = None
     max_tool_depth: int = 12
     max_tool_result_bytes: int = 262_144
     log_level: str = "INFO"
