@@ -1,0 +1,40 @@
+services:
+  api:
+    build: ./server
+    ports: ["8000:8000"]
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - DB_URL=sqlite+aiosqlite:////data/ai_engine.db
+      - SOURCEGRAPH_URL=http://sourcegraph:7080
+      - SOURCEGRAPH_TOKEN=${SOURCEGRAPH_TOKEN}
+      - OPENAPI_DOC_PATH=/repos/api-docs/openapi.json
+      - PROMPTS_DIR=/app/src/ai_engine/prompts
+      - EVENT_CENTER_URL=${EVENT_CENTER_URL:-http://api:8000/_mock/event-center}
+      - EVENT_CENTER_SECRET=${EVENT_CENTER_SECRET:-mvp1-shared-secret}
+      - LARK_WEBHOOK_URL=${LARK_WEBHOOK_URL:-}
+    volumes:
+      - ./data:/data
+      - ./repos:/repos:ro
+    depends_on:
+      - sourcegraph
+
+  sourcegraph:
+    image: sourcegraph/server:5.3.0
+    ports: ["7080:7080"]
+    volumes:
+      - sg-config:/etc/sourcegraph
+      - sg-data:/var/opt/sourcegraph
+    restart: unless-stopped
+
+  web:
+    image: node:20-alpine
+    working_dir: /web
+    volumes: ["./web:/web"]
+    command: sh -c "corepack enable && CI=true pnpm install && pnpm dev --host 0.0.0.0"
+    ports: ["5173:5173"]
+    depends_on: [api]
+
+volumes:
+  sg-config:
+  sg-data:

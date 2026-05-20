@@ -17,4 +17,43 @@
 
 ## 测试
 
-`make test`
+`make test`（后端 pytest）/ `make web-test`（前端 vitest）
+
+## 容器化启动
+
+后端镜像构建上下文是 `server/`（见 `server/Dockerfile`），`docker-compose.yml` 在仓库根。
+
+### 第一次启动顺序
+
+```bash
+cp server/.env.example server/.env   # 填 ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL（暂留 SOURCEGRAPH_TOKEN 空）
+mkdir -p data repos/api-docs
+
+# 1. 先只起 sourcegraph 做初始化
+docker compose up -d sourcegraph
+
+# 2. 浏览器打开 http://localhost:7080
+#    - 创建 admin 账号
+#    - Settings → Access tokens → 生成 token，复制到 .env 的 SOURCEGRAPH_TOKEN
+#    - Site admin → External services → Add GitLab connector
+#      - URL: https://gitlab.tevaupay.com，Token: GitLab PAT（scope: api、read_repository）
+#      - 仓库白名单：
+#          tevaupay-views/app/TevauPay-Flutter
+#          tevaupay/business-services/TevauPay-Service
+#          tevaupay/business-services/TevauNexus-Service
+#      - 等 indexing 完成（首次 5-30 分钟）
+
+# 3. 从 Apifox 导出 OpenAPI 3.0 JSON → repos/api-docs/openapi.json
+
+# 4. 起 api + web
+docker compose up --build api web
+```
+
+后端 :8000，前端 :5173，Sourcegraph :7080。日常启动 `docker compose up`（Sourcegraph 数据持久化在 docker volume）。
+
+### 上线前必须有的外部依赖（spec §12.2）
+
+- `SOURCEGRAPH_TOKEN`：Sourcegraph 后台生成
+- GitLab PAT：配在 Sourcegraph 后台（不进 AI 引擎 .env）
+- `LARK_WEBHOOK_URL`：现"Open Api 问题工单通知群"机器人 webhook
+- `repos/api-docs/openapi.json`：从 Apifox 导出

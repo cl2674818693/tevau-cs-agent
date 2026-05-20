@@ -3,9 +3,11 @@
 > MVP-1 plan 拆分文件 — 总览见 [README.md](./README.md)，原始合并版见 [../2026-05-18-MVP-1-客服工单AI引擎.md](../2026-05-18-MVP-1-客服工单AI引擎.md)
 
 **Files:**
-- Create: `docker-compose.yml`
-- Create: `Dockerfile`
-- Modify: `README.md`（追加部署+ Sourcegraph 首次配置小节）
+- Create: `docker-compose.yml`（仓库根）
+- Create: `server/Dockerfile`（后端构建上下文 = `server/`）
+- Modify: `README.md`（追加部署 + Sourcegraph 首次配置小节）
+
+> 双子项目布局调整（实际实现）：Dockerfile 放 `server/`，compose `api.build: ./server`；环境变量加 `ANTHROPIC_BASE_URL`（自建网关）；`web` 服务 `pnpm install` 带 `CI=true`（pnpm 10 非交互）；Dockerfile 先 COPY src 再 `uv pip install -e .`（editable，让 prompts .md 直接可读）。`.env` 路径是 `server/.env`。
 
 - [ ] **Step 1: 写 `Dockerfile`**
 
