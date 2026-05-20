@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ai_engine.api.chat import router as chat_router
 from ai_engine.api.conversations import router as conversations_router
 from ai_engine.api.health import router as health_router
+from ai_engine.api.staff_auth import router as staff_auth_router
 from ai_engine.api.tickets import router as tickets_router
 from ai_engine.integrations.event_center_mock import router as mock_ec_router
 from ai_engine.persistence.db import init_db
@@ -21,6 +22,7 @@ app.include_router(health_router)
 app.include_router(conversations_router)
 app.include_router(chat_router)
 app.include_router(tickets_router)
+app.include_router(staff_auth_router)
 app.include_router(mock_ec_router)
 
 
