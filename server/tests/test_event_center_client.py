@@ -9,7 +9,7 @@ from httpx import Response
 async def test_push_event_center_signs_and_succeeds(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     monkeypatch.setenv("EVENT_CENTER_URL", "http://ec")
-    monkeypatch.setenv("EVENT_CENTER_SECRET", "shared")
+    monkeypatch.setenv("EVENT_CENTER_SECRET_CURRENT", "shared")
     from ai_engine.config import settings
 
     settings.reload()

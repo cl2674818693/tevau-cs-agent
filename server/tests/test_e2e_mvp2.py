@@ -119,6 +119,16 @@ async def test_b_end_real_mysql_diagnosis(temp_db_url, business_mysql, monkeypat
                 ],
                 "end_turn",
             ),
+            # self-check 修订轮（spec §8.3）：原样返回
+            _resp(
+                [
+                    _block(
+                        "text",
+                        text="该请求返回 500，错误码 DB_TIMEOUT，见 handlers/card_bind.go:120",
+                    )
+                ],
+                "end_turn",
+            ),
         ]
     )
     fake = MagicMock()
@@ -159,6 +169,11 @@ async def test_b_end_cross_bu_blocked(temp_db_url, business_mysql, monkeypatch):
                 ],
                 "tool_use",
             ),
+            _resp(
+                [_block("text", text="未在您账户下找到该卡片，我无法查询其他 BU 的数据。")],
+                "end_turn",
+            ),
+            # self-check 修订轮（spec §8.3）：原样返回
             _resp(
                 [_block("text", text="未在您账户下找到该卡片，我无法查询其他 BU 的数据。")],
                 "end_turn",

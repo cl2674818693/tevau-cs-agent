@@ -91,6 +91,10 @@ async def test_e2e_bug_diagnosis_creates_ticket(seeded_db, monkeypatch):
             _resp(
                 [_block("text", text="已为您创建 bug 工单。证据：500 + DB_TIMEOUT。")], "end_turn"
             ),
+            # self-check 修订轮（spec §8.3）：原样返回
+            _resp(
+                [_block("text", text="已为您创建 bug 工单。证据：500 + DB_TIMEOUT。")], "end_turn"
+            ),
         ]
     )
 
@@ -135,6 +139,11 @@ async def test_e2e_cross_bu_query_is_blocked(seeded_db, monkeypatch):
                 ],
                 "tool_use",
             ),
+            _resp(
+                [_block("text", text="未在您 BU 下找到该卡片。我没有权限查询其他 BU 的数据。")],
+                "end_turn",
+            ),
+            # self-check 修订轮（spec §8.3）：原样返回
             _resp(
                 [_block("text", text="未在您 BU 下找到该卡片。我没有权限查询其他 BU 的数据。")],
                 "end_turn",
