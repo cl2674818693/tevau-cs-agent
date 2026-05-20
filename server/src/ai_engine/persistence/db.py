@@ -61,6 +61,15 @@ CREATE TABLE IF NOT EXISTS tickets (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS daily_token_usage (
+    subject_id TEXT NOT NULL,              -- bu_id 或 user_id
+    user_type TEXT NOT NULL,
+    date TEXT NOT NULL,                    -- YYYY-MM-DD
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (subject_id, user_type, date)
+);
+
 CREATE TABLE IF NOT EXISTS ticket_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     external_id TEXT NOT NULL,

@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     nexus_db_url: str | None = None
     app_jwt_public_key: str = ""  # C 端 APP JWT 验签公钥（APP 后端签发，本服务只验签）
     app_jwt_algorithm: str = "RS256"
+    daily_token_limit: int = 500_000  # 单 BU/单 user 单日 token 硬阈值（spec §8 成本治理）
     max_tool_depth: int = 12
     max_tool_result_bytes: int = 262_144
     log_level: str = "INFO"
