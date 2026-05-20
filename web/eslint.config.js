@@ -22,5 +22,5 @@ export default [
     settings: { react: { version: "detect" } },
   },
   prettier,
-  { ignores: ["dist", "node_modules", "*.config.js", "*.config.ts"] },
+  { ignores: ["dist", "node_modules", "coverage", "*.config.js", "*.config.ts"] },
 ];

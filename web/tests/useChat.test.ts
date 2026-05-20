@@ -1,7 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-const { cancelMock } = vi.hoisted(() => ({ cancelMock: vi.fn(async () => {}) }));
+const { requestHumanMock, cancelMock } = vi.hoisted(() => ({
+  requestHumanMock: vi.fn(async () => {}),
+  cancelMock: vi.fn(async () => {}),
+}));
 
 vi.mock("../src/api/chat", () => ({
   initConversation: async () => ({
@@ -13,19 +16,20 @@ vi.mock("../src/api/chat", () => ({
     limits: { daily_token_used_pct: 0, max_turns: 20 },
   }),
   streamChat: async function* () {
+    yield { type: "message_start", message_id: "m1" };
     yield { type: "tool_use", name: "search_code", input: { q: "x" }, _eventId: "1" };
     yield { type: "tool_result", name: "search_code", is_error: false };
     yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "你" } };
     yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "好" } };
-    yield { type: "error", code: "INTERNAL_ERROR", message: "ignored" };
   },
+  requestHuman: requestHumanMock,
   cancelStream: cancelMock,
 }));
 
-import { HANDOFF_TRIGGER_TEXT, useChat } from "../src/hooks/useChat";
+import { useChat } from "../src/hooks/useChat";
 
 describe("useChat", () => {
-  it("accumulates deltas and records tool calls into the assistant bubble", async () => {
+  it("adds assistant bubble on message_start, accumulates deltas + tool calls", async () => {
     const { result } = renderHook(() => useChat());
     await waitFor(() => expect(result.current.init).toBeTruthy());
     await act(async () => {
@@ -43,16 +47,13 @@ describe("useChat", () => {
     });
   });
 
-  it("requestHandoff sends the fixed handoff text; stop calls cancelStream", async () => {
+  it("requestHandoff calls /request-human and sets human_pending", async () => {
     const { result } = renderHook(() => useChat());
     await waitFor(() => expect(result.current.init).toBeTruthy());
     await act(async () => {
       await result.current.requestHandoff();
     });
-    expect(
-      result.current.messages.some((m) => "content" in m && m.content === HANDOFF_TRIGGER_TEXT),
-    ).toBe(true);
-    act(() => result.current.stop());
-    expect(cancelMock).toHaveBeenCalledWith(42, "BU00243780");
+    expect(requestHumanMock).toHaveBeenCalledWith(42, "BU00243780");
+    expect(result.current.mode).toBe("human_pending");
   });
 });

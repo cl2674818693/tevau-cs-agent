@@ -74,3 +74,34 @@ export async function cancelStream(conversationId: number, buId: string): Promis
     headers: { "X-BU-ID": buId },
   });
 }
+
+/**
+ * 转人工（MVP-2 §13.7：调 /request-human 端点，置 human_pending + 建工单）。
+ */
+export async function requestHuman(
+  conversationId: number,
+  buId: string,
+  reason?: string,
+): Promise<void> {
+  await fetch(`/api/v1/conversations/${conversationId}/request-human`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-BU-ID": buId },
+    body: JSON.stringify({ reason: reason ?? "用户请求人工" }),
+  });
+}
+
+/**
+ * 用户对工单确认（已解决 / 未解决）→ 反向 webhook（spec §7.6）。
+ */
+export async function sendTicketUserEvent(
+  externalId: string,
+  buId: string,
+  event: "user_confirmed_resolved" | "user_rejected_resolved",
+  reason?: string,
+): Promise<void> {
+  await fetch(`/api/v1/tickets/${externalId}/user-events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-BU-ID": buId },
+    body: JSON.stringify({ event, reason }),
+  });
+}

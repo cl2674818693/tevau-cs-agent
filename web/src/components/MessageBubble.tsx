@@ -23,6 +23,21 @@ export function MessageBubble({ m }: { m: Message }) {
       </div>
     );
   }
+  if (m.role === "human_agent") {
+    return (
+      <div className="flex gap-2 items-start">
+        <Avatar>
+          <AvatarFallback className="bg-status-warning text-white">客</AvatarFallback>
+        </Avatar>
+        <div className="flex-1 max-w-[80%] rounded-lg bg-yellow-50 border border-status-warning/30 px-page py-block-sm">
+          <div className="text-footnote text-ink-secondary mb-0.5">
+            客服 {m.display_name ?? ""} · 已认证
+          </div>
+          <div className="text-body1 text-ink-primary whitespace-pre-wrap">{m.content}</div>
+        </div>
+      </div>
+    );
+  }
   // assistant
   return (
     <div className="flex gap-2 items-start">

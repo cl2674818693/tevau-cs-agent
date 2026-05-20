@@ -11,12 +11,14 @@ vi.mock("../src/api/chat", () => ({
     limits: { daily_token_used_pct: 0, max_turns: 20 },
   }),
   streamChat: async function* () {
+    yield { type: "message_start", message_id: "m1" };
     yield {
       type: "content_block_delta",
       index: 0,
       delta: { type: "text_delta", text: "已收到。" },
     };
   },
+  requestHuman: async () => {},
   cancelStream: async () => {},
 }));
 

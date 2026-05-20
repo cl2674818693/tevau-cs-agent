@@ -34,7 +34,10 @@ export type ConversationInit = {
 export type Message =
   | { role: "system"; content: string }
   | { role: "user"; content: string }
-  | { role: "assistant"; content: string; tool_calls?: ToolCallShown[] };
+  | { role: "assistant"; content: string; tool_calls?: ToolCallShown[] }
+  | { role: "human_agent"; content: string; display_name?: string };
+
+export type ConversationMode = "ai" | "human_pending" | "human_takeover" | "ai_draft";
 
 export type ToolCallShown = {
   name: string;
