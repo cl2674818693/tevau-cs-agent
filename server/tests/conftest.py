@@ -1,7 +1,64 @@
 import os
+import subprocess
 import tempfile
+from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
+
+
+def _docker_ok() -> bool:
+    try:
+        r = subprocess.run(["docker", "info"], capture_output=True, timeout=8)  # noqa: S607
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+@pytest.fixture(scope="session")
+def mysql_url():
+    """会话级 MySQL 容器（testcontainers），加载 unlimitpay_seed.sql。无 docker 时 skip。"""
+    if not _docker_ok():
+        pytest.skip("docker not available")
+    from testcontainers.mysql import MySqlContainer
+
+    with MySqlContainer("mysql:8.0") as mysql:
+        raw = mysql.get_connection_url().replace("mysql+pymysql://", "mysql://")
+        import pymysql
+
+        p = urlparse(raw)
+        conn = pymysql.connect(
+            host=p.hostname,
+            port=p.port or 3306,
+            user=p.username,
+            password=p.password,
+            database=(p.path or "").lstrip("/"),
+        )
+        try:
+            seed = Path("tests/fixtures/unlimitpay_seed.sql").read_text(encoding="utf-8")
+            with conn.cursor() as cur:
+                for stmt in seed.split(";"):
+                    if stmt.strip():
+                        cur.execute(stmt)
+            conn.commit()
+        finally:
+            conn.close()
+        yield raw
+
+
+@pytest.fixture
+async def business_mysql(monkeypatch, mysql_url):
+    """把 business_db 指向测试 MySQL 容器并初始化连接池。"""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setenv("UNLIMITPAY_DB_URL", mysql_url)
+    from ai_engine.config import settings
+
+    settings.reload()
+    from ai_engine.persistence import business_db
+
+    await business_db.init_business_dbs(mysql_url, None)
+    yield mysql_url
+    await business_db.close_all()
 
 
 @pytest.fixture
