@@ -10,6 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from ai_engine.agent.tool_router import dispatch
 from ai_engine.auth.staff_session import require_staff
+from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
 from ai_engine.persistence.db import get_conn
 from ai_engine.persistence.staff import get_staff
@@ -67,6 +68,7 @@ async def take(conv_id: int, staff: dict[str, Any] = Depends(require_staff)) -> 
         if cur.rowcount == 0:
             raise HTTPException(409, "already taken by another staff")
     await log_staff_action(conv_id, staff["sub"], "take")
+    metrics.staff_takeovers.labels(staff_id=staff["sub"]).inc()
     _publish(conv_id, {"type": "mode_change", "to": "human_takeover", "by_staff_id": staff["sub"]})
     return {"ok": True}
 

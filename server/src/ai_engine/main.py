@@ -6,6 +6,7 @@ from ai_engine.api.auth_bu import router as auth_bu_router
 from ai_engine.api.chat import router as chat_router
 from ai_engine.api.conversations import router as conversations_router
 from ai_engine.api.health import router as health_router
+from ai_engine.api.metrics import router as metrics_router
 from ai_engine.api.staff_auth import router as staff_auth_router
 from ai_engine.api.staff_conversations import router as staff_conv_router
 from ai_engine.api.staff_kpi import router as staff_kpi_router
@@ -27,6 +28,7 @@ app.add_middleware(
     expose_headers=["Last-Event-ID"],  # SSE 重连支持，spec §3.3
 )
 app.include_router(health_router)
+app.include_router(metrics_router)
 app.include_router(auth_bu_router)
 app.include_router(conversations_router)
 app.include_router(chat_router)

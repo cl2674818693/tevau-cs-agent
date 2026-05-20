@@ -3,6 +3,7 @@ import time
 from typing import Any
 
 from ai_engine.agent.tools import base
+from ai_engine.observability import metrics
 from ai_engine.persistence.audit import log_tool_call
 
 NEEDS_CONVERSATION_ID = {"create_ticket"}
@@ -23,6 +24,7 @@ async def dispatch(
     tool = base.get(tool_name)
     if tool is None:
         await log_tool_call(conversation_id, tool_name, params, 0, 0, True, "unknown tool")
+        metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
         return {"ok": False, "error": f"unknown tool: {tool_name}"}
 
     # 身份注入：把 subject_id 强写入对应字段，覆盖 AI 传值
@@ -47,14 +49,22 @@ async def dispatch(
             False,
             None,
         )
+        _observe(tool_name, duration_ms, ok=True)
         return {"ok": True, "data": data}
     except ValueError as e:
         duration_ms = int((time.perf_counter() - started) * 1000)
         await log_tool_call(conversation_id, tool_name, safe_params, 0, duration_ms, True, str(e))
+        _observe(tool_name, duration_ms, ok=False)
         return {"ok": False, "error": f"invalid args: {e}"}
     except Exception as e:
         duration_ms = int((time.perf_counter() - started) * 1000)
         await log_tool_call(
             conversation_id, tool_name, safe_params, 0, duration_ms, True, f"internal: {e}"
         )
+        _observe(tool_name, duration_ms, ok=False)
         return {"ok": False, "error": "internal error"}
+
+
+def _observe(tool_name: str, duration_ms: int, ok: bool) -> None:
+    metrics.tool_calls.labels(tool=tool_name, ok=str(ok).lower()).inc()
+    metrics.tool_duration.labels(tool=tool_name).observe(duration_ms / 1000)

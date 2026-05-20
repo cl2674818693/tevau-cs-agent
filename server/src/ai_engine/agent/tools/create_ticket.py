@@ -10,6 +10,7 @@ import httpx
 from ai_engine.agent.tools.base import Tool, register
 from ai_engine.config import settings
 from ai_engine.integrations.lark_webhook import send as _notify_lark
+from ai_engine.observability import metrics
 from ai_engine.persistence.tickets import create_ticket as _save_local
 
 VALID_CATEGORIES = {"bug", "事务", "CQ", "无信息", "人工介入"}
@@ -58,6 +59,7 @@ async def run(
 
     # 1. 本地落库（兜底，确保引擎自有记录）
     await _save_local(external_id=ext_id, conversation_id=conversation_id, payload=payload)
+    metrics.tickets_created.labels(category=category, severity=severity, user_type="b").inc()
 
     # 2. 推事项中心（带 HMAC 签名）
     body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")

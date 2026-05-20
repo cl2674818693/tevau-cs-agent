@@ -8,6 +8,7 @@ from ai_engine.agent.tools.create_ticket import run as create_ticket_run
 from ai_engine.api.staff_conversations import _publish
 from ai_engine.auth.bu_session import resolve_identity
 from ai_engine.integrations.event_center_client import push_event_center
+from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
 from ai_engine.persistence import tickets as ticket_dao
 
@@ -55,6 +56,7 @@ async def user_events(external_id: str, body: UserEventIn, request: Request) -> 
         raise HTTPException(403, "not your ticket")
 
     if body.event == "user_confirmed_resolved":
+        metrics.user_resolved_total.labels(event=body.event).inc()
         await ticket_dao.append_ticket_event(
             external_id, "closed", "user", "用户确认已解决", raw={"source": "user"}
         )
@@ -64,6 +66,7 @@ async def user_events(external_id: str, body: UserEventIn, request: Request) -> 
         return {"ok": True}
 
     if body.event == "user_rejected_resolved":
+        metrics.user_resolved_total.labels(event=body.event).inc()
         await ticket_dao.append_ticket_event(
             external_id,
             "reopen",

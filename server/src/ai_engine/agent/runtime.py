@@ -21,6 +21,7 @@ from ai_engine.governance.token_budget import check_and_record
 from ai_engine.integrations import anthropic_client as _ac
 from ai_engine.integrations.anthropic_client import build_messages_request
 from ai_engine.integrations.redact import scan_and_redact_text
+from ai_engine.observability import metrics
 from ai_engine.persistence.conversations import append_message, list_messages
 from ai_engine.prompts.loader import build_system_blocks, read_prompt
 from ai_engine.prompts.registry import model_for, pick_version
@@ -41,6 +42,15 @@ def _block_to_dict(b: object) -> dict[str, Any]:
             "input": getattr(b, "input", {}),
         }
     return {"type": t or "unknown"}
+
+
+def _record_llm(resp: object, model: str) -> None:
+    metrics.llm_calls.labels(model=model).inc()
+    in_tok, out_tok = _usage(resp)
+    if in_tok:
+        metrics.llm_tokens.labels(model=model, kind="input").inc(in_tok)
+    if out_tok:
+        metrics.llm_tokens.labels(model=model, kind="output").inc(out_tok)
 
 
 def _usage(resp: object) -> tuple[int, int]:
@@ -125,6 +135,25 @@ async def run_turn(
     guard = CostGuard(
         max_depth=settings.max_tool_depth, max_result_bytes=settings.max_tool_result_bytes
     )
+
+    with metrics.active_conversations.track_inprogress():
+        async for ev in _agent_loop(
+            system_blocks, tools, model, messages, guard, user_type, subject_id, conversation_id
+        ):
+            yield ev
+
+
+async def _agent_loop(
+    system_blocks: list[dict[str, str]],
+    tools: list[dict[str, Any]],
+    model: str,
+    messages: list[dict[str, Any]],
+    guard: CostGuard,
+    user_type: str,
+    subject_id: str,
+    conversation_id: int,
+) -> AsyncIterator[dict[str, Any]]:
+    prompt_version = pick_version(subject_id)
     self_check_done = False
     warned_budget = False
 
@@ -134,6 +163,7 @@ async def run_turn(
         )
         # 通过模块属性引用，便于测试用 monkeypatch.setattr 替换
         resp = await _ac._client.messages.create(**req)  # 非流式骨架，MVP-3 换 stream
+        _record_llm(resp, model)
 
         # spec §8 成本治理：每轮 LLM 返回后记账；超额拒服、80% 提醒
         stop, budget_event, warned_budget = await _budget_gate(
