@@ -11,14 +11,27 @@ agent loop 的核心：拿到用户消息 → 用 system blocks + history + tool
 - [ ] **Step 1: 写 `server/tests/test_agent_runtime.py`（用 mock client 端到端走一遍）**
 
 ```python
-import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+
+import respx
+from httpx import Response
 
 
+@respx.mock
 async def test_runtime_runs_tool_then_replies(seeded_db, monkeypatch):
     """模拟：第一次模型返回 tool_use(search_code)；第二次返回纯文本。"""
     from ai_engine.agent import runtime
     from ai_engine.integrations import anthropic_client as ac
+
+    # search_code 走 Sourcegraph（task-04 已改），用 respx mock 空结果避免真实 HTTP
+    monkeypatch.setenv("SOURCEGRAPH_URL", "http://sg")
+    monkeypatch.setenv("SOURCEGRAPH_TOKEN", "tok")
+    from ai_engine.config import settings
+
+    settings.reload()
+    respx.post("http://sg/.api/graphql").mock(
+        return_value=Response(200, json={"data": {"search": {"results": {"results": []}}}})
+    )
 
     call_seq = []
 
@@ -31,25 +44,21 @@ async def test_runtime_runs_tool_then_replies(seeded_db, monkeypatch):
     async def fake_create(**kwargs):
         call_seq.append(kwargs)
         if len(call_seq) == 1:
-            return FakeResp([
-                MagicMock(type="tool_use", id="t1", name="search_code",
-                          input={"repo": "openapi_backend", "query": "card_bind"}),
-            ], "tool_use")
-        return FakeResp([MagicMock(type="text", text="结论：handler 在 card_bind.py。证据：search_code 命中。")],
-                        "end_turn")
+            # MagicMock(name=...) 是保留参数（设 repr 名），不会设成 .name，必须事后赋值
+            tu = MagicMock(
+                type="tool_use", id="t1",
+                input={"repo": "openapi_backend", "query": "card_bind"},
+            )
+            tu.name = "search_code"
+            return FakeResp([tu], "tool_use")
+        return FakeResp(
+            [MagicMock(type="text", text="结论：handler 在 card_bind.py。证据：search_code 命中。")],
+            "end_turn",
+        )
 
     fake_client = MagicMock()
     fake_client.messages.create = AsyncMock(side_effect=fake_create)
     monkeypatch.setattr(ac, "_client", fake_client)
-    # 让 search_code 工具调用走通：注入 repos_root
-    import os
-    from pathlib import Path
-    monkeypatch.setenv("CODE_REPOS_ROOT", str(Path("tests/fixtures").resolve()))
-    Path("tests/fixtures/openapi_backend").symlink_to(
-        Path("tests/fixtures/sample_repo").resolve(), target_is_directory=True
-    ) if not Path("tests/fixtures/openapi_backend").exists() else None
-    from ai_engine.config import settings
-    settings.reload()
 
     chunks = []
     async for ev in runtime.run_turn(
@@ -57,7 +66,6 @@ async def test_runtime_runs_tool_then_replies(seeded_db, monkeypatch):
         user_message="card_bind 接口 500 怎么回事？",
     ):
         chunks.append(ev)
-    # 至少一次 tool_call、一次 text
     kinds = [c["type"] for c in chunks]
     assert "tool_call" in kinds
     assert "text" in kinds
@@ -73,23 +81,36 @@ Expected: FAIL
 
 - [ ] **Step 3: 写 `server/src/ai_engine/agent/runtime.py`**
 
+> 实现要点（mypy strict / ruff 已踩过的坑，照抄即可过）：
+> - `AsyncIterator` 从 `collections.abc` 导入；所有 `dict` 注解写 `dict[str, Any]`
+> - `getattr(b, "id")` 必须带默认值 `getattr(b, "id", "")`（否则 ruff B009）
+> - `build_messages_request` 的 system_blocks/messages/tools 参数与返回都用 `dict[str, Any]`，否则 `list[dict[str,str]]` 传入会因 dict 不变性报错
+
 ```python
 import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
+
+from ai_engine.agent.cost_guard import CostGuard
+from ai_engine.agent.tool_router import dispatch
+from ai_engine.agent.tools import (  # noqa: F401  import 即注册工具
+    base,
+    create_ticket,
+    lookup_api_doc,
+    query_api_call,
+    query_card,
+    query_user,
+    read_file,
+    search_code,
+)
 from ai_engine.config import settings
 from ai_engine.integrations import anthropic_client as _ac
 from ai_engine.integrations.anthropic_client import build_messages_request
-from ai_engine.prompts.loader import build_system_blocks
-from ai_engine.agent.tool_router import dispatch
-from ai_engine.agent.cost_guard import CostGuard
-from ai_engine.agent.tools import base  # 触发工具注册
-from ai_engine.agent.tools import (  # noqa: F401
-    search_code, read_file, query_user, query_card, query_api_call, lookup_api_doc, create_ticket,
-)
 from ai_engine.persistence.conversations import append_message
+from ai_engine.prompts.loader import build_system_blocks
 
 
-def _block_to_dict(b) -> dict:
+def _block_to_dict(b: object) -> dict[str, Any]:
     """把 anthropic 返回的 block (object 或 dict) 都规整为 dict。"""
     if isinstance(b, dict):
         return b
@@ -97,8 +118,8 @@ def _block_to_dict(b) -> dict:
     if t == "text":
         return {"type": "text", "text": getattr(b, "text", "")}
     if t == "tool_use":
-        return {"type": "tool_use", "id": getattr(b, "id"),
-                "name": getattr(b, "name"), "input": getattr(b, "input", {})}
+        return {"type": "tool_use", "id": getattr(b, "id", ""),
+                "name": getattr(b, "name", ""), "input": getattr(b, "input", {})}
     return {"type": t or "unknown"}
 
 

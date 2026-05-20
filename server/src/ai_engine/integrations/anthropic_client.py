@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from typing import Any
 
 from anthropic import AsyncAnthropic
 
@@ -14,12 +15,12 @@ _client = AsyncAnthropic(
 
 def build_messages_request(
     *,
-    system_blocks: list[dict[str, object]],
-    messages: list[dict[str, object]],
-    tools: list[dict[str, object]] | None,
+    system_blocks: list[dict[str, Any]],
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
     model: str,
     max_tokens: int = 4096,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """构造 Anthropic Messages API 请求体, 对每个 system 块加 ephemeral cache_control。"""
     cached_system = []
     for blk in system_blocks:
