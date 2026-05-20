@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from ai_engine.api.admin_prompts import router as admin_prompts_router
 from ai_engine.api.auth_bu import router as auth_bu_router
 from ai_engine.api.chat import router as chat_router
 from ai_engine.api.conversations import router as conversations_router
@@ -34,6 +35,7 @@ app.include_router(ticket_sse_router)
 app.include_router(staff_auth_router)
 app.include_router(staff_conv_router)
 app.include_router(staff_kpi_router)
+app.include_router(admin_prompts_router)
 app.include_router(user_events_router)
 if settings.mock_event_center:  # 仅本地 dev；生产连真实事项中心
     app.include_router(mock_ec_router)

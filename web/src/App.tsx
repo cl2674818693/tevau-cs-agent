@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
+import { PromptsRoute } from "./routes/admin/PromptsRoute";
 import { BuLoginRoute } from "./routes/BuLoginRoute";
 import { ChatRoute } from "./routes/ChatRoute";
 import { ConversationDetailRoute } from "./routes/staff/ConversationDetailRoute";
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/staff/login" element={<StaffLoginRoute />} />
         <Route path="/staff/conversations" element={<ConversationsListRoute />} />
         <Route path="/staff/kpi" element={<KpiRoute />} />
+        <Route path="/admin/prompts" element={<PromptsRoute />} />
         <Route path="/staff/conversations/:id" element={<ConversationDetailRoute />} />
         <Route path="/staff/conversations/:id/spectate" element={<SpectateRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />

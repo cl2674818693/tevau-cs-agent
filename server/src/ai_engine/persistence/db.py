@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS staff (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     staff_id TEXT UNIQUE NOT NULL,
     display_name TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('agent','senior','engineer')),
+    role TEXT NOT NULL CHECK(role IN ('agent','senior','engineer','admin')),
     password_hash TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))

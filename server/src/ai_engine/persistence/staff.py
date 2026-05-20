@@ -4,7 +4,7 @@ from typing import Any
 
 from ai_engine.persistence.db import get_conn
 
-_VALID_ROLES = {"agent", "senior", "engineer"}
+_VALID_ROLES = {"agent", "senior", "engineer", "admin"}
 
 
 def hash_password(plain: str, salt: str | None = None) -> str:

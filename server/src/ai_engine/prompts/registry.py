@@ -57,3 +57,24 @@ def file_path(version: str, key: str) -> Path:
 def model_for(version: str) -> str | None:
     model = load_registry()["versions"][version].get("model")
     return str(model) if model else None
+
+
+def get_rollout() -> dict[str, int]:
+    return {k: int(v) for k, v in load_registry().get("rollout", {}).items()}
+
+
+def update_rollout(rollout: dict[str, int]) -> None:
+    """改灰度比例并写回 registry.yaml + 热加载。键必须是已声明版本，值之和 ≤ 100。"""
+    cfg = load_registry()
+    known = set(cfg["versions"].keys())
+    unknown = set(rollout) - known
+    if unknown:
+        raise ValueError(f"unknown versions: {sorted(unknown)}")
+    if any(v < 0 for v in rollout.values()) or sum(rollout.values()) > 100:
+        raise ValueError("rollout percentages must be >=0 and sum <= 100")
+    cfg = dict(cfg)
+    cfg["rollout"] = {k: int(v) for k, v in rollout.items()}
+    _registry_path().write_text(
+        yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+    reload_registry()
