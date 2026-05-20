@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { cancelStream, initConversation, requestHuman, streamChat } from "../api/chat";
+import {
+  cancelStream,
+  initConversation,
+  requestHuman,
+  streamChat,
+  streamConversationMessages,
+} from "../api/chat";
 import type { ChatEvent, ConversationInit, ConversationMode, Message } from "../types";
 
 const BU_ID = "BU00243780"; // MVP-1 写死，MVP-2 接 SSO/JWT
@@ -18,6 +24,7 @@ function applyEvent(prev: Message[], ev: ChatEvent): Message[] {
     return [...prev, { role: "assistant", content: "", tool_calls: [] }];
   if (ev.type === "human_message")
     return [...prev, { role: "human_agent", content: ev.content, display_name: ev.display_name }];
+  if (ev.type === "assistant_message") return [...prev, { role: "assistant", content: ev.content }];
   if (ev.type === "content_block_delta") {
     const text = ev.delta?.text ?? "";
     return _patchLastAssistant(prev, (a) => ({ ...a, content: a.content + text }));
@@ -51,6 +58,30 @@ export function useChat() {
       })
       .catch((e) => console.error("init failed", e));
   }, []);
+
+  // 常驻订阅客服→用户方向的消息（接管回复 / 草稿审核通过 / 模式变更），spec §13
+  useEffect(() => {
+    if (!init) return;
+    let stopped = false;
+    (async () => {
+      try {
+        for await (const ev of streamConversationMessages({
+          conversationId: init.conversation_id,
+          buId: BU_ID,
+        })) {
+          if (stopped) break;
+          if (ev.type === "mode_change") setMode(ev.to as ConversationMode);
+          else if (ev.type === "human_message" || ev.type === "assistant_message")
+            setMessages((p) => applyEvent(p, ev));
+        }
+      } catch {
+        /* 流断开，忽略 */
+      }
+    })();
+    return () => {
+      stopped = true;
+    };
+  }, [init]);
 
   const send = useCallback(
     async (text: string) => {

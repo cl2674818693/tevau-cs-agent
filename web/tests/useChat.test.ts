@@ -22,6 +22,7 @@ vi.mock("../src/api/chat", () => ({
     yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "你" } };
     yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "好" } };
   },
+  streamConversationMessages: async function* () {},
   requestHuman: requestHumanMock,
   cancelStream: cancelMock,
 }));

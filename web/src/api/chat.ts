@@ -46,11 +46,15 @@ export async function* streamChat(args: {
   if (args.lastEventId) headers["Last-Event-ID"] = args.lastEventId;
   const resp = await fetch(url, { headers });
   if (!resp.ok || !resp.body) throw new Error(`chat http ${resp.status}`);
+  yield* readSseStream(resp);
+}
 
+/** 读取一个 SSE 响应体，逐 frame 解析成 ChatEvent。 */
+async function* readSseStream(resp: Response): AsyncGenerator<ChatEvent> {
+  if (!resp.body) return;
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -63,6 +67,21 @@ export async function* streamChat(args: {
       if (ev) yield ev;
     }
   }
+}
+
+/**
+ * 用户侧常驻消息流（spec §13）：接收客服回复 / 审核通过的草稿 / 模式变更。
+ * 与 streamChat 不同，这条流跨多条消息长连，直到组件卸载才关闭。
+ */
+export async function* streamConversationMessages(args: {
+  conversationId: number;
+  buId: string;
+}): AsyncGenerator<ChatEvent> {
+  const resp = await fetch(`/api/v1/conversations/${args.conversationId}/messages-stream`, {
+    headers: { "X-BU-ID": args.buId },
+  });
+  if (!resp.ok || !resp.body) throw new Error(`messages-stream http ${resp.status}`);
+  yield* readSseStream(resp);
 }
 
 /**

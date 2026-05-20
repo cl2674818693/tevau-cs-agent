@@ -9,14 +9,17 @@ export type ChatEvent = {
   | { type: "tool_result"; tool_use_id?: string; name: string; is_error: boolean }
   | { type: "message_stop"; stop_reason: string; usage?: Record<string, unknown> }
   | { type: "ticket_event"; [k: string]: unknown }
-  | { type: "mode_change"; from: string; to: string; by_staff_id?: string }
+  | { type: "mode_change"; from?: string; to: string; by_staff_id?: string }
+  | { type: "transferred"; to_staff_id: string }
+  | { type: "request_human"; ticket_id?: string }
   | {
       type: "human_message";
-      message_id: string;
-      sender_staff_id: string;
-      display_name: string;
+      message_id?: string;
+      sender_staff_id?: string;
+      display_name?: string;
       content: string;
     }
+  | { type: "assistant_message"; content: string }
   | { type: "error"; code: string; message: string; retry_after_ms?: number }
   | { type: "warning"; pct?: number }
 );
