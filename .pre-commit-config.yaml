@@ -1,0 +1,71 @@
+default_language_version:
+  python: python3.12
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key       # 防 .pem / .key 误提交
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks                  # 防密码 / API key 误提交
+
+  - repo: local
+    hooks:
+      # 后端 ruff / mypy 走 local hook + cd server（config 在 server/pyproject.toml，
+      # monorepo 下必须在 server/ 目录跑才能读到 strict 配置）
+      - id: ruff-server
+        name: ruff (server)
+        entry: bash -c 'cd server && ruff check --fix src tests && ruff format src tests'
+        language: system
+        pass_filenames: false
+        files: ^server/.*\.py$
+        require_serial: true
+
+      - id: mypy-server
+        name: mypy (server, strict)
+        entry: bash -c 'cd server && mypy src'
+        language: system
+        pass_filenames: false
+        files: ^server/src/.*\.py$
+        require_serial: true
+
+      - id: conventional-commit-msg
+        name: Conventional commit message format
+        entry: scripts/check_commit_msg.sh
+        language: script
+        stages: [commit-msg]
+
+      # 前端 lint / type-check（web/ 创建后启用，未创建时 files 不匹配自动跳过）
+      - id: web-eslint
+        name: web eslint
+        entry: bash -c 'cd web && pnpm lint'
+        language: system
+        pass_filenames: false
+        files: ^web/.*\.(ts|tsx|js)$
+        require_serial: true
+
+      - id: web-prettier
+        name: web prettier
+        entry: bash -c 'cd web && pnpm format:check'
+        language: system
+        pass_filenames: false
+        files: ^web/.*\.(ts|tsx|js|json|css|md)$
+        require_serial: true
+
+      - id: web-typecheck
+        name: web tsc --noEmit
+        entry: bash -c 'cd web && pnpm typecheck'
+        language: system
+        pass_filenames: false
+        files: ^web/.*\.(ts|tsx)$
+        require_serial: true

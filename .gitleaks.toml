@@ -1,0 +1,8 @@
+title = "Tevau AI Engine secret scanning"
+# 默认规则即可。若需要白名单某些文件，在 [allowlist] 里配
+[allowlist]
+paths = [
+    "server/.env.example",
+    "server/tests/.+",   # 测试里的 fake key 不算
+    "web/tests/.+",
+]

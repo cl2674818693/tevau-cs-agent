@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+.venv/
+
+# Env / secrets
+.env
+.env.*
+!server/.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Data
+data/
+ai_engine.db
+ai_engine.db-shm
+ai_engine.db-wal
+
+# 代码镜像（Sourcegraph 自己管，无需进 git）
+repos/
+
+# Node
+node_modules/
+web/dist/
+.vite/

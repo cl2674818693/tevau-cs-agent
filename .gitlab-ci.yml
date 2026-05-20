@@ -1,0 +1,78 @@
+stages: [lint, test, build]
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip
+    - .mypy_cache
+    - .ruff_cache
+
+# ---- Python ----
+
+py-lint:
+  stage: lint
+  image: python:3.12-slim
+  script:
+    - cd server
+    - pip install -e ".[dev]"
+    - ruff check src tests
+    - ruff format --check src tests
+
+py-typecheck:
+  stage: lint
+  image: python:3.12-slim
+  script:
+    - cd server
+    - pip install -e ".[dev]"
+    - mypy src
+
+py-test:
+  stage: test
+  image: python:3.12-slim
+  services:
+    - name: mysql:8.0
+      alias: mysql
+      variables:
+        MYSQL_ROOT_PASSWORD: rootpass
+        MYSQL_DATABASE: unlimitpay_test
+  script:
+    - cd server
+    - pip install -e ".[dev]"
+    - pytest --cov=src/ai_engine --cov-report=term --cov-report=xml --cov-fail-under=75
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: server/coverage.xml      # pytest 在 server/ 下跑，coverage.xml 落在 server/
+
+# ---- Frontend ----（web/ 在 Task 12 创建后开始跑）
+
+web-lint:
+  stage: lint
+  image: node:20-alpine
+  rules:
+    - exists: [web/package.json]
+  script:
+    - cd web
+    - corepack enable
+    - pnpm install --frozen-lockfile
+    - pnpm lint
+    - pnpm typecheck
+
+web-test:
+  stage: test
+  image: node:20-alpine
+  rules:
+    - exists: [web/package.json]
+  script:
+    - cd web
+    - corepack enable
+    - pnpm install --frozen-lockfile
+    - pnpm test:ci   # 含 v8 coverage + thresholds 校验
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: web/coverage/cobertura-coverage.xml
