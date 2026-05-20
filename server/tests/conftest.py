@@ -16,3 +16,17 @@ def temp_db_url(monkeypatch):
     settings.reload()
     yield url
     os.remove(path)
+
+
+@pytest.fixture
+async def seeded_db(temp_db_url):
+    from pathlib import Path
+
+    from ai_engine.persistence.db import get_conn, init_db
+
+    await init_db()
+    sql = Path("tests/fixtures/seed.sql").read_text(encoding="utf-8")  # noqa: ASYNC240  测试 setup 读小文件
+    async with get_conn() as conn:
+        await conn.executescript(sql)
+        await conn.commit()
+    return temp_db_url
