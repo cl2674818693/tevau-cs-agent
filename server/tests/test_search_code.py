@@ -1,54 +1,47 @@
+import json
+
 import pytest
-import respx
-from httpx import Response
-
-_NEXUS = "gitlab.tevaupay.com/tevaupay/business-services/TevauNexus-Service"
 
 
-@pytest.fixture(autouse=True)
-def sg_env(monkeypatch):
+@pytest.fixture
+def repo(tmp_path, monkeypatch):
+    """临时代码仓库 + 指向它的 code_repo_paths。"""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-    monkeypatch.setenv("SOURCEGRAPH_URL", "http://sg")
-    monkeypatch.setenv("SOURCEGRAPH_TOKEN", "tok")
+    root = tmp_path / "openapi_backend"
+    (root / "handlers").mkdir(parents=True)
+    (root / "handlers" / "card_bind.go").write_text(
+        "package handlers\n\nfunc HandleCardBind() {\n    // bind logic\n}\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("CODE_REPO_PATHS", json.dumps({"openapi_backend": str(root)}))
     from ai_engine.config import settings
 
     settings.reload()
+    yield root
+    settings.reload()
 
 
-@respx.mock
-async def test_search_code_finds_handler():
-    respx.post("http://sg/.api/graphql").mock(
-        return_value=Response(
-            200,
-            json={
-                "data": {
-                    "search": {
-                        "results": {
-                            "results": [
-                                {
-                                    "__typename": "FileMatch",
-                                    "repository": {"name": _NEXUS},
-                                    "file": {"path": "handlers/card_bind.go"},
-                                    "lineMatches": [
-                                        {"lineNumber": 119, "preview": "func HandleCardBind("}
-                                    ],
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-        )
-    )
+async def test_search_code_finds_handler(repo):
     from ai_engine.agent.tools.search_code import run
 
     out = await run(repo="openapi_backend", query="HandleCardBind")
     assert out["hits"]
     assert any("card_bind.go" in h["path"] for h in out["hits"])
-    assert out["hits"][0]["line"] == 120  # SG 0-indexed → 我们 1-indexed
+    assert out["hits"][0]["line"] == 3  # 命中所在行
 
 
-async def test_search_code_rejects_unknown_repo():
+async def test_search_code_missing_path_graceful(repo, monkeypatch):
+    monkeypatch.setenv("CODE_REPO_PATHS", json.dumps({"app_backend": "/no/such/dir/xyz"}))
+    from ai_engine.config import settings
+
+    settings.reload()
+    from ai_engine.agent.tools.search_code import run
+
+    # 配了路径但目录不存在（如生产没放代码副本）→ 优雅返回，不报错
+    out = await run(repo="app_backend", query="anything")
+    assert out["hits"] == [] and "note" in out
+
+
+async def test_search_code_rejects_unknown_repo(repo):
     from ai_engine.agent.tools.search_code import run
 
     with pytest.raises(ValueError) as e:
@@ -56,17 +49,15 @@ async def test_search_code_rejects_unknown_repo():
     assert "repo" in str(e.value)
 
 
-async def test_search_code_rejects_long_query():
+async def test_search_code_rejects_long_query(repo):
     from ai_engine.agent.tools.search_code import run
 
     with pytest.raises(ValueError):
         await run(repo="openapi_backend", query="a" * 1024)
 
 
-@respx.mock
-async def test_search_code_propagates_sg_error():
-    respx.post("http://sg/.api/graphql").mock(return_value=Response(500, text="boom"))
+async def test_search_code_no_match_returns_empty(repo):
     from ai_engine.agent.tools.search_code import run
 
-    with pytest.raises(RuntimeError):
-        await run(repo="openapi_backend", query="x")
+    out = await run(repo="openapi_backend", query="ThisStringDoesNotExistAnywhere12345")
+    assert out["hits"] == []

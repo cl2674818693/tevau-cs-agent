@@ -2,14 +2,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-ALLOWED_REPOS = {"app_frontend", "app_backend", "openapi_backend"}
-
-# 仓库别名 → Sourcegraph 上的 repo 标识（gitlab.tevaupay.com/<group>/<project>）
-REPO_MAP = {
-    "app_frontend": "gitlab.tevaupay.com/tevaupay-views/app/TevauPay-Flutter",
-    "app_backend": "gitlab.tevaupay.com/tevaupay/business-services/TevauPay-Service",
-    "openapi_backend": "gitlab.tevaupay.com/tevaupay/business-services/TevauNexus-Service",
-}
+# 代码仓库别名（本地路径见 settings.code_repo_paths；各别名含义见 search_code 工具说明）
+ALLOWED_REPOS = {"app_frontend", "app_backend", "admin_backend", "openapi_backend"}
 
 
 @dataclass

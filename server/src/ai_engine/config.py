@@ -13,8 +13,11 @@ class Settings(BaseSettings):
     default_model: str = "claude-sonnet-4-6"
     heavy_model: str = "claude-opus-4-7"
     summary_model: str = "claude-haiku-4-5"  # 会话总结/压缩用轻量模型（spec §8 会话治理）
-    sourcegraph_url: str = "http://localhost:7080"
+    sourcegraph_url: str = "http://localhost:7080"  # deprecated（search_code 改本地代码）
     sourcegraph_token: str = ""
+    # 代码仓库本地路径（search_code/read_file 直接搜读本地代码）。
+    # 别名 → 绝对路径；从 env CODE_REPO_PATHS（JSON）读。开发=本地 clone，生产=服务器代码副本。
+    code_repo_paths: dict[str, str] = Field(default_factory=dict)
     openapi_doc_path: str = "./repos/api-docs/openapi.json"
     prompts_dir: str = "./src/ai_engine/prompts"
     lark_webhook_url: str | None = None
