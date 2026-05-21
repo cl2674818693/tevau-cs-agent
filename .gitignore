@@ -35,3 +35,6 @@ node_modules/
 web/dist/
 web/coverage/
 .vite/
+
+# 后端通读 grep 中间产物（可由 docs 脚本重新生成）
+docs/backend-understanding/raw/
