@@ -21,6 +21,7 @@ versions:
       reply_style_b: v1.1.0/reply_style.b.md
       reply_style_c: v1.1.0/reply_style.c.md
       self_check: v1.1.0/self_check.md
-default: v1.1.0
+# v1.0.0=稳定基线（default）；v1.1.0=实验版（加"复述确认"行为），灰度 20% 验证效果
+default: v1.0.0
 rollout:
-  v1.1.0: 100
+  v1.1.0: 20

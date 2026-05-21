@@ -48,8 +48,8 @@ async def test_list_versions(admin_env):
     assert r.status_code == 200
     body = r.json()
     assert "v1.1.0" in body["versions"]
-    assert body["default"] == "v1.1.0"
-    assert body["rollout"]["v1.1.0"] == 100
+    assert body["default"] == "v1.0.0"
+    assert body["rollout"]["v1.1.0"] == 20
 
 
 async def test_agent_forbidden(admin_env):

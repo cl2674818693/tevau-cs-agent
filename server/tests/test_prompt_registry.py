@@ -5,10 +5,11 @@ from ai_engine.prompts.loader import build_system_blocks, read_prompt
 def test_default_version_and_files_exist():
     registry.reload_registry()
     v = registry.default_version()
-    assert v == "v1.1.0"
-    # 该版本所有 key 文件都能读
-    for key in ("role", "topic_scope", "classification", "tools_usage", "self_check"):
-        assert registry.file_path(v, key).exists()
+    assert v == "v1.0.0"  # 稳定基线
+    # 两个版本所有 key 文件都能读
+    for version in ("v1.0.0", "v1.1.0"):
+        for key in ("role", "topic_scope", "classification", "tools_usage", "self_check"):
+            assert registry.file_path(version, key).exists()
 
 
 def test_pick_version_is_deterministic():
@@ -19,11 +20,15 @@ def test_pick_version_is_deterministic():
     assert a in registry.list_versions()
 
 
-def test_full_rollout_routes_everyone_to_default():
+def test_canary_rollout_splits_and_falls_back_to_default():
     registry.reload_registry()
-    # 默认 registry 是 v1.1.0:100 → 所有 subject 都落 v1.1.0
-    for sid in ("U1", "U2", "BU_X", "anything"):
-        assert registry.pick_version(sid) == "v1.1.0"
+    # registry 是 v1.1.0:20 灰度，余 80% 回落 default(v1.0.0)
+    counts = {"v1.0.0": 0, "v1.1.0": 0}
+    for i in range(2000):
+        counts[registry.pick_version(f"user-{i}")] += 1
+    # 大头落稳定版，实验版拿到一部分（宽松边界）
+    assert counts["v1.0.0"] > counts["v1.1.0"]
+    assert counts["v1.1.0"] > 100
 
 
 def test_hash_bucketing_splits_by_ratio(monkeypatch):
@@ -58,3 +63,13 @@ def test_read_prompt_by_subject_id():
     registry.reload_registry()
     content = read_prompt("role", subject_id="BU1")
     assert len(content) > 0
+
+
+def test_versions_have_real_diff():
+    """v1.1.0 是实验版，含 v1.0.0 没有的"复述确认"增强（灰度才有意义）。"""
+    registry.reload_registry()
+    base = read_prompt("self_check", version="v1.0.0")
+    exp = read_prompt("self_check", version="v1.1.0")
+    assert base != exp
+    assert "复述" not in base
+    assert "复述" in exp
