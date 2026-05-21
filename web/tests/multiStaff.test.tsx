@@ -19,7 +19,10 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("staff api transfer/resolve/kpi", () => {
   it("transferConversation posts to transfer-to", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 200 })),
+    );
     const ok = await transferConversation("t", 3, "EN1");
     expect(ok).toBe(true);
     expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
@@ -28,7 +31,10 @@ describe("staff api transfer/resolve/kpi", () => {
   });
 
   it("resolveConversation posts to resolve", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 200 })),
+    );
     await resolveConversation("t", 3);
     expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
       "/staff/api/v1/conversations/3/resolve",
@@ -90,11 +96,12 @@ describe("KpiRoute", () => {
 
 describe("TakeoverFooter", () => {
   it("transfer calls api and notifies", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
-    const onNotice = vi.fn();
-    render(
-      <TakeoverFooter token="t" convId={5} onLocalEvent={vi.fn()} onNotice={onNotice} />,
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 200 })),
     );
+    const onNotice = vi.fn();
+    render(<TakeoverFooter token="t" convId={5} onLocalEvent={vi.fn()} onNotice={onNotice} />);
     fireEvent.change(screen.getByPlaceholderText("转派给 staff_id…"), {
       target: { value: "EN1" },
     });
@@ -103,11 +110,12 @@ describe("TakeoverFooter", () => {
   });
 
   it("resolve calls api and notifies", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
-    const onNotice = vi.fn();
-    render(
-      <TakeoverFooter token="t" convId={5} onLocalEvent={vi.fn()} onNotice={onNotice} />,
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 200 })),
     );
+    const onNotice = vi.fn();
+    render(<TakeoverFooter token="t" convId={5} onLocalEvent={vi.fn()} onNotice={onNotice} />);
     fireEvent.click(screen.getByText("标记已解决"));
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith("已标记解决并释放回 AI"));
   });

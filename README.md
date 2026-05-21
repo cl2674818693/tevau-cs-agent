@@ -33,7 +33,6 @@ mkdir -p data repos/api-docs repos/code
 # 1. 准备代码仓库副本（search_code/read_file 直接搜读本地代码，按固定别名 clone）
 git clone <Flutter APP 仓库>       repos/code/app_frontend
 git clone <TevauPay-Service>       repos/code/app_backend
-git clone <TevauPayAdmin-Service>  repos/code/admin_backend
 git clone <TevauNexus-Service>     repos/code/openapi_backend
 
 # 2. 从 Apifox 导出 OpenAPI 3.0 JSON → repos/api-docs/openapi.json
@@ -47,10 +46,10 @@ docker compose up --build api web
 
 ### 代码仓库同步（search_code / read_file 依赖）
 
-代码搜索/读取直接走 `repos/code/` 下的本地副本（**不用 Sourcegraph，无 license 限制，4 个仓库全覆盖**）：
+代码搜索/读取直接走 `repos/code/` 下的本地副本（**不用 Sourcegraph，无 license 限制**）：
 
 - 代码**不打进镜像**，通过挂载卷提供 → 镜像保持小、代码可独立更新。
-- 4 个别名固定：`app_frontend`(Flutter APP) / `app_backend`(C端APP后端) / `admin_backend`(管理后台) / `openapi_backend`(B端OpenAPI)。
+- 3 个别名固定：`app_frontend`(Flutter APP) / `app_backend`(C端APP后端) / `openapi_backend`(B端OpenAPI)。管理后台（admin_backend）含内部风控/审核逻辑，不暴露给面向用户的 AI，已从白名单移除。
 - **保持代码新鲜**：加定时拉取，例如 cron 每 30 分钟：
   ```bash
   */30 * * * * cd /srv/tevau-cs-engine/repos/code && for d in */; do (cd "$d" && git pull -q); done

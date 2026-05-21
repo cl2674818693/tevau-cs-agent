@@ -10,8 +10,8 @@ services:
       # 多份 OpenAPI 文档目录（C端/B端各一份 *.json）；挂载在容器内 /repos/api-docs
       - OPENAPI_DOCS_DIR=/repos/api-docs
       - PROMPTS_DIR=/app/src/ai_engine/prompts
-      # 代码搜索/读取：把 4 个仓库 clone 到宿主机 ./repos/code/<别名>，已挂载为容器内 /repos/code
-      - CODE_REPO_PATHS={"app_frontend":"/repos/code/app_frontend","app_backend":"/repos/code/app_backend","admin_backend":"/repos/code/admin_backend","openapi_backend":"/repos/code/openapi_backend"}
+      # 代码搜索/读取：把 3 个仓库 clone 到宿主机 ./repos/code/<别名>，已挂载为容器内 /repos/code
+      - CODE_REPO_PATHS={"app_frontend":"/repos/code/app_frontend","app_backend":"/repos/code/app_backend","openapi_backend":"/repos/code/openapi_backend"}
       - EVENT_CENTER_URL=${EVENT_CENTER_URL:-http://api:8000/_mock/event-center}
       # HMAC 双 key 热轮换（spec §7.4）：先灌 CURRENT，轮换时把旧值移到 PREVIOUS
       - EVENT_CENTER_SECRET_CURRENT=${EVENT_CENTER_SECRET_CURRENT:-mvp1-shared-secret}

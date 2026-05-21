@@ -137,11 +137,7 @@ export type StaffKpi = {
   avg_handle_seconds: number;
 };
 
-export async function getKpi(
-  token: string,
-  from?: string,
-  to?: string,
-): Promise<StaffKpi[]> {
+export async function getKpi(token: string, from?: string, to?: string): Promise<StaffKpi[]> {
   const qs = new URLSearchParams();
   if (from) qs.set("from", from);
   if (to) qs.set("to", to);

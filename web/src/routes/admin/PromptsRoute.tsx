@@ -45,7 +45,10 @@ export function PromptsRoute() {
     <div className="mx-auto max-w-[560px] px-page py-block-lg">
       <div className="flex items-center mb-3">
         <h2 className="text-sh2 text-ink-primary flex-1">Prompt 灰度管理</h2>
-        <button onClick={() => nav("/staff/conversations")} className="text-body3 text-ink-secondary">
+        <button
+          onClick={() => nav("/staff/conversations")}
+          className="text-body3 text-ink-secondary"
+        >
           返回
         </button>
       </div>

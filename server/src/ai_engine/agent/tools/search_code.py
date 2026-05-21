@@ -10,11 +10,31 @@ MAX_HITS_DEFAULT = 50
 _TIMEOUT = 8.0
 # 只搜源码，跳过依赖/构建/二进制
 _INCLUDE = (
-    "*.java", "*.kt", "*.dart", "*.go", "*.py", "*.ts", "*.js", "*.vue",
-    "*.sql", "*.xml", "*.yml", "*.yaml", "*.properties", "*.json", "*.md",
+    "*.java",
+    "*.kt",
+    "*.dart",
+    "*.go",
+    "*.py",
+    "*.ts",
+    "*.js",
+    "*.vue",
+    "*.sql",
+    "*.xml",
+    "*.yml",
+    "*.yaml",
+    "*.properties",
+    "*.json",
+    "*.md",
 )
 _EXCLUDE_DIR = (
-    ".git", "build", "target", "node_modules", "dist", ".idea", "__pycache__", ".dart_tool",
+    ".git",
+    "build",
+    "target",
+    "node_modules",
+    "dist",
+    ".idea",
+    "__pycache__",
+    ".dart_tool",
 )
 
 
@@ -61,7 +81,7 @@ def _parse_grep(out: bytes, base: str, max_hits: int) -> list[dict[str, Any]]:
         path, lineno, content = parts
         hits.append(
             {
-                "path": path[len(prefix):] if path.startswith(prefix) else path,
+                "path": path[len(prefix) :] if path.startswith(prefix) else path,
                 "line": int(lineno) if lineno.isdigit() else 0,
                 "preview": content.strip()[:300],
             }

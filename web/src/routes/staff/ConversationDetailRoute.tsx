@@ -63,7 +63,11 @@ export function ConversationDetailRoute() {
   const [events, pushEvent] = useStaffStream(token, convId);
   const [taken, setTaken] = useState(false);
   const [notice, setNotice] = useState("");
-  const { draftMode, aiDraft, toggleDraftMode, approve, reject } = useAiDraft(token, convId, events);
+  const { draftMode, aiDraft, toggleDraftMode, approve, reject } = useAiDraft(
+    token,
+    convId,
+    events,
+  );
 
   useEffect(() => {
     if (!token) nav("/staff/login");

@@ -24,8 +24,10 @@ async def test_self_check_injects_one_extra_round(seeded_db, monkeypatch):
     seq = iter(
         [
             _resp([_block("text", text="草稿：去看看代码吧。")], "end_turn"),
-            _resp([_block("text", text="修订：handler 在 card_bind.py，证据 search_code 命中。")],
-                  "end_turn"),
+            _resp(
+                [_block("text", text="修订：handler 在 card_bind.py，证据 search_code 命中。")],
+                "end_turn",
+            ),
         ]
     )
     fake = MagicMock()
