@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 
 # 代码仓库别名（本地路径见 settings.code_repo_paths；各别名含义见 search_code 工具说明）
-ALLOWED_REPOS = {"app_frontend", "app_backend", "admin_backend", "openapi_backend"}
+ALLOWED_REPOS = {"app_frontend", "app_backend", "openapi_backend"}
 
 
 @dataclass

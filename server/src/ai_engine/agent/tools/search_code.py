@@ -77,7 +77,7 @@ register(
         description=(
             "在指定代码仓库里按关键词搜索代码（本地代码，固定字符串匹配，非正则）。"
             "repo ∈ {app_frontend(Flutter APP), app_backend(C端APP后端), "
-            "admin_backend(管理后台), openapi_backend(B端OpenAPI)}。"
+            "openapi_backend(B端OpenAPI)}。"
             "query 用具体的函数名/类名/错误码/接口路径，不超过 200 字符。"
         ),
         input_schema={
