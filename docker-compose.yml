@@ -6,10 +6,10 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
       - DB_URL=sqlite+aiosqlite:////data/ai_engine.db
-      - SOURCEGRAPH_URL=http://sourcegraph:7080
-      - SOURCEGRAPH_TOKEN=${SOURCEGRAPH_TOKEN}
       - OPENAPI_DOC_PATH=/repos/api-docs/openapi.json
       - PROMPTS_DIR=/app/src/ai_engine/prompts
+      # 代码搜索/读取：把 4 个仓库 clone 到宿主机 ./repos/code/<别名>，已挂载为容器内 /repos/code
+      - CODE_REPO_PATHS={"app_frontend":"/repos/code/app_frontend","app_backend":"/repos/code/app_backend","admin_backend":"/repos/code/admin_backend","openapi_backend":"/repos/code/openapi_backend"}
       - EVENT_CENTER_URL=${EVENT_CENTER_URL:-http://api:8000/_mock/event-center}
       # HMAC 双 key 热轮换（spec §7.4）：先灌 CURRENT，轮换时把旧值移到 PREVIOUS
       - EVENT_CENTER_SECRET_CURRENT=${EVENT_CENTER_SECRET_CURRENT:-mvp1-shared-secret}

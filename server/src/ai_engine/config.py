@@ -18,7 +18,10 @@ class Settings(BaseSettings):
     # 代码仓库本地路径（search_code/read_file 直接搜读本地代码）。
     # 别名 → 绝对路径；从 env CODE_REPO_PATHS（JSON）读。开发=本地 clone，生产=服务器代码副本。
     code_repo_paths: dict[str, str] = Field(default_factory=dict)
-    openapi_doc_path: str = "./repos/api-docs/openapi.json"
+    # B/C 端 OpenAPI 文档目录：放多份独立文件（如 pay.openapi.json / nexus.openapi.json），
+    # 各自对应一个 Apifox 项目，独立维护。目录不存在/为空时回退到单文件 openapi_doc_path。
+    openapi_docs_dir: str = "./repos/api-docs"
+    openapi_doc_path: str = "./repos/api-docs/openapi.json"  # 单文件兼容（deprecated，优先用目录）
     prompts_dir: str = "./src/ai_engine/prompts"
     lark_webhook_url: str | None = None
     event_center_url: str = "http://localhost:8000/_mock/event-center"

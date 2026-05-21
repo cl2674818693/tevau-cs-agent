@@ -29,6 +29,7 @@ async def run(repo: str, query: str, max_hits: int = MAX_HITS_DEFAULT) -> dict[s
     base = settings.code_repo_paths.get(repo)
     if not base or not os.path.isdir(base):  # noqa: ASYNC240  仅轻量目录存在性检查
         return {"hits": [], "note": f"代码仓库 {repo} 未配置或路径不存在"}
+    base = os.path.realpath(base)  # noqa: ASYNC240  解析软链，确保 grep 进入真实目录
 
     # grep 固定字符串（-F）+ 参数传递（不走 shell）防注入；-I 跳二进制；-rn 递归带行号
     args = ["grep", "-rnI", "-F", "-e", query]
