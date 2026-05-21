@@ -49,7 +49,7 @@ make check        # 后端：lint + typecheck + test（CI 等价）
 make web-test     # 前端 vitest
 ```
 
-当前状态：**后端 153 测试通过，前端 61 测试通过**，全门禁绿。
+当前状态：**后端 166 测试通过，前端 62 测试通过**，全门禁绿。
 - 真实 MySQL 集成测试用 `testcontainers`，无 Docker 时自动 skip。
 - 多数 pytest warning 是无害的（FastAPI `on_event` deprecation、测试短 JWT key 长度提示）。
 
@@ -73,13 +73,21 @@ make web-test     # 前端 vitest
 14. 端到端 7 剧本验收（`server/tests/test_e2e_mvp3.py`）
 15. docker-compose 升级 + 阿里云 Prometheus 抓取配置 + 上线 checklist（见 README）
 
+**MVP-3 收尾修复（验收复查后发现"看着像、实则空"的 5 处，已全部补齐）**：
+1. **用户端收消息**（曾是真 bug）：客服回复 / 审核通过的草稿之前只 publish 到总线、用户收不到。新增用户侧常驻 SSE `GET /api/v1/conversations/{id}/messages-stream`，前端 `useChat` 订阅，接管/草稿消息实时到达。
+2. **多轮上下文**：`run_turn` 现会从 DB 回放会话历史给模型（之前每轮只带当前消息，AI 记不住上文）。
+3. **指标补全**：`human_pending` gauge 按 DB 实时刷新；新增 `ticket_resolution_seconds` / `staff_takeover_seconds` 真 histogram + 埋点；Grafana 质量面板换真实 `histogram_quantile`。
+4. **prompt 版本实差分**：`v1.0.0`=稳定基线（default），`v1.1.0`=实验版（"回答前先复述确认"增强），灰度 20%（此前两版是同一拷贝）。
+5. **engineer 解锁脱敏（§13.3）**：`Tool.supports_unmask` + `dispatch(unmask=...)`（剥离 AI 自带值防自助解锁）；engineer 代查可还原 PII/卡号/规则名，senior 仍脱敏。
+
 ## 关键约定 & 易踩的坑
 
-- **身份强制注入**：`agent/tool_router.dispatch` 会把会话的 `subject_id` 强写进工具参数，覆盖 AI 传值——AI 无法跨 BU/用户查数据。改工具时别绕过它。
-- **runtime 是无状态的**：`run_turn` 每次只带当前 user message（不回放历史）；会话治理的总结/开新会话据此设计。
-- **prompt 走版本注册表**：不要直接读 flat 文件。版本目录 `prompts/v1.x.x/` + `registry.yaml`；用 `loader.read_prompt(key, ...)` / `build_system_blocks(...)`。改灰度走 `/admin/prompts`（admin 角色）。
+- **身份强制注入**：`agent/tool_router.dispatch` 会把会话的 `subject_id` 强写进工具参数，覆盖 AI 传值——AI 无法跨 BU/用户查数据。改工具时别绕过它。同理 `unmask` 只由 staff 端点（engineer）控制，dispatch 会剥离 AI 传的 `unmask`。
+- **runtime 会回放历史**：`run_turn` 未压缩时从 DB 加载该会话历史作上下文（`_load_history`）；超阈值时改用压缩摘要 seed（会话治理）。改 messages 拼装逻辑时注意这两条路径。
+- **客服↔用户消息靠总线**：人工接管 / ai_draft 模式下，用户的 chat SSE 是 per-message 的，发完即关；客服回复 / 草稿审核结果走**用户侧常驻流** `messages-stream`（订阅 `_subscribers` 总线，只转发 `USER_FACING_EVENTS`）。别以为 chat SSE 能收到客服消息。
+- **prompt 走版本注册表**：不要直接读 flat 文件。版本目录 `prompts/v1.x.x/` + `registry.yaml`；用 `loader.read_prompt(key, ...)` / `build_system_blocks(...)`。默认 `v1.0.0`、`v1.1.0` 灰度 20%；改灰度走 `/admin/prompts`（admin 角色，热加载）。
 - **事项中心回调验签**：`/api/v1/tickets/{id}/events` 试 `EVENT_CENTER_SECRET_CURRENT` 与 `_PREVIOUS` 两把 key，轮换不停服。
-- **SSE 事件总线**：`api/staff_conversations` 的 `_subscribers` 按 conversation_id 分发；客服 stream / 旁观 / 工单状态推送都复用它（`register_subscriber` / `publish_conversation_event`）。
+- **SSE 事件总线**：`api/staff_conversations` 的 `_subscribers` 按 conversation_id 分发；客服 stream / 旁观 / 工单状态推送 / 用户侧 messages-stream 都复用它（`register_subscriber` / `publish_conversation_event`）。
 - **CWD 注意**：`make` 目标自带 `cd server` / `cd web`；手动跑工具时记得先进对应子目录（venv 在 `server/.venv`）。
 
 ## 上线前仍需补的两项（非代码）
