@@ -12,8 +12,9 @@
 
 1. 复制 `server/.env.example` 为 `server/.env`，填 `ANTHROPIC_API_KEY`（公司网关填 `ANTHROPIC_BASE_URL`）
 2. `make install`
-3. `make run`（后端，默认 :8000）
-4. `make web-install && make web-dev`（前端，默认 :5173）
+3. （可选，启用代码搜索）软链/clone 4 个仓库到 `repos/code/<别名>`，并在 `server/.env` 配 `CODE_REPO_PATHS`（见下「代码仓库同步」）
+4. `make run`（后端，默认 :8000）
+5. `make web-install && make web-dev`（前端，默认 :5173）
 
 ## 测试
 
@@ -26,37 +27,43 @@
 ### 第一次启动顺序
 
 ```bash
-cp server/.env.example server/.env   # 填 ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL（暂留 SOURCEGRAPH_TOKEN 空）
-mkdir -p data repos/api-docs
+cp server/.env.example server/.env   # 填 ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL
+mkdir -p data repos/api-docs repos/code
 
-# 1. 先只起 sourcegraph 做初始化
-docker compose up -d sourcegraph
+# 1. 准备代码仓库副本（search_code/read_file 直接搜读本地代码，按固定别名 clone）
+git clone <Flutter APP 仓库>       repos/code/app_frontend
+git clone <TevauPay-Service>       repos/code/app_backend
+git clone <TevauPayAdmin-Service>  repos/code/admin_backend
+git clone <TevauNexus-Service>     repos/code/openapi_backend
 
-# 2. 浏览器打开 http://localhost:7080
-#    - 创建 admin 账号
-#    - Settings → Access tokens → 生成 token，复制到 .env 的 SOURCEGRAPH_TOKEN
-#    - Site admin → External services → Add GitLab connector
-#      - URL: https://gitlab.tevaupay.com，Token: GitLab PAT（scope: api、read_repository）
-#      - 仓库白名单：
-#          tevaupay-views/app/TevauPay-Flutter
-#          tevaupay/business-services/TevauPay-Service
-#          tevaupay/business-services/TevauNexus-Service
-#      - 等 indexing 完成（首次 5-30 分钟）
+# 2. 从 Apifox 导出 OpenAPI 3.0 JSON → repos/api-docs/openapi.json
 
-# 3. 从 Apifox 导出 OpenAPI 3.0 JSON → repos/api-docs/openapi.json
-
-# 4. 起 api + web
+# 3. 起 api + web
 docker compose up --build api web
 ```
 
-后端 :8000，前端 :5173，Sourcegraph :7080。日常启动 `docker compose up`（Sourcegraph 数据持久化在 docker volume）。
+后端 :8000，前端 :5173。compose 把 `./repos` 挂载为容器内 `/repos`（只读）；
+`CODE_REPO_PATHS` 已在 `docker-compose.yml` 配好指向 `/repos/code/<别名>`。
+
+### 代码仓库同步（search_code / read_file 依赖）
+
+代码搜索/读取直接走 `repos/code/` 下的本地副本（**不用 Sourcegraph，无 license 限制，4 个仓库全覆盖**）：
+
+- 代码**不打进镜像**，通过挂载卷提供 → 镜像保持小、代码可独立更新。
+- 4 个别名固定：`app_frontend`(Flutter APP) / `app_backend`(C端APP后端) / `admin_backend`(管理后台) / `openapi_backend`(B端OpenAPI)。
+- **保持代码新鲜**：加定时拉取，例如 cron 每 30 分钟：
+  ```bash
+  */30 * * * * cd /srv/tevau-cs-engine/repos/code && for d in */; do (cd "$d" && git pull -q); done
+  ```
+- 本地开发可用软链代替 clone：`ln -sfn <本地仓库绝对路径> repos/code/<别名>`（`search_code` 会 realpath 解析软链）。
 
 ### 上线前必须有的外部依赖（spec §12.2）
 
-- `SOURCEGRAPH_TOKEN`：Sourcegraph 后台生成
-- GitLab PAT：配在 Sourcegraph 后台（不进 AI 引擎 .env）
+- `repos/code/<别名>`：4 个代码仓库副本 + 定时 `git pull`（见上）
+- `repos/api-docs/openapi.json`：从 Apifox 导出（`lookup_api_doc` 用）
 - `LARK_WEBHOOK_URL`：现"Open Api 问题工单通知群"机器人 webhook
-- `repos/api-docs/openapi.json`：从 Apifox 导出
+- 业务库：`UNLIMITPAY_DB_URL` / `NEXUS_DB_URL`（阿里云 RDS 只读账号）
+- C 端身份对接：见 [`docs/backend-understanding/identity-and-auth.md`](docs/backend-understanding/identity-and-auth.md)（Sa-Token → getCurrentUserInfo → user_id）
 
 ## MVP-2 增量（业务库 / 客服 / B 端登录）
 
