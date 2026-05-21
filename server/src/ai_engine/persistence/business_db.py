@@ -37,6 +37,7 @@ class BusinessDB:
                 minsize=1,
                 maxsize=10,
                 autocommit=True,
+                charset="utf8mb4",  # 否则中文字段（如 lock_reason）乱码
             )
         return self._pool
 

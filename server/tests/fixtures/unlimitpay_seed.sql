@@ -1,3 +1,6 @@
+-- 确保以 utf8mb4 装载（compose MySQL 默认 client charset 为 latin1，否则中文双重编码）
+SET NAMES utf8mb4;
+
 CREATE TABLE IF NOT EXISTS bu (
     bu_id VARCHAR(20) PRIMARY KEY,
     name VARCHAR(100),
