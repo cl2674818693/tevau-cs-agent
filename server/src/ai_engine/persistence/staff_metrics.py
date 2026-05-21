@@ -16,6 +16,7 @@ async def refresh_human_pending() -> None:
     """按 DB 真实计数刷新 human_pending gauge（在改 mode 的端点调用）。"""
     metrics.human_pending.set(await count_pending())
 
+
 _END_ACTIONS = {"release", "resolved", "transfer_out"}
 
 

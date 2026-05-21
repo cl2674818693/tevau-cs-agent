@@ -48,9 +48,7 @@ async def count_pending() -> int:
     """当前等待人工接管的会话数（spec §11 human_pending gauge）。"""
     async with get_conn() as conn:
         row = await (
-            await conn.execute(
-                "SELECT COUNT(*) AS n FROM conversations WHERE mode='human_pending'"
-            )
+            await conn.execute("SELECT COUNT(*) AS n FROM conversations WHERE mode='human_pending'")
         ).fetchone()
     return int(row["n"]) if row else 0
 

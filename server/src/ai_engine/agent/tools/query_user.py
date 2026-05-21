@@ -4,29 +4,41 @@ from ai_engine.agent.tools.base import Tool, register
 from ai_engine.integrations.redact import mask_email, mask_phone
 from ai_engine.persistence.business_db import get_db
 
-# TODO: 接到真实 unlimitpay_test schema 后校对表名/字段（spec §12.2 第 9 条）
+# 真实库 unlimitpay_test.t_tevaupay_user（C 端用户主表），按主键 id 隔离（= 当前登录 user_id）
 SQL = """
-SELECT user_id, bu_id, email, phone, status
-FROM user
-WHERE user_id=%s AND bu_id=%s
+SELECT id, user_code, email_address, mobile_phone, nick_name, user_status, kyc_status,
+       open_card_status, registration_time, last_login_time
+FROM t_tevaupay_user
+WHERE id=%s AND del=0
 """
 
+_USER_STATUS: dict[Any, str] = {0: "正常", 1: "冻结", 2: "注销"}
+_KYC_STATUS: dict[Any, str] = {0: "审核中", 1: "认证通过", 2: "未通过", 5: "未认证"}
+_OPEN_CARD: dict[Any, str] = {0: "未开卡", 1: "已开卡"}
 
-async def run(bu_id: str, user_id: str, unmask: bool = False) -> dict[str, Any]:
+
+async def run(user_id: str, unmask: bool = False) -> dict[str, Any]:
+    """查当前用户的账户概览（状态/KYC 概览/开卡状态；邮箱手机脱敏）。"""
     db = get_db("unlimitpay")
-    row = await db.fetch_one(SQL, (user_id, bu_id))
+    row = await db.fetch_one(SQL, (user_id,))
     if not row:
-        return {"user": None, "note": f"user {user_id} not in BU {bu_id}"}
-    # 脱敏在 handler 内做（spec §5.4）；unmask 仅 engineer 代查时 True（§13.3）
-    email = row.get("email")
-    phone = row.get("phone")
+        return {"user": None, "note": f"user {user_id} not found"}
+    email = row.get("email_address")
+    phone = row.get("mobile_phone")
+    reg = row.get("registration_time")
+    last = row.get("last_login_time")
     return {
         "user": {
-            "user_id": row["user_id"],
-            "bu_id": row["bu_id"],
+            "user_id": row["id"],
+            "user_code": row.get("user_code"),
+            "nick_name": row.get("nick_name"),
             "email": email if unmask else mask_email(email),
             "phone": phone if unmask else mask_phone(phone),
-            "status": row.get("status"),
+            "user_status": _USER_STATUS.get(row.get("user_status"), row.get("user_status")),
+            "kyc_status": _KYC_STATUS.get(row.get("kyc_status"), row.get("kyc_status")),
+            "open_card_status": _OPEN_CARD.get(row.get("open_card_status")),
+            "registration_time": str(reg) if reg else None,
+            "last_login_time": str(last) if last else None,
         },
         "unmasked": unmask,
     }
@@ -35,17 +47,18 @@ async def run(bu_id: str, user_id: str, unmask: bool = False) -> dict[str, Any]:
 register(
     Tool(
         name="query_user",
-        description="查询某个 user 的基本信息（仅限当前 BU 下，敏感字段已脱敏）。",
+        description=(
+            "查询当前用户的账户概览（账户状态、KYC 状态、开卡状态；邮箱手机已脱敏）。"
+            "用户问'我的账户状态''实名过了吗'时用。"
+        ),
         input_schema={
             "type": "object",
-            "properties": {
-                "bu_id": {"type": "string"},  # router 强制注入
-                "user_id": {"type": "string"},
-            },
-            "required": ["user_id"],
+            "properties": {"user_id": {"type": "string"}},  # router 强制注入
+            "required": [],
         },
         handler=run,
         requires_subject_id=True,
+        subject_field="user_id",
         supports_unmask=True,
     )
 )

@@ -56,7 +56,7 @@ async def test_e2e_bug_diagnosis_creates_ticket(seeded_db, monkeypatch):
     seq = iter(
         [
             _resp(
-                [_block("tool_use", id="1", name="query_api_call", input={"uid": "1765348436409"})],
+                [_block("tool_use", id="1", name="query_bu_order", input={})],
                 "tool_use",
             ),
             _resp(
@@ -116,7 +116,7 @@ async def test_e2e_bug_diagnosis_creates_ticket(seeded_db, monkeypatch):
                 if line.strip() == "event: tool_result":
                     tool_results.append(line)
 
-    assert len(tool_results) == 3  # query_api_call + search_code + create_ticket
+    assert len(tool_results) == 3  # query_bu_order + search_code + create_ticket
     assert posted and posted[-1]["category"] == "bug"
 
 
@@ -133,8 +133,8 @@ async def test_e2e_cross_bu_query_is_blocked(seeded_db, monkeypatch):
                     _block(
                         "tool_use",
                         id="1",
-                        name="query_card",
-                        input={"bu_id": "BU_OTHER", "card_id": "1111222233334444"},
+                        name="query_bu_order",
+                        input={},
                     )
                 ],
                 "tool_use",

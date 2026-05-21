@@ -5,29 +5,29 @@ async def test_router_injects_subject_id_for_subject_required_tool(monkeypatch, 
 
     await init_db()  # dispatch 总会 log_tool_call，需要审计表
 
-    async def fake_handler(bu_id: str):
-        return {"bu_id": bu_id}
+    async def fake_handler(subject_id: str):
+        return {"subject_id": subject_id}
 
     base.register(
         base.Tool(
             name="query_bu_fake",
             description="fake",
-            input_schema={"type": "object", "properties": {"bu_id": {"type": "string"}}},
+            input_schema={"type": "object", "properties": {}},
             handler=fake_handler,
-            requires_subject_id=True,
+            requires_subject_id=True,  # subject_field 默认 "subject_id"
         )
     )
 
-    # AI 试图传 bu_id=BU_OTHER，router 应强制覆盖为会话身份 BU00243780
+    # AI 试图传 subject_id=OTHER，router 应强制覆盖为会话身份
     result = await dispatch(
         tool_name="query_bu_fake",
-        params={"bu_id": "BU_OTHER"},
+        params={"subject_id": "OTHER"},
         user_type="b",
-        subject_id="BU00243780",
+        subject_id="100000",
         conversation_id=1,
     )
     assert result["ok"] is True
-    assert result["data"]["bu_id"] == "BU00243780"
+    assert result["data"]["subject_id"] == "100000"
 
 
 async def test_router_rejects_unknown_tool(monkeypatch, temp_db_url):

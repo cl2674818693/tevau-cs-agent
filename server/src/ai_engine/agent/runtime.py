@@ -9,8 +9,12 @@ from ai_engine.agent.tools import (  # noqa: F401  import 即注册工具
     base,  # 触发工具注册
     create_ticket,
     lookup_api_doc,
-    query_api_call,
+    query_balance,
+    query_bu_order,
+    query_bu_request_log,
     query_card,
+    query_kyc,
+    query_transaction,
     query_user,
     read_file,
     search_code,
@@ -71,10 +75,14 @@ async def _budget_gate(
     in_tok, out_tok = _usage(resp)
     allowed, info = await check_and_record(user_type, subject_id, in_tok, out_tok)
     if not allowed:
-        return True, {
-            "type": "system",
-            "text": "您今日的 AI 服务额度已用完，请明日再试，或点'转人工'。",
-        }, warned
+        return (
+            True,
+            {
+                "type": "system",
+                "text": "您今日的 AI 服务额度已用完，请明日再试，或点'转人工'。",
+            },
+            warned,
+        )
     if info.get("warn") and not warned:
         return False, {"type": "system", "text": "您今日 AI 服务额度已用 80%。"}, True
     return False, None, warned

@@ -61,7 +61,7 @@ async def test_senior_runs_tool_with_forced_identity(tokens, monkeypatch):
     from ai_engine.agent.tools import base
     from ai_engine.persistence.conversations import create_conversation
 
-    cid = await create_conversation("b", "BU00243780")
+    cid = await create_conversation("c", "838")  # C 端用户会话
 
     seen: dict[str, object] = {}
 
@@ -77,15 +77,15 @@ async def test_senior_runs_tool_with_forced_identity(tokens, monkeypatch):
     async with AsyncClient(transport=transport, base_url="http://t") as client:
         r = await client.post(
             f"/staff/api/v1/conversations/{cid}/ai-tools/query_user",
-            json={"params": {"bu_id": "BU_OTHER", "user_id": "U1"}},
+            json={"params": {"user_id": "OTHER"}},
             headers=_h(tokens["senior"]),
         )
     assert r.status_code == 200
     out = r.json()
     assert out["ok"] is True
     assert out["data"]["masked_phone"] == "138****78"
-    # 身份被强制覆盖为会话 bu
-    assert seen["bu_id"] == "BU00243780"
+    # 身份被强制覆盖为会话用户（C 端注入 user_id）
+    assert seen["user_id"] == "838"
 
 
 async def test_unknown_conversation_404(tokens):
@@ -107,7 +107,7 @@ async def test_engineer_unmask_true_senior_false(tokens, monkeypatch):
     from ai_engine.agent.tools import base
     from ai_engine.persistence.conversations import create_conversation
 
-    cid = await create_conversation("b", "BU00243780")
+    cid = await create_conversation("c", "838")  # C 端用户会话
 
     seen: dict[str, object] = {}
 
@@ -157,9 +157,9 @@ async def test_ai_cannot_self_unlock_unmask(seeded_db):
         # 模拟 AI 自带 unmask=True，dispatch 未传 unmask（默认 False）
         await dispatch(
             tool_name="query_card",
-            params={"card_id": "C1", "unmask": True},
-            user_type="b",
-            subject_id="BU1",
+            params={"user_id": "OTHER", "unmask": True},
+            user_type="c",
+            subject_id="838",
             conversation_id=1,
         )
     assert seen["unmask"] is False

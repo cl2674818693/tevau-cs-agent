@@ -18,7 +18,8 @@ class Tool:
     description: str
     input_schema: dict[str, Any]
     handler: Callable[..., Awaitable[Any]]
-    requires_subject_id: bool = False  # True 则 router 会强制注入 subject_id
+    requires_subject_id: bool = False  # True 则 router 会强制注入身份
+    subject_field: str = "subject_id"  # 身份值注入到 handler 的哪个参数（C=user_id/B=tenant_id…）
     supports_unmask: bool = False  # True 则 engineer 代查时可解锁部分脱敏（spec §13.3）
 
 

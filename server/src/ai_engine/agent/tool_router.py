@@ -9,10 +9,6 @@ from ai_engine.persistence.audit import log_tool_call
 NEEDS_CONVERSATION_ID = {"create_ticket"}
 
 
-def _subject_param_name(user_type: str) -> str:
-    return "bu_id" if user_type == "b" else "user_id"
-
-
 async def dispatch(
     *,
     tool_name: str,
@@ -28,12 +24,12 @@ async def dispatch(
         metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
         return {"ok": False, "error": f"unknown tool: {tool_name}"}
 
-    # 身份注入：把 subject_id 强写入对应字段，覆盖 AI 传值
+    # 身份注入：把会话身份强写入工具声明的 subject_field（覆盖 AI 传值）。
+    # 工具内部按自身语义用该值查对应列（C 端 user_id / B 端 tenant_id / 工单 bu_id）。
     safe_params = dict(params)
-    # 安全：AI 不能自助解锁脱敏，unmask 只由调用方（staff 端点）控制
     safe_params.pop("unmask", None)
     if tool.requires_subject_id:
-        safe_params[_subject_param_name(user_type)] = subject_id
+        safe_params[tool.subject_field] = subject_id
     # 个别工具需要 conversation_id（如 create_ticket）；统一注入
     if tool_name in NEEDS_CONVERSATION_ID:
         safe_params["conversation_id"] = conversation_id

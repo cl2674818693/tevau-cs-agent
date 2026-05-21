@@ -256,7 +256,11 @@ async def stream(
 _STAFF_TOOL_WHITELIST = {
     "query_user",
     "query_card",
-    "query_api_call",
+    "query_kyc",
+    "query_balance",
+    "query_transaction",
+    "query_bu_order",
+    "query_bu_request_log",
     "search_code",
     "lookup_api_doc",
     "read_file",
