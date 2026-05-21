@@ -14,7 +14,7 @@ from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
 from ai_engine.persistence.db import get_conn
 from ai_engine.persistence.staff import get_staff
-from ai_engine.persistence.staff_metrics import log_staff_action
+from ai_engine.persistence.staff_metrics import log_staff_action, refresh_human_pending
 
 router = APIRouter()
 
@@ -69,6 +69,7 @@ async def take(conv_id: int, staff: dict[str, Any] = Depends(require_staff)) -> 
             raise HTTPException(409, "already taken by another staff")
     await log_staff_action(conv_id, staff["sub"], "take")
     metrics.staff_takeovers.labels(staff_id=staff["sub"]).inc()
+    await refresh_human_pending()
     _publish(conv_id, {"type": "mode_change", "to": "human_takeover", "by_staff_id": staff["sub"]})
     return {"ok": True}
 
@@ -170,6 +171,7 @@ async def ai_draft_enable(
             (staff["sub"], conv_id),
         )
         await conn.commit()
+    await refresh_human_pending()
     _publish(conv_id, {"type": "mode_change", "to": "ai_draft", "by_staff_id": staff["sub"]})
     return {"ok": True}
 

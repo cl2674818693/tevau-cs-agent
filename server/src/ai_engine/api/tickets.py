@@ -1,11 +1,13 @@
 import hashlib
 import hmac
 import json
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from ai_engine.api.staff_conversations import publish_conversation_event
 from ai_engine.config import settings
+from ai_engine.observability import metrics
 from ai_engine.persistence.tickets import (
     append_ticket_event,
     get_ticket,
@@ -57,4 +59,19 @@ async def receive_event(
                 "comment": body.get("comment"),
             },
         )
+        if event in ("resolved", "closed"):
+            _observe_resolution(ticket)
     return {"ok": True}
+
+
+def _observe_resolution(ticket: dict[str, object]) -> None:
+    """工单解决耗时入 histogram（spec §11）。created_at 为 sqlite 朴素 UTC。"""
+    try:
+        created = datetime.fromisoformat(str(ticket["created_at"]))
+    except (ValueError, KeyError):
+        return
+    elapsed = (datetime.now(UTC).replace(tzinfo=None) - created).total_seconds()
+    payload = json.loads(str(ticket.get("payload_json", "{}")))
+    category = str(payload.get("category", "unknown"))
+    if elapsed >= 0:
+        metrics.ticket_resolution_seconds.labels(category=category).observe(elapsed)

@@ -88,7 +88,7 @@ C 端身份链路已落地（`auth/c_jwt.py` 验签 RS256；`resolve_identity` B
 
 ## MVP-3 可观测性（Prometheus + Grafana）
 
-后端 `GET /metrics` 暴露 Prometheus 指标（`ai_engine_*`：active_conversations、tool_calls/duration、llm_calls/tokens、tickets、staff_takeovers、user_resolved）。
+后端 `GET /metrics` 暴露 Prometheus 指标（`ai_engine_*`：active_conversations、human_pending、tool_calls/duration、llm_calls/tokens、tickets + ticket_resolution_seconds、staff_takeovers + staff_takeover_seconds、user_resolved）。
 
 ### 接入步骤
 
@@ -103,7 +103,7 @@ C 端身份链路已落地（`auth/c_jwt.py` 验签 RS256；`resolve_identity` B
 2. Grafana → Dashboards → Import → 上传 `grafana/tevau-ai-engine.dashboard.json`，选择 Prometheus 数据源。
 3. 面板含 4 类视角：实时运营 / 趋势（含成本估算）/ 质量 / 告警（规则在 `alerts.rules.yml`）。
 
-> 成本估算 panel 按 sonnet 价（input $3/M、output $15/M）估算，按实际合同价调整系数；工单 SLA / 接管时长 histogram 待后续埋点补全（当前用接管次数与解决率近似）。
+> 成本估算 panel 按 sonnet 价（input $3/M、output $15/M）估算，按实际合同价调整系数。工单解决耗时（`ticket_resolution_seconds`）、客服接管时长（`staff_takeover_seconds`）已为真实 histogram，面板用 `histogram_quantile` 出 p50/p90；`human_pending` gauge 按 DB 实时刷新。
 
 阿里云 Prometheus 抓取配置示例见 `infra/prometheus-scrape-config.example.yaml`。
 

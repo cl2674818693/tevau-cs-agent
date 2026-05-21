@@ -138,9 +138,47 @@
     },
     {
       "type": "timeseries",
-      "title": "客服接管次数 (Top)",
+      "title": "客服平均接管时长 (p50/p90)",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 7, "w": 8, "x": 16, "y": 16 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum(rate(ai_engine_staff_takeover_seconds_bucket[1h])) by (le))",
+          "refId": "A",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.9, sum(rate(ai_engine_staff_takeover_seconds_bucket[1h])) by (le))",
+          "refId": "B",
+          "legendFormat": "p90"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "工单解决耗时 (p90, 按 category)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 23 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.9, sum(rate(ai_engine_ticket_resolution_seconds_bucket[6h])) by (le, category))",
+          "refId": "A",
+          "legendFormat": "{{category}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "等待人工的会话数",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 23 },
+      "targets": [{ "expr": "ai_engine_human_pending", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "客服接管次数 (Top)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 23 },
       "targets": [
         {
           "expr": "topk(10, sum(rate(ai_engine_staff_takeovers_total[1h])) by (staff_id))",

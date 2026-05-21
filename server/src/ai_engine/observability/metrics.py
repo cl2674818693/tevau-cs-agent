@@ -18,9 +18,21 @@ llm_calls = Counter("ai_engine_llm_calls_total", "LLM 调用次数", ["model"])
 tickets_created = Counter(
     "ai_engine_tickets_total", "工单创建", ["category", "severity", "user_type"]
 )
+ticket_resolution_seconds = Histogram(
+    "ai_engine_ticket_resolution_seconds",
+    "工单从创建到 resolved/closed 的耗时",
+    ["category"],
+    buckets=(60, 300, 900, 1800, 3600, 14400, 43200, 86400, 259200),
+)
 
 # 客服
 staff_takeovers = Counter("ai_engine_staff_takeovers_total", "客服接管次数", ["staff_id"])
+staff_takeover_seconds = Histogram(
+    "ai_engine_staff_takeover_seconds",
+    "客服单次接管时长（take→release/resolve/transfer）",
+    ["staff_id"],
+    buckets=(30, 60, 300, 900, 1800, 3600, 7200, 14400),
+)
 
 # 用户满意度
 user_resolved_total = Counter("ai_engine_user_resolved_total", "用户标记解决", ["event"])

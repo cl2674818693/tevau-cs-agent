@@ -11,6 +11,7 @@ from ai_engine.integrations.event_center_client import push_event_center
 from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
 from ai_engine.persistence import tickets as ticket_dao
+from ai_engine.persistence.staff_metrics import refresh_human_pending
 
 router = APIRouter()
 
@@ -26,6 +27,7 @@ async def request_human(conv_id: int, body: RequestHumanIn, request: Request) ->
     if mode == "human_takeover":
         return {"ok": True, "note": "already human-handled"}
     await conv_dao.set_mode(conv_id, "human_pending")
+    await refresh_human_pending()
     out = await create_ticket_run(
         bu_id=subject_id,
         conversation_id=conv_id,

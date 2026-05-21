@@ -4,10 +4,17 @@ staff_actions 记录 take/release/transfer_out/transfer_in/resolved，KPI 从中
 接管数、平均接管时长、释放回 AI 比例、解决率。
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
+from ai_engine.observability import metrics
+from ai_engine.persistence.conversations import count_pending
 from ai_engine.persistence.db import get_conn
+
+
+async def refresh_human_pending() -> None:
+    """按 DB 真实计数刷新 human_pending gauge（在改 mode 的端点调用）。"""
+    metrics.human_pending.set(await count_pending())
 
 _END_ACTIONS = {"release", "resolved", "transfer_out"}
 
@@ -18,7 +25,21 @@ async def log_staff_action(conv_id: int, staff_id: str, action: str) -> None:
             "INSERT INTO staff_actions(conversation_id, staff_id, action) VALUES (?,?,?)",
             (conv_id, staff_id, action),
         )
+        if action in _END_ACTIONS:
+            row = await (
+                await conn.execute(
+                    "SELECT at FROM staff_actions WHERE conversation_id=? AND staff_id=? "
+                    "AND action='take' ORDER BY id DESC LIMIT 1",
+                    (conv_id, staff_id),
+                )
+            ).fetchone()
+        else:
+            row = None
         await conn.commit()
+    if row:
+        elapsed = (datetime.now(UTC).replace(tzinfo=None) - _parse(row["at"])).total_seconds()
+        if elapsed >= 0:
+            metrics.staff_takeover_seconds.labels(staff_id=staff_id).observe(elapsed)
 
 
 async def _load_actions(date_from: str | None, date_to: str | None) -> list[dict[str, Any]]:

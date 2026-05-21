@@ -44,6 +44,17 @@ async def append_message(conv_id: int, role: str, content: str) -> int:
         return cur.lastrowid
 
 
+async def count_pending() -> int:
+    """当前等待人工接管的会话数（spec §11 human_pending gauge）。"""
+    async with get_conn() as conn:
+        row = await (
+            await conn.execute(
+                "SELECT COUNT(*) AS n FROM conversations WHERE mode='human_pending'"
+            )
+        ).fetchone()
+    return int(row["n"]) if row else 0
+
+
 async def archive_conversation(conv_id: int) -> None:
     """spec §8: 会话过长被总结后归档老会话。"""
     async with get_conn() as conn:
