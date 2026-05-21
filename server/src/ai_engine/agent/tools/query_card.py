@@ -20,20 +20,24 @@ def _translate_lock_reason(raw: str | None) -> str | None:
     return re.sub(r"R-\d{2,4}", "风控规则命中", raw)
 
 
-async def run(bu_id: str, card_id: str) -> dict[str, Any]:
+async def run(bu_id: str, card_id: str, unmask: bool = False) -> dict[str, Any]:
     db = get_db("unlimitpay")
     row = await db.fetch_one(SQL, (card_id, bu_id))
     if not row:
         return {"card": None, "note": f"card {card_id} not in BU {bu_id}"}
+    # unmask 仅 engineer 代查时 True（§13.3）：还原全卡号与原始风控规则名
+    card_no = row.get("card_no")
+    lock_reason = row.get("lock_reason")
     return {
         "card": {
             "card_id": row["card_id"],
             "user_id": row["user_id"],
             "bu_id": row["bu_id"],
-            "card_no": mask_card_no(row.get("card_no")),
+            "card_no": card_no if unmask else mask_card_no(card_no),
             "status": row.get("status"),
-            "lock_reason": _translate_lock_reason(row.get("lock_reason")),
-        }
+            "lock_reason": lock_reason if unmask else _translate_lock_reason(lock_reason),
+        },
+        "unmasked": unmask,
     }
 
 
@@ -51,5 +55,6 @@ register(
         },
         handler=run,
         requires_subject_id=True,
+        supports_unmask=True,
     )
 )

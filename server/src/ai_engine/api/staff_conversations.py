@@ -282,12 +282,14 @@ async def run_ai_tool(
     conv = await conv_dao.get_conversation(conv_id)
     if conv is None:
         raise HTTPException(404, "conversation not found")
+    # spec §13.3：仅 engineer 可解锁部分脱敏；senior 看脱敏结果
     return await dispatch(
         tool_name=tool_name,
         params=body.params,
         user_type=str(conv["user_type"]),
         subject_id=str(conv["subject_id"]),
         conversation_id=conv_id,
+        unmask=(staff.get("role") == "engineer"),
     )
 
 

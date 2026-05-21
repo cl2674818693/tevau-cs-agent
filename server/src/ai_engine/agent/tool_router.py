@@ -20,6 +20,7 @@ async def dispatch(
     user_type: str,
     subject_id: str,
     conversation_id: int,
+    unmask: bool = False,
 ) -> dict[str, Any]:
     tool = base.get(tool_name)
     if tool is None:
@@ -29,11 +30,16 @@ async def dispatch(
 
     # 身份注入：把 subject_id 强写入对应字段，覆盖 AI 传值
     safe_params = dict(params)
+    # 安全：AI 不能自助解锁脱敏，unmask 只由调用方（staff 端点）控制
+    safe_params.pop("unmask", None)
     if tool.requires_subject_id:
         safe_params[_subject_param_name(user_type)] = subject_id
     # 个别工具需要 conversation_id（如 create_ticket）；统一注入
     if tool_name in NEEDS_CONVERSATION_ID:
         safe_params["conversation_id"] = conversation_id
+    # spec §13.3：engineer 代查时解锁部分脱敏；仅对声明支持的工具注入
+    if tool.supports_unmask and unmask:
+        safe_params["unmask"] = True
 
     started = time.perf_counter()
     try:

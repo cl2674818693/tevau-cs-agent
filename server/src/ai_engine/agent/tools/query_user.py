@@ -12,20 +12,23 @@ WHERE user_id=%s AND bu_id=%s
 """
 
 
-async def run(bu_id: str, user_id: str) -> dict[str, Any]:
+async def run(bu_id: str, user_id: str, unmask: bool = False) -> dict[str, Any]:
     db = get_db("unlimitpay")
     row = await db.fetch_one(SQL, (user_id, bu_id))
     if not row:
         return {"user": None, "note": f"user {user_id} not in BU {bu_id}"}
-    # 脱敏在 handler 内做（spec §5.4）—— LLM 看不到原文
+    # 脱敏在 handler 内做（spec §5.4）；unmask 仅 engineer 代查时 True（§13.3）
+    email = row.get("email")
+    phone = row.get("phone")
     return {
         "user": {
             "user_id": row["user_id"],
             "bu_id": row["bu_id"],
-            "email": mask_email(row.get("email")),
-            "phone": mask_phone(row.get("phone")),
+            "email": email if unmask else mask_email(email),
+            "phone": phone if unmask else mask_phone(phone),
             "status": row.get("status"),
-        }
+        },
+        "unmasked": unmask,
     }
 
 
@@ -43,5 +46,6 @@ register(
         },
         handler=run,
         requires_subject_id=True,
+        supports_unmask=True,
     )
 )

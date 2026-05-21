@@ -19,6 +19,7 @@ class Tool:
     input_schema: dict[str, Any]
     handler: Callable[..., Awaitable[Any]]
     requires_subject_id: bool = False  # True 则 router 会强制注入 subject_id
+    supports_unmask: bool = False  # True 则 engineer 代查时可解锁部分脱敏（spec §13.3）
 
 
 REGISTRY: dict[str, Tool] = {}

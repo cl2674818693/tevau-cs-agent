@@ -13,9 +13,11 @@ async def tokens(seeded_db, monkeypatch):
 
     await create_staff("AG1", "客服", "agent", "x")
     await create_staff("SR1", "高级", "senior", "x")
+    await create_staff("EN1", "工程师", "engineer", "x")
     return {
         "agent": issue_staff_token("AG1", "agent"),
         "senior": issue_staff_token("SR1", "senior"),
+        "eng": issue_staff_token("EN1", "engineer"),
     }
 
 
@@ -97,3 +99,67 @@ async def test_unknown_conversation_404(tokens):
             headers=_h(tokens["senior"]),
         )
     assert r.status_code == 404
+
+
+async def test_engineer_unmask_true_senior_false(tokens, monkeypatch):
+    """spec §13.3：engineer 代查解锁脱敏（handler 收到 unmask=True），senior 不解锁。"""
+    from ai_engine import main as main_mod
+    from ai_engine.agent.tools import base
+    from ai_engine.persistence.conversations import create_conversation
+
+    cid = await create_conversation("b", "BU00243780")
+
+    seen: dict[str, object] = {}
+
+    async def fake_handler(**kwargs):
+        seen["unmask"] = kwargs.get("unmask", False)
+        return {"ok": True}
+
+    tool = base.get("query_user")
+    assert tool is not None
+    monkeypatch.setattr(tool, "handler", fake_handler)
+
+    transport = ASGITransport(app=main_mod.app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        await client.post(
+            f"/staff/api/v1/conversations/{cid}/ai-tools/query_user",
+            json={"params": {"user_id": "U1"}},
+            headers=_h(tokens["eng"]),
+        )
+        assert seen["unmask"] is True
+
+        await client.post(
+            f"/staff/api/v1/conversations/{cid}/ai-tools/query_user",
+            json={"params": {"user_id": "U1"}},
+            headers=_h(tokens["senior"]),
+        )
+        assert seen["unmask"] is False
+
+
+async def test_ai_cannot_self_unlock_unmask(seeded_db):
+    """AI 走 dispatch 时即便 params 带 unmask=True 也被剥离（不能自助解锁）。"""
+    from ai_engine.agent.tool_router import dispatch
+    from ai_engine.agent.tools import base
+    from ai_engine.persistence.db import init_db
+
+    await init_db()
+    seen: dict[str, object] = {}
+
+    async def fake_handler(**kwargs):
+        seen["unmask"] = kwargs.get("unmask", False)
+        return {"ok": True}
+
+    tool = base.get("query_card")
+    assert tool is not None
+    import unittest.mock as m
+
+    with m.patch.object(tool, "handler", fake_handler):
+        # 模拟 AI 自带 unmask=True，dispatch 未传 unmask（默认 False）
+        await dispatch(
+            tool_name="query_card",
+            params={"card_id": "C1", "unmask": True},
+            user_type="b",
+            subject_id="BU1",
+            conversation_id=1,
+        )
+    assert seen["unmask"] is False
