@@ -22,14 +22,15 @@ class RequestHumanIn(BaseModel):
 
 @router.post("/api/v1/conversations/{conv_id}/request-human")
 async def request_human(conv_id: int, body: RequestHumanIn, request: Request) -> dict[str, Any]:
-    _user_type, subject_id = await resolve_identity(request)
+    user_type, subject_id = await resolve_identity(request)
     mode, _ = await conv_dao.get_mode(conv_id)
     if mode == "human_takeover":
         return {"ok": True, "note": "already human-handled"}
     await conv_dao.set_mode(conv_id, "human_pending")
     await refresh_human_pending()
     out = await create_ticket_run(
-        bu_id=subject_id,
+        subject_id=subject_id,
+        user_type=user_type,
         conversation_id=conv_id,
         category="人工介入",
         summary=f"用户请求人工：{body.reason or '(no reason)'}",
@@ -63,7 +64,7 @@ async def user_events(external_id: str, body: UserEventIn, request: Request) -> 
             external_id, "closed", "user", "用户确认已解决", raw={"source": "user"}
         )
         await push_event_center(
-            {"external_ticket_id": external_id, "event_type": "closed", "actor": "user"}
+            {"external_ticket_id": external_id, "event": "closed", "actor": "user"}
         )
         return {"ok": True}
 
@@ -79,7 +80,7 @@ async def user_events(external_id: str, body: UserEventIn, request: Request) -> 
         await push_event_center(
             {
                 "external_ticket_id": external_id,
-                "event_type": "reopen",
+                "event": "reopen",
                 "actor": "user",
                 "reason": body.reason,
             }

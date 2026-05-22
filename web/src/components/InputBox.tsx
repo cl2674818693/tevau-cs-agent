@@ -3,7 +3,15 @@ import { useState, type KeyboardEvent } from "react";
 
 import { Button } from "./ui/button";
 
-export function InputBox({ onSend, disabled }: { onSend: (t: string) => void; disabled: boolean }) {
+export function InputBox({
+  onSend,
+  disabled,
+  placeholder = "描述你的问题…",
+}: {
+  onSend: (t: string) => void;
+  disabled: boolean;
+  placeholder?: string;
+}) {
   const [v, setV] = useState("");
 
   function submit() {
@@ -27,7 +35,7 @@ export function InputBox({ onSend, disabled }: { onSend: (t: string) => void; di
         <textarea
           value={v}
           rows={1}
-          placeholder="描述你的问题…"
+          placeholder={placeholder}
           onChange={(e) => setV(e.target.value)}
           onKeyDown={onKey}
           className="flex-1 resize-none bg-transparent text-body1 placeholder:text-ink-secondary outline-none max-h-32"

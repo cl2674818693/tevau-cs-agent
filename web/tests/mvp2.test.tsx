@@ -1,10 +1,11 @@
-import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { requestHuman, sendTicketUserEvent } from "../src/api/chat";
+import { setIdentity } from "../src/api/identity";
 import { MessageBubble } from "../src/components/MessageBubble";
-import { useAppBridge } from "../src/hooks/useAppBridge";
+import { bridge } from "../src/hooks/useAppBridge";
 import { BuLoginRoute } from "../src/routes/BuLoginRoute";
 
 afterEach(() => {
@@ -22,35 +23,45 @@ describe("MessageBubble human_agent", () => {
 });
 
 describe("api helpers", () => {
-  it("requestHuman posts to /request-human with X-BU-ID", async () => {
+  it("requestHuman posts to /request-human with B 端 X-BU-ID", async () => {
+    setIdentity({ kind: "b", buId: "BU1" });
     const fetchMock = vi.fn(
       async (_url: string, _opts?: RequestInit) => new Response(null, { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    await requestHuman(42, "BU1", "理由");
+    await requestHuman(42, "理由");
     const [url, opts] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/v1/conversations/42/request-human");
     expect((opts as RequestInit).headers).toMatchObject({ "X-BU-ID": "BU1" });
   });
 
   it("sendTicketUserEvent posts the event", async () => {
+    setIdentity({ kind: "b", buId: "BU1" });
     const fetchMock = vi.fn(
       async (_url: string, _opts?: RequestInit) => new Response(null, { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    await sendTicketUserEvent("AI-1", "BU1", "user_confirmed_resolved");
+    await sendTicketUserEvent("AI-1", "user_confirmed_resolved");
     const [url, opts] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/v1/tickets/AI-1/user-events");
     expect((opts as RequestInit).body).toContain("user_confirmed_resolved");
   });
 });
 
-describe("useAppBridge", () => {
-  it("captures token injected by APP bridge", () => {
-    const { result } = renderHook(() => useAppBridge());
-    expect(result.current).toBeNull();
-    act(() => window.aiEngineSetToken?.("jwt-abc"));
-    expect(result.current).toBe("jwt-abc");
+describe("bridge (C 端 JS Bridge)", () => {
+  it("getToken reads via flutter_inappwebview callHandler", async () => {
+    window.flutter_inappwebview = {
+      callHandler: vi.fn(async () => ({ code: 0, data: "jwt-abc", message: "" })),
+    };
+    const token = await bridge.getToken();
+    expect(token).toBe("jwt-abc");
+    delete window.flutter_inappwebview;
+  });
+
+  it("getToken falls back to null when bridge absent and no URL token", async () => {
+    delete window.flutter_inappwebview;
+    const token = await bridge.getToken();
+    expect(token).toBeNull();
   });
 });
 

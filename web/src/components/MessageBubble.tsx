@@ -6,7 +6,7 @@ import type { Message } from "../types";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { ToolCallChip } from "./ToolCallChip";
 
-export function MessageBubble({ m }: { m: Message }) {
+export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c" | "b" }) {
   if (m.role === "user") {
     return (
       <div className="flex justify-end">
@@ -51,7 +51,7 @@ export function MessageBubble({ m }: { m: Message }) {
         )}
       >
         {(m.tool_calls ?? []).map((tc, i) => (
-          <ToolCallChip key={i} tc={tc} />
+          <ToolCallChip key={i} tc={tc} userType={userType} />
         ))}
         <div className="markdown-body">
           {m.content ? (

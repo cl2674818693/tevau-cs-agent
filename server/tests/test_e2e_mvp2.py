@@ -264,4 +264,4 @@ async def test_reverse_webhook_reopen(temp_db_url, business_mysql, monkeypatch):
     assert r.status_code == 200
     t = await get_ticket("AI-RW")
     assert any(e["event"] == "reopen" for e in t["events"])
-    assert pushed and pushed[-1]["event_type"] == "reopen"
+    assert pushed and pushed[-1]["event"] == "reopen"

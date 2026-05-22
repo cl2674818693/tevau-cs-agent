@@ -34,6 +34,31 @@ async def append_ticket_event(
         await conn.commit()
 
 
+async def find_open_ticket_for_subject(
+    subject_id: str, user_type: str, within_hours: int = 24
+) -> str | None:
+    """spec §11 工单风暴对策：返回该 subject 在窗口内未关闭(closed)的工单 external_id。"""
+    subject_key = "user_id" if user_type == "c" else "bu_id"
+    async with get_conn() as conn:
+        rows = await (
+            await conn.execute(
+                """SELECT t.external_id, t.payload_json FROM tickets t
+                   WHERE t.created_at >= datetime('now', ?)
+                     AND NOT EXISTS (
+                         SELECT 1 FROM ticket_events e
+                         WHERE e.external_id = t.external_id AND e.event = 'closed'
+                     )
+                   ORDER BY t.created_at DESC""",
+                (f"-{int(within_hours)} hours",),
+            )
+        ).fetchall()
+    for row in rows:
+        payload = json.loads(str(row["payload_json"]))
+        if payload.get(subject_key) == subject_id and payload.get("user_type") == user_type:
+            return str(row["external_id"])
+    return None
+
+
 async def update_ticket_severity(external_id: str, severity: str) -> None:
     """spec 7.2: 受理人在事项中心覆盖 severity -> 更新本地镜像。"""
     async with get_conn() as conn:

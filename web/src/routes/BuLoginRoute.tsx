@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { setIdentity } from "../api/identity";
 import { Button } from "../components/ui/button";
 
 /** B 端主账户 ID 登录页（spec §4.1）。后端 /api/v1/auth/bu/login 在 task-04 落地。 */
@@ -25,6 +26,7 @@ export function BuLoginRoute() {
         setErr((await r.text()) || "主账户不存在或已禁用");
         return;
       }
+      setIdentity({ kind: "b", buId: buId.trim() });
       nav("/");
     } finally {
       setLoading(false);

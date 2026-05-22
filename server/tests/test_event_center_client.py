@@ -17,7 +17,7 @@ async def test_push_event_center_signs_and_succeeds(monkeypatch):
     route = respx.post("http://ec/events").mock(return_value=Response(200, json={"ok": True}))
     from ai_engine.integrations.event_center_client import push_event_center
 
-    ok = await push_event_center({"external_ticket_id": "AI-1", "event_type": "closed"})
+    ok = await push_event_center({"external_ticket_id": "AI-1", "event": "closed"})
     assert ok is True
     sent = route.calls.last.request
     expected = hmac.new(b"shared", sent.content, hashlib.sha256).hexdigest()

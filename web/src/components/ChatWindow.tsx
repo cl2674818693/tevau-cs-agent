@@ -1,39 +1,84 @@
+import { sendTicketUserEvent } from "../api/chat";
+import { userType } from "../api/identity";
 import { useChat } from "../hooks/useChat";
 import { useTicketStream } from "../hooks/useTicketStream";
 import { useKeyboardInset } from "../hooks/useVisualViewport";
+import { ChatHeader, ErrorView, LoadingView, StatusBanners, Suggestions } from "./ChatExtras";
 import { HandoffButton } from "./HandoffButton";
 import { InputBox } from "./InputBox";
 import { MessageList } from "./MessageList";
+import { TicketCard } from "./TicketCard";
 import { TicketStatusBanner } from "./TicketStatusBanner";
 
+type TicketStatus = "pending" | "assigned" | "in_progress" | "resolved" | "closed";
+
+function inputPlaceholder(rateLimited: boolean, mode: string): string {
+  if (rateLimited) return "请求过于频繁，请稍后再试…";
+  if (mode === "human_takeover") return "向客服留言…";
+  return "描述你的问题…";
+}
+
+function TicketCardSlot({
+  ticket,
+  mode,
+}: {
+  ticket?: { external_id?: string; event: string; comment?: string };
+  mode: string;
+}) {
+  if (!ticket?.external_id || ticket.event === "closed" || mode !== "ai") return null;
+  const send = (resolved: boolean) =>
+    void sendTicketUserEvent(
+      ticket.external_id!,
+      resolved ? "user_confirmed_resolved" : "user_rejected_resolved",
+    );
+  return (
+    <div className="px-page pb-2">
+      <TicketCard
+        externalId={ticket.external_id}
+        summary={ticket.comment ?? "您的工单进展"}
+        status={ticket.event as TicketStatus}
+        onConfirm={() => send(true)}
+        onReject={() => send(false)}
+      />
+    </div>
+  );
+}
+
 export function ChatWindow() {
-  const { messages, sending, send, requestHandoff, stop, init } = useChat();
+  const chat = useChat();
+  const { messages, sending, mode, send, init } = chat;
   const ticketEvents = useTicketStream(init?.conversation_id ?? null);
   const inset = useKeyboardInset();
+  const isC = userType() === "c";
+
+  if (chat.status === "loading") return <LoadingView />;
+  if (chat.status === "error") return <ErrorView onRetry={chat.retryInit} />;
+
+  const latestTicket = ticketEvents[ticketEvents.length - 1];
+  const onlyGreeting = messages.length <= 1;
+  const isAi = mode === "ai";
 
   return (
     <div
       className="mx-auto flex h-full max-w-[720px] flex-col bg-page-gradient"
       style={{ paddingBottom: inset }}
     >
-      <header className="safe-top sticky top-0 z-10 flex items-center px-page py-3 bg-surface-card border-b border-line">
-        <div className="h-7 w-7 rounded bg-brand grid place-items-center mr-2">
-          <span className="text-ink-primary text-body0 font-bold">T</span>
-        </div>
-        <div className="flex-1">
-          <div className="text-sh3 text-ink-primary">Tevau AI 客服</div>
-          <div className="text-footnote text-ink-secondary">由 AI 驱动 · 复杂问题转人工</div>
-        </div>
-        {sending && (
-          <button onClick={stop} className="text-body2 text-ink-secondary px-2">
-            停止生成
-          </button>
-        )}
-      </header>
+      <ChatHeader mode={mode} staffName={chat.staffName} sending={sending} onStop={chat.stop} />
+
+      <StatusBanners connection={chat.connection} limitPct={chat.limitPct} />
       <TicketStatusBanner events={ticketEvents} />
-      <MessageList messages={messages} />
-      <HandoffButton onClick={requestHandoff} disabled={sending} />
-      <InputBox onSend={send} disabled={sending} />
+      <MessageList messages={messages} userType={isC ? "c" : "b"} />
+
+      <TicketCardSlot ticket={latestTicket} mode={mode} />
+
+      {onlyGreeting && isAi && <Suggestions onPick={send} />}
+
+      {isAi && <HandoffButton onClick={chat.requestHandoff} disabled={sending} />}
+      <InputBox
+        onSend={send}
+        disabled={sending || chat.rateLimited}
+        placeholder={inputPlaceholder(chat.rateLimited, mode)}
+      />
     </div>
   );
 }

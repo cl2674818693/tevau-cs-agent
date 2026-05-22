@@ -21,7 +21,7 @@ export type ChatEvent = {
     }
   | { type: "assistant_message"; content: string }
   | { type: "error"; code: string; message: string; retry_after_ms?: number }
-  | { type: "warning"; pct?: number }
+  | { type: "warning"; pct?: number; text?: string }
 );
 
 // 会话初始化端点响应（spec §6.2）

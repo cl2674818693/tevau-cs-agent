@@ -54,7 +54,7 @@ describe("useChat", () => {
     await act(async () => {
       await result.current.requestHandoff();
     });
-    expect(requestHumanMock).toHaveBeenCalledWith(42, "BU00243780");
+    expect(requestHumanMock).toHaveBeenCalledWith(42);
     expect(result.current.mode).toBe("human_pending");
   });
 });

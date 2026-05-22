@@ -34,6 +34,26 @@ def build_messages_request(
     }
 
 
+_CLASSIFY_SYSTEM = (
+    "Classify if the user message is about Tevau "
+    "(APP / Open API / card / account / order / bug). "
+    "Reply with exactly one word: yes / no / uncertain."
+)
+
+
+async def classify_topic(message: str) -> str:
+    """spec §6.4 第二层：haiku 意图分类，返回模型原始单词文本（调用方解析）。"""
+    resp = await _client.messages.create(
+        model=settings.summary_model,
+        max_tokens=10,
+        stop_sequences=["\n"],
+        system=_CLASSIFY_SYSTEM,
+        messages=[{"role": "user", "content": message}],
+    )
+    parts = [getattr(b, "text", "") for b in getattr(resp, "content", [])]
+    return "".join(parts).strip().lower()
+
+
 async def stream_text_only(request_body: dict[str, object]) -> AsyncIterator[str]:
     """只 yield 文本增量。给后续 agent runtime 用 stream 的复杂版替换。"""
     async with _client.messages.stream(**request_body) as stream:  # type: ignore[arg-type]

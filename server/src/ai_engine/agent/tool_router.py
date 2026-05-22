@@ -7,6 +7,7 @@ from ai_engine.observability import metrics
 from ai_engine.persistence.audit import log_tool_call
 
 NEEDS_CONVERSATION_ID = {"create_ticket"}
+NEEDS_USER_TYPE = {"create_ticket"}
 
 
 async def dispatch(
@@ -33,6 +34,9 @@ async def dispatch(
     # 个别工具需要 conversation_id（如 create_ticket）；统一注入
     if tool_name in NEEDS_CONVERSATION_ID:
         safe_params["conversation_id"] = conversation_id
+    # create_ticket 需按 user_type 决定填 user_id(C) 还是 bu_id(B)；注入会话身份类型
+    if tool_name in NEEDS_USER_TYPE:
+        safe_params["user_type"] = user_type
     # spec §13.3：engineer 代查时解锁部分脱敏；仅对声明支持的工具注入
     if tool.supports_unmask and unmask:
         safe_params["unmask"] = True

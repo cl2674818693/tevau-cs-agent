@@ -2,6 +2,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
+from ai_engine.agent import topic_classifier
 from ai_engine.agent.conversation_compactor import compact_conversation
 from ai_engine.agent.cost_guard import CostGuard
 from ai_engine.agent.tool_router import dispatch
@@ -184,6 +185,20 @@ async def run_turn(
 
     messages.append({"role": "user", "content": user_message})
     await append_message(conversation_id, role="user", content=user_message)
+
+    # spec §6.4 第二层：haiku 前置话题分类（按需开启）。
+    if settings.topic_classifier_enabled:
+        verdict = await topic_classifier.classify(user_message)
+        if verdict == "no":
+            refusal = topic_classifier.refusal_text(user_type)
+            await append_message(conversation_id, role="assistant", content=refusal)
+            yield {"type": "text", "text": refusal}
+            return
+        if verdict == "uncertain":
+            system_blocks = [
+                *system_blocks,
+                {"type": "text", "text": topic_classifier.UNCERTAIN_HINT},
+            ]
 
     guard = CostGuard(
         max_depth=settings.max_tool_depth, max_result_bytes=settings.max_tool_result_bytes

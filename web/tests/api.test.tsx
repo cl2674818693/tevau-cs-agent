@@ -35,7 +35,7 @@ describe("api/chat", () => {
           new Response(JSON.stringify(INIT_JSON), { status: 200 }),
       ),
     );
-    const info = await initConversation("BU1");
+    const info = await initConversation();
     expect(info.conversation_id).toBe(1);
   });
 
@@ -51,7 +51,7 @@ describe("api/chat", () => {
       ),
     );
     const types: string[] = [];
-    for await (const ev of streamChat({ conversationId: 1, message: "x", buId: "BU1" })) {
+    for await (const ev of streamChat({ conversationId: 1, message: "x" })) {
       types.push(ev.type);
     }
     expect(types).toEqual(["conversation", "content_block_delta"]);
@@ -62,7 +62,7 @@ describe("api/chat", () => {
       async (_url: string, _opts?: RequestInit) => new Response(null, { status: 204 }),
     );
     vi.stubGlobal("fetch", f);
-    await cancelStream(1, "BU1");
+    await cancelStream(1);
     expect((f.mock.calls[0][1] as RequestInit).method).toBe("DELETE");
   });
 });

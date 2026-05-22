@@ -11,7 +11,9 @@ from ai_engine.agent.tools.base import Tool, register
 from ai_engine.config import settings
 from ai_engine.integrations.lark_webhook import send as _notify_lark
 from ai_engine.observability import metrics
+from ai_engine.persistence.tickets import append_ticket_event as _append_event
 from ai_engine.persistence.tickets import create_ticket as _save_local
+from ai_engine.persistence.tickets import find_open_ticket_for_subject as _find_open
 
 VALID_CATEGORIES = {"bug", "事务", "CQ", "无信息", "人工介入"}
 VALID_SEVERITIES = {"p0", "p1", "p2", "p3"}
@@ -32,7 +34,8 @@ async def _post(url: str, json: dict[str, Any], headers: dict[str, str]) -> http
 
 
 async def run(
-    bu_id: str,
+    subject_id: str,
+    user_type: str,
     conversation_id: int,
     category: str,
     summary: str,
@@ -43,13 +46,29 @@ async def run(
         raise ValueError(f"category must be one of {sorted(VALID_CATEGORIES)}")
     if severity not in VALID_SEVERITIES:
         raise ValueError(f"severity must be one of {sorted(VALID_SEVERITIES)}")
+    if user_type not in ("c", "b"):
+        raise ValueError("user_type must be 'c' or 'b'")
+
+    # spec §11 工单风暴对策：同 subject 24h 内已有未关闭工单 → 追加证据，不新建。
+    existing = await _find_open(subject_id, user_type)
+    if existing:
+        await _append_event(
+            existing,
+            event="evidence_added",
+            actor="ai",
+            comment=summary,
+            raw={"category": category, "severity": severity, "evidence": evidence},
+        )
+        return {"external_ticket_id": existing, "appended_to_existing": True}
 
     ext_id = _new_external_id()
+    # spec §7.1：C 端工单填 user_id，B 端填 bu_id。身份由 tool_router 注入（subject_id）。
+    subject_key = "user_id" if user_type == "c" else "bu_id"
     payload: dict[str, object] = {
         "source": "ai_engine",
         "external_ticket_id": ext_id,
-        "user_type": "b",
-        "bu_id": bu_id,
+        "user_type": user_type,
+        subject_key: subject_id,
         "category": category,
         "summary": summary,
         "severity": severity,
@@ -59,7 +78,7 @@ async def run(
 
     # 1. 本地落库（兜底，确保引擎自有记录）
     await _save_local(external_id=ext_id, conversation_id=conversation_id, payload=payload)
-    metrics.tickets_created.labels(category=category, severity=severity, user_type="b").inc()
+    metrics.tickets_created.labels(category=category, severity=severity, user_type=user_type).inc()
 
     # 2. 推事项中心（带 HMAC 签名）
     body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -90,7 +109,6 @@ register(
         input_schema={
             "type": "object",
             "properties": {
-                "bu_id": {"type": "string"},
                 "category": {"type": "string", "enum": sorted(VALID_CATEGORIES)},
                 "summary": {"type": "string", "minLength": 5, "maxLength": 500},
                 "severity": {"type": "string", "enum": sorted(VALID_SEVERITIES)},
@@ -100,6 +118,6 @@ register(
         },
         handler=run,
         requires_subject_id=True,
-        subject_field="bu_id",
+        subject_field="subject_id",
     )
 )

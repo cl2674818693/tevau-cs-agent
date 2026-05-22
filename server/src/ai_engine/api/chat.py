@@ -14,6 +14,7 @@ from ai_engine.api.staff_conversations import (
     publish_user_message,
 )
 from ai_engine.auth.bu_session import require_bu, resolve_identity
+from ai_engine.governance import rate_limit
 from ai_engine.persistence import conversations as conv_dao
 
 router = APIRouter()
@@ -70,6 +71,14 @@ async def chat(
                     "model": "claude-sonnet-4-6",
                 },
             )
+            # spec §6.4 兜底层：单 subject 每分钟消息数限流
+            allowed, retry_after_ms = rate_limit.check(f"{user_type}:{subject_id}")
+            if not allowed:
+                yield se.error_event(
+                    "RATE_LIMITED", "消息过于频繁，请稍后再试。", retry_after_ms=retry_after_ms
+                )
+                yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "rate_limited"})
+                return
             # spec §13：客服已接管 / 待接管时不调 AI，用户消息只入库 + 推给客服侧
             mode, _ = await conv_dao.get_mode(conversation_id)
             if mode in ("human_takeover", "human_pending"):

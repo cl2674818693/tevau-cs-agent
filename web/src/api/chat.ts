@@ -1,12 +1,23 @@
 import type { ChatEvent, ConversationInit } from "../types";
+import { authHeaders } from "./identity";
+
+/** 统一 fetch：注入鉴权头（C=Bearer / B=X-BU-ID）+ 带 cookie（B 端 session）。 */
+async function authedFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const auth = await authHeaders();
+  return fetch(input, {
+    ...init,
+    credentials: "include",
+    headers: { ...(init.headers ?? {}), ...auth },
+  });
+}
 
 /**
  * 会话初始化（spec §6.2）。首屏调一次，拿 user_type / display_name / greeting / limits。
  */
-export async function initConversation(buId: string): Promise<ConversationInit> {
-  const resp = await fetch("/api/v1/conversations", {
+export async function initConversation(): Promise<ConversationInit> {
+  const resp = await authedFetch("/api/v1/conversations", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-BU-ID": buId },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
   });
   if (!resp.ok) throw new Error(`init http ${resp.status}`);
@@ -36,15 +47,14 @@ function parseSseFrame(frame: string): ChatEvent | null {
 export async function* streamChat(args: {
   conversationId: number;
   message: string;
-  buId: string;
   lastEventId?: string;
 }): AsyncGenerator<ChatEvent> {
   const url = `/api/v1/chat?conversation_id=${args.conversationId}&message=${encodeURIComponent(
     args.message,
   )}`;
-  const headers: Record<string, string> = { "X-BU-ID": args.buId };
+  const headers: Record<string, string> = {};
   if (args.lastEventId) headers["Last-Event-ID"] = args.lastEventId;
-  const resp = await fetch(url, { headers });
+  const resp = await authedFetch(url, { headers });
   if (!resp.ok || !resp.body) throw new Error(`chat http ${resp.status}`);
   yield* readSseStream(resp);
 }
@@ -75,11 +85,8 @@ async function* readSseStream(resp: Response): AsyncGenerator<ChatEvent> {
  */
 export async function* streamConversationMessages(args: {
   conversationId: number;
-  buId: string;
 }): AsyncGenerator<ChatEvent> {
-  const resp = await fetch(`/api/v1/conversations/${args.conversationId}/messages-stream`, {
-    headers: { "X-BU-ID": args.buId },
-  });
+  const resp = await authedFetch(`/api/v1/conversations/${args.conversationId}/messages-stream`);
   if (!resp.ok || !resp.body) throw new Error(`messages-stream http ${resp.status}`);
   yield* readSseStream(resp);
 }
@@ -87,24 +94,17 @@ export async function* streamConversationMessages(args: {
 /**
  * 取消生成（spec §3.3）。用户点"停止生成"按钮调。
  */
-export async function cancelStream(conversationId: number, buId: string): Promise<void> {
-  await fetch(`/api/v1/chat/${conversationId}/stream`, {
-    method: "DELETE",
-    headers: { "X-BU-ID": buId },
-  });
+export async function cancelStream(conversationId: number): Promise<void> {
+  await authedFetch(`/api/v1/chat/${conversationId}/stream`, { method: "DELETE" });
 }
 
 /**
  * 转人工（MVP-2 §13.7：调 /request-human 端点，置 human_pending + 建工单）。
  */
-export async function requestHuman(
-  conversationId: number,
-  buId: string,
-  reason?: string,
-): Promise<void> {
-  await fetch(`/api/v1/conversations/${conversationId}/request-human`, {
+export async function requestHuman(conversationId: number, reason?: string): Promise<void> {
+  await authedFetch(`/api/v1/conversations/${conversationId}/request-human`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-BU-ID": buId },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reason: reason ?? "用户请求人工" }),
   });
 }
@@ -114,13 +114,12 @@ export async function requestHuman(
  */
 export async function sendTicketUserEvent(
   externalId: string,
-  buId: string,
   event: "user_confirmed_resolved" | "user_rejected_resolved",
   reason?: string,
 ): Promise<void> {
-  await fetch(`/api/v1/tickets/${externalId}/user-events`, {
+  await authedFetch(`/api/v1/tickets/${externalId}/user-events`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-BU-ID": buId },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ event, reason }),
   });
 }
