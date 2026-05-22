@@ -1,5 +1,5 @@
 import { Send } from "lucide-react";
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 export function InputBox({
   onSend,
@@ -11,6 +11,15 @@ export function InputBox({
   placeholder?: string;
 }) {
   const [v, setV] = useState("");
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  // 自动撑高：内容多行时跟随增高，最高 max-h-32 后内部滚动
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [v]);
 
   function submit() {
     const text = v.trim();
@@ -31,12 +40,13 @@ export function InputBox({
     <div className="border-t border-chat-primary/10 glass px-page py-block-sm safe-bottom">
       <div className="flex items-end gap-2 rounded-2xl bg-chat-surface-variant/50 border border-white/5 px-3 py-2 transition-all focus-within:border-chat-primary/50 focus-within:ring-1 focus-within:ring-chat-primary/20">
         <textarea
+          ref={ref}
           value={v}
           rows={1}
           placeholder={placeholder}
           onChange={(e) => setV(e.target.value)}
           onKeyDown={onKey}
-          className="flex-1 resize-none bg-transparent text-body1 text-chat-on-surface placeholder:text-chat-on-surface-variant/40 outline-none max-h-32"
+          className="flex-1 resize-none bg-transparent text-body1 leading-6 text-chat-on-surface placeholder:text-chat-on-surface-variant/40 outline-none max-h-32 overflow-y-auto py-0.5"
         />
         <button
           onClick={submit}
