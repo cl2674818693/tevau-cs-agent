@@ -27,8 +27,8 @@ function statusIcon(ok: boolean | undefined) {
 function CToolChip({ tc }: { tc: ToolCallShown }) {
   const Icon = statusIcon(tc.ok);
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1.5 text-body3 text-ink-subtle">
-      <Icon className={cn("h-3.5 w-3.5", tc.ok === undefined && "animate-spin")} />
+    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-chat-primary/10 border border-chat-primary/20 text-chat-primary text-body3">
+      <Icon className={cn("h-3 w-3", tc.ok === undefined && "animate-spin")} />
       <span>{C_LABELS[tc.name] ?? "正在为您处理…"}</span>
     </div>
   );
@@ -42,17 +42,17 @@ export function ToolCallChip({ tc, userType = "b" }: { tc: ToolCallShown; userTy
   const Icon = statusIcon(tc.ok);
   const color =
     tc.ok === undefined
-      ? "text-ink-secondary"
+      ? "text-chat-on-surface-variant"
       : tc.ok
         ? "text-status-success"
         : "text-status-error";
 
   return (
-    <div className="rounded bg-surface-container">
+    <div className="rounded bg-chat-surface-variant/50">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-1.5 px-2 py-1.5 text-body3 text-ink-subtle hover:bg-brand-disabled rounded transition-colors"
+        className="w-full flex items-center gap-1.5 px-2 py-1.5 text-body3 text-chat-on-surface-variant hover:bg-chat-surface-variant rounded transition-colors"
       >
         <Wrench className="h-3.5 w-3.5" />
         <span className="flex-1 text-left font-mono">{tc.name}</span>
@@ -62,7 +62,7 @@ export function ToolCallChip({ tc, userType = "b" }: { tc: ToolCallShown; userTy
         />
       </button>
       {open && (
-        <pre className="px-2 pb-2 text-body4 text-ink-subtle font-mono overflow-x-auto whitespace-pre-wrap break-all">
+        <pre className="px-2 pb-2 text-body4 text-chat-on-surface-variant font-mono overflow-x-auto whitespace-pre-wrap break-all">
           {JSON.stringify(tc.input, null, 2)}
         </pre>
       )}
