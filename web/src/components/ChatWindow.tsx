@@ -60,7 +60,7 @@ export function ChatWindow() {
 
   return (
     <div
-      className="mx-auto flex h-full max-w-[720px] flex-col bg-page-gradient"
+      className="mx-auto flex h-full max-w-[720px] flex-col bg-chat-surface grid-bg text-chat-on-surface font-chat-body"
       style={{ paddingBottom: inset }}
     >
       <ChatHeader mode={mode} staffName={chat.staffName} sending={sending} onStop={chat.stop} />
