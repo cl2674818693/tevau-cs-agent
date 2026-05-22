@@ -10,6 +10,52 @@ async def test_init_creates_tables(temp_db_url):
     assert {"conversations", "messages", "tool_audits", "tickets", "ticket_events"} <= names
 
 
+async def test_migrate_stale_check_constraint(temp_db_url):
+    """旧 DB 的 conversations.user_type CHECK 只允许 c/b；init_db 应迁移为含 g 且保留旧数据。"""
+    import aiosqlite
+
+    from ai_engine.config import settings
+    from ai_engine.persistence.conversations import create_conversation, get_conversation
+    from ai_engine.persistence.db import _path_from_url, init_db
+
+    path = _path_from_url(settings.db_url)
+    async with aiosqlite.connect(path) as conn:
+        await conn.executescript(
+            "CREATE TABLE conversations ("
+            " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            " user_type TEXT NOT NULL CHECK(user_type IN ('c','b')),"
+            " subject_id TEXT NOT NULL,"
+            " inferred_locale TEXT,"
+            " mode TEXT NOT NULL DEFAULT 'ai',"
+            " assigned_staff_id TEXT,"
+            " assigned_at TEXT,"
+            " archived INTEGER NOT NULL DEFAULT 0,"
+            " created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+            ");"
+            "INSERT INTO conversations(user_type, subject_id) VALUES('b','BU00243780');"
+        )
+        await conn.commit()
+
+    await init_db()
+
+    conv = await get_conversation(1)
+    assert conv is not None and conv["subject_id"] == "BU00243780"  # 旧数据保留
+    gid = await create_conversation(user_type="g", subject_id="guest:anon")  # 新约束生效
+    assert gid is not None
+
+
+async def test_init_db_idempotent_preserves_data(temp_db_url):
+    """正确 schema 的 DB 再次 init_db 不应丢数据（迁移检测对未漂移表应是 no-op）。"""
+    from ai_engine.persistence.conversations import create_conversation, get_conversation
+    from ai_engine.persistence.db import init_db
+
+    await init_db()
+    cid = await create_conversation(user_type="g", subject_id="guest:x")
+    await init_db()
+    conv = await get_conversation(cid)
+    assert conv is not None and conv["subject_id"] == "guest:x"
+
+
 async def test_create_and_get_conversation(temp_db_url):
     from ai_engine.persistence.conversations import create_conversation, get_conversation
     from ai_engine.persistence.db import init_db
