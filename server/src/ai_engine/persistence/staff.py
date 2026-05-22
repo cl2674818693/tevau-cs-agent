@@ -1,25 +1,31 @@
 import hashlib
+import hmac
 import secrets
 from typing import Any
 
 from ai_engine.persistence.db import get_conn
 
 _VALID_ROLES = {"agent", "senior", "engineer", "admin"}
+_PBKDF2_ITERATIONS = 600_000
 
 
 def hash_password(plain: str, salt: str | None = None) -> str:
-    """sha256 + salt；生产建议 argon2，MVP-2 用这个够。"""
-    salt = salt or secrets.token_hex(8)
-    h = hashlib.sha256((salt + plain).encode()).hexdigest()
-    return f"{salt}${h}"
+    """PBKDF2-HMAC-SHA256 慢哈希（stdlib，无新依赖），抗离线爆破。格式 pbkdf2$iter$salt$hex。"""
+    salt = salt or secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", plain.encode(), salt.encode(), _PBKDF2_ITERATIONS)
+    return f"pbkdf2${_PBKDF2_ITERATIONS}${salt}${dk.hex()}"
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    try:
-        salt, _ = hashed.split("$", 1)
-    except ValueError:
-        return False
-    return hash_password(plain, salt) == hashed
+    parts = hashed.split("$")
+    if len(parts) == 4 and parts[0] == "pbkdf2":
+        _, iters, salt, h = parts
+        dk = hashlib.pbkdf2_hmac("sha256", plain.encode(), salt.encode(), int(iters))
+        return hmac.compare_digest(dk.hex(), h)
+    if len(parts) == 2:  # 兼容历史 sha256 格式 salt$hash（旧库记录登录后可平滑升级）
+        salt, h = parts
+        return hmac.compare_digest(hashlib.sha256((salt + plain).encode()).hexdigest(), h)
+    return False
 
 
 async def create_staff(staff_id: str, display_name: str, role: str, password: str) -> int:

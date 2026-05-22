@@ -43,6 +43,15 @@ async def _record(subject_id: str, user_type: str, day: str, in_tok: int, out_to
         await conn.commit()
 
 
+async def is_exhausted(user_type: str, subject_id: str) -> bool:
+    """入口硬闸：当日额度已用尽则 True，调用方应直接拒绝、不进 agent loop（省一次昂贵 LLM 调用）。
+
+    注意：进程内 daily_token_usage 已落 DB，跨副本一致；但 rate_limit 仍是进程内（见该模块说明）。
+    """
+    used_in, used_out = await _get_used(subject_id, user_type, _today())
+    return (used_in + used_out) >= int(settings.daily_token_limit)
+
+
 async def check_and_record(
     user_type: str, subject_id: str, input_tok: int, output_tok: int
 ) -> tuple[bool, dict[str, Any]]:

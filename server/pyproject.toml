@@ -17,6 +17,7 @@ dependencies = [
   "aiomysql>=0.2.0",
   "prometheus-client>=0.20",
   "pyyaml>=6.0",
+  "redis>=5",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +31,7 @@ dev = [
   "pre-commit>=3.7",
   "testcontainers[mysql]>=4.7.0",
   "pymysql>=1.1",
+  "fakeredis[lua]>=2.20",
 ]
 
 [tool.pytest.ini_options]

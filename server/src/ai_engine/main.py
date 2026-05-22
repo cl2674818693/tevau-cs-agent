@@ -22,7 +22,7 @@ from ai_engine.persistence.db import init_db
 app = FastAPI(title="Tevau 客服工单 AI 引擎 (MVP-1)")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=settings.cors_allow_origins,  # 生产经 CORS_ALLOW_ORIGINS 配真实域名
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

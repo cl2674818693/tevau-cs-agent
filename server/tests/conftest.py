@@ -7,6 +7,17 @@ from urllib.parse import urlparse
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _security_test_env(monkeypatch):
+    """测试环境：开启 X-BU-ID 信任（多数测试用它模拟 B 端身份）+ 配置 B 端 session 签名密钥。"""
+    monkeypatch.setenv("DEV_TRUST_BU_HEADER", "true")
+    monkeypatch.setenv("BU_SESSION_SECRET", "test-bu-secret")
+    from ai_engine.config import settings
+
+    settings.reload()
+    yield
+
+
 def _docker_ok() -> bool:
     try:
         r = subprocess.run(["docker", "info"], capture_output=True, timeout=8)  # noqa: S607

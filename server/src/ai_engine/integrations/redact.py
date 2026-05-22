@@ -53,13 +53,16 @@ def scrub_dict(d: Any, rules: dict[str, Callable[[str], str]]) -> Any:
 
 # LLM 输出兜底扫描：正则识别可能的 PII 并替换
 _PHONE_RE = re.compile(r"\b1[3-9]\d{9}\b")
-_CARD_RE = re.compile(r"\b\d{13,19}\b")
+_ID_CARD_RE = re.compile(r"\b\d{17}[\dXx]\b")  # 中国大陆 18 位身份证（含 X 结尾）
+# 卡号：连续 13-19 位，或带空格/连字符分隔的 4-4-4-(1~4) 形式
+_CARD_RE = re.compile(r"\b(?:\d{4}[ -]){3}\d{1,4}\b|\b\d{13,19}\b")
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _RULE_NAME_RE = re.compile(r"\bR-\d{2,4}\b")
 
 
 def scan_and_redact_text(text: str) -> str:
     text = _PHONE_RE.sub(lambda m: mask_phone(m.group()), text)
+    text = _ID_CARD_RE.sub(lambda m: mask_id_card(m.group()), text)  # 先于卡号，保 X 结尾正确归类
     text = _CARD_RE.sub(lambda m: mask_card_no(m.group()), text)
     text = _EMAIL_RE.sub(lambda m: mask_email(m.group()), text)
     text = _RULE_NAME_RE.sub("[风控规则]", text)

@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from ai_engine.auth.bu_session import SESSION_COOKIE, issue_bu_session
 from ai_engine.persistence.business_db import get_db
 
 router = APIRouter()
@@ -43,11 +44,12 @@ async def bu_login(body: LoginIn, request: Request, response: Response) -> dict[
     if not row or int(row.get("status") or 0) != 1:
         raise HTTPException(401, "主账户不存在或已禁用")  # 通用错误，防枚举
 
-    # 签发 session cookie（HttpOnly + SameSite=Strict + 8h）。
+    # 签发签名 session cookie（HttpOnly + SameSite=Strict + 8h）。
+    # cookie 值是 HS256 签名 token（含 bu_id + 过期），服务端验签，无法伪造。
     # secure 在生产置 True；本地 http 调试用 False 才能存住（spec §4.1）。
     response.set_cookie(
-        key="ai_engine_session",
-        value=body.bu_id,  # MVP-2 简化：cookie 直接装 bu_id；HMAC 签名见 MVP-3
+        key=SESSION_COOKIE,
+        value=issue_bu_session(body.bu_id),
         max_age=8 * 3600,
         httponly=True,
         secure=False,
@@ -58,5 +60,5 @@ async def bu_login(body: LoginIn, request: Request, response: Response) -> dict[
 
 @router.post("/api/v1/auth/bu/logout")
 async def bu_logout(response: Response) -> dict[str, Any]:
-    response.delete_cookie("ai_engine_session")
+    response.delete_cookie(SESSION_COOKIE)
     return {"ok": True}

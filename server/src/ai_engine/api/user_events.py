@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from ai_engine.agent.tools.create_ticket import run as create_ticket_run
 from ai_engine.api.staff_conversations import _publish
-from ai_engine.auth.bu_session import resolve_identity
+from ai_engine.auth.bu_session import USER_TYPE_GUEST, resolve_identity
 from ai_engine.integrations.event_center_client import push_event_center
 from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
@@ -23,6 +23,11 @@ class RequestHumanIn(BaseModel):
 @router.post("/api/v1/conversations/{conv_id}/request-human")
 async def request_human(conv_id: int, body: RequestHumanIn, request: Request) -> dict[str, Any]:
     user_type, subject_id = await resolve_identity(request)
+    if user_type == USER_TYPE_GUEST:
+        raise HTTPException(403, "请先在 APP 内登录后再转接人工客服")
+    conv = await conv_dao.get_conversation(conv_id)
+    if conv is None or conv["subject_id"] != subject_id or conv["user_type"] != user_type:
+        raise HTTPException(403, "not your conversation")
     mode, _ = await conv_dao.get_mode(conv_id)
     if mode == "human_takeover":
         return {"ok": True, "note": "already human-handled"}

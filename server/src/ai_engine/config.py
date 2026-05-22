@@ -25,17 +25,24 @@ class Settings(BaseSettings):
     prompts_dir: str = "./src/ai_engine/prompts"
     lark_webhook_url: str | None = None
     event_center_url: str = "http://localhost:8000/_mock/event-center"
-    event_center_secret: str = "mvp1-shared-secret"  # deprecated（MVP-3 用 _current/_previous）
-    event_center_secret_current: str = "mvp1-shared-secret"  # HMAC 双 key 轮换（spec §7.4）
+    event_center_secret: str = ""  # deprecated（MVP-3 用 _current/_previous）
+    event_center_secret_current: str = ""  # HMAC 双 key 轮换（spec §7.4）；必填，空则拒所有回调
     event_center_secret_previous: str | None = None
     mock_event_center: bool = False  # 仅本地 dev 挂 /_mock/event-center receiver
-    staff_jwt_secret: str = ""  # 客服 JWT 签名密钥（HS256，本服务签发本服务验证）
+    staff_jwt_secret: str = ""  # 客服 JWT 签名密钥（HS256）；空则拒签发/验签（防空密钥伪造）
+    bu_session_secret: str = ""  # B 端 session cookie 签名密钥（HS256）；空则拒签发/验签
+    # 仅内网/联调用：信任客户端 X-BU-ID header 直接当 B 端身份（生产必须 False，否则可伪造身份）
+    dev_trust_bu_header: bool = False
+    metrics_auth_token: str = ""  # /metrics Bearer 鉴权令牌；空=不鉴权（需配合网络层限制）
+    cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
     unlimitpay_db_url: str | None = None  # 业务只读库（MVP-2 必填；MVP-1 测试时 None）
     nexus_db_url: str | None = None
     app_jwt_public_key: str = ""  # C 端 APP JWT 验签公钥（APP 后端签发，本服务只验签）
     app_jwt_algorithm: str = "RS256"
     daily_token_limit: int = 500_000  # 单 BU/单 user 单日 token 硬阈值（spec §8 成本治理）
     chat_rate_limit_per_min: int = 30  # 单 subject 每分钟消息上限（spec §6.4 兜底层）
+    # 限流共享存储；配置后多副本全局精确计数，未配则回退进程内（单副本/测试）
+    redis_url: str | None = None
     topic_classifier_enabled: bool = False  # spec §6.4 第二层 haiku 前置分类（MVP-2 起，按需开启）
     max_tool_depth: int = 12
     max_tool_result_bytes: int = 262_144

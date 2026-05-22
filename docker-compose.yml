@@ -13,17 +13,24 @@ services:
       # 代码搜索/读取：把 3 个仓库 clone 到宿主机 ./repos/code/<别名>，已挂载为容器内 /repos/code
       - CODE_REPO_PATHS={"app_frontend":"/repos/code/app_frontend","app_backend":"/repos/code/app_backend","openapi_backend":"/repos/code/openapi_backend"}
       - EVENT_CENTER_URL=${EVENT_CENTER_URL:-http://api:8000/_mock/event-center}
-      # HMAC 双 key 热轮换（spec §7.4）：先灌 CURRENT，轮换时把旧值移到 PREVIOUS
-      - EVENT_CENTER_SECRET_CURRENT=${EVENT_CENTER_SECRET_CURRENT:-mvp1-shared-secret}
+      # HMAC 双 key 热轮换（spec §7.4）：先灌 CURRENT，轮换时把旧值移到 PREVIOUS。
+      # 必填强随机值（缺失则启动报错）：旧的硬编码默认 "mvp1-shared-secret" 已移除，防伪造回调。
+      - EVENT_CENTER_SECRET_CURRENT=${EVENT_CENTER_SECRET_CURRENT:?set a strong random secret}
       - EVENT_CENTER_SECRET_PREVIOUS=${EVENT_CENTER_SECRET_PREVIOUS:-}
       # 生产保持 false（不挂 /_mock/event-center）；本地联调置 true
       - MOCK_EVENT_CENTER=${MOCK_EVENT_CENTER:-false}
       - LARK_WEBHOOK_URL=${LARK_WEBHOOK_URL:-}
-      - STAFF_JWT_SECRET=${STAFF_JWT_SECRET}
+      - STAFF_JWT_SECRET=${STAFF_JWT_SECRET:?set a strong random secret}
+      # B 端 session cookie 签名密钥（HS256）；缺失则 B 端登录不可用
+      - BU_SESSION_SECRET=${BU_SESSION_SECRET:?set a strong random secret}
+      # /metrics Bearer 鉴权令牌（可选）；留空则不鉴权，需配合网络层限制
+      - METRICS_AUTH_TOKEN=${METRICS_AUTH_TOKEN:-}
       # C 端 APP JWT 验签公钥（RS256，仅验签）；上线必填
       - APP_JWT_PUBLIC_KEY=${APP_JWT_PUBLIC_KEY:-}
       # 成本治理：单 BU/单 user 单日 token 硬阈值
       - DAILY_TOKEN_LIMIT=${DAILY_TOKEN_LIMIT:-500000}
+      # 限流共享存储（spec §6.4）：多副本全局精确计数；不设则回退进程内
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       # 本地 dev 连同 compose 的 mysql；生产改为阿里云 RDS 只读账号
       - UNLIMITPAY_DB_URL=${UNLIMITPAY_DB_URL:-mysql://tevau_test_read:${MYSQL_PASSWORD}@mysql:3306/unlimitpay_test}
       - NEXUS_DB_URL=${NEXUS_DB_URL:-}
@@ -38,6 +45,7 @@ services:
     depends_on:
       - sourcegraph
       - mysql
+      - redis
 
   sourcegraph:
     image: sourcegraph/server:5.3.0
@@ -47,14 +55,20 @@ services:
       - sg-data:/var/opt/sourcegraph
     restart: unless-stopped
 
+  # 限流共享存储（spec §6.4 兜底层）：多副本全局精确滑动窗口
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    restart: unless-stopped
+
   # 本地开发用 MySQL；生产用阿里云 RDS 只读账号（见 docs/resources.md）
   mysql:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set a local root password}
       MYSQL_DATABASE: unlimitpay_test
       MYSQL_USER: tevau_test_read
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-readpass}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set a local db password}
     ports: ["3306:3306"]
     volumes:
       - mysql-data:/var/lib/mysql
