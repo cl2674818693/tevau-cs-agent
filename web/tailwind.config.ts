@@ -45,9 +45,21 @@ export default {
         input: "#E0E3E7",
         ring: "#C8F833",
         card: { DEFAULT: "#FFFFFF", foreground: "#121212" },
+        chat: {
+          primary: "#22D3EE",
+          "on-primary": "#0B0F14",
+          surface: "#0B0F14",
+          "surface-variant": "#1A232E",
+          "on-surface": "#F8FAFC",
+          "on-surface-variant": "#94A3B8",
+          accent: "#F59E0B",
+        },
       },
       fontFamily: {
         sans: ['"Source Sans 3"', "-apple-system", "PingFang SC", "sans-serif"],
+        "chat-headline": ['"Space Grotesk"', "sans-serif"],
+        "chat-body": ['"Inter"', "sans-serif"],
+        "chat-label": ['"Public Sans"', "sans-serif"],
       },
       fontSize: {
         h0: ["32px", { lineHeight: "36px", fontWeight: "800" }],
