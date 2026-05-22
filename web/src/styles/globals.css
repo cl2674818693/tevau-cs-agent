@@ -16,9 +16,9 @@ body {
     -apple-system,
     "PingFang SC",
     sans-serif;
-  background-image: linear-gradient(180deg, #f6f6f6 0%, #fefefe 100%);
+  background-image: linear-gradient(180deg, #0b0f14 0%, #0e1620 100%);
   background-attachment: fixed;
-  color: #121212;
+  color: #f8fafc;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
@@ -31,8 +31,8 @@ body {
 }
 
 .focus-glow:focus-within {
-  box-shadow: 0 0 8px 0 rgba(200, 248, 51, 0.15);
-  border-color: #c8f833 !important;
+  box-shadow: 0 0 8px 0 rgba(34, 211, 238, 0.25);
+  border-color: #22d3ee !important;
   border-width: 1.2px !important;
   transition: all 250ms;
 }
