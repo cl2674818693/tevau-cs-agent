@@ -1,11 +1,14 @@
 import hashlib
 import hmac
 import json
+import logging
 from typing import Any
 
 import httpx
 
 from ai_engine.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _sign(body: bytes) -> str:
@@ -22,6 +25,17 @@ async def push_event_center(payload: dict[str, Any]) -> bool:
             resp = await client.post(
                 f"{settings.event_center_url}/events", content=body, headers=headers
             )
-        return 200 <= resp.status_code < 300
+        if not 200 <= resp.status_code < 300:
+            logger.warning(
+                "event_center push non-2xx: status=%s type=%s",
+                resp.status_code,
+                payload.get("type"),
+            )
+            return False
+        return True
     except Exception:
+        # 不抛、返回 False 不变；但记录便于排障（外部回调失败会静默丢事件）
+        logger.warning(
+            "event_center push failed (type=%s)", payload.get("type"), exc_info=True
+        )
         return False

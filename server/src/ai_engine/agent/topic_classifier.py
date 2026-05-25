@@ -4,9 +4,12 @@
 分类失败 fail-open 到 uncertain，避免误伤正常用户。第一层 system prompt 边界始终生效。
 """
 
+import logging
 from typing import Literal
 
 from ai_engine.integrations import anthropic_client as _ac
+
+logger = logging.getLogger(__name__)
 
 Verdict = Literal["yes", "no", "uncertain"]
 
@@ -28,6 +31,8 @@ async def classify(message: str) -> Verdict:
     try:
         word = (await _ac.classify_topic(message)).strip().lower()
     except Exception:
+        # fail-open 到 uncertain（第一层 system 边界仍生效），但记录便于排障
+        logger.warning("topic classify failed, fail-open to uncertain", exc_info=True)
         return "uncertain"
     if word.startswith("no"):
         return "no"
