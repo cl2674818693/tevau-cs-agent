@@ -9,6 +9,10 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = Field(...)
     anthropic_base_url: str | None = None  # 自建 Claude 网关; None 走官方 API
+    # SDK 默认 max_retries=2（指数退避，对 429/5xx/连接错误生效），显式化便于按环境调。
+    anthropic_max_retries: int = 2
+    # SDK 默认 timeout=600s 对聊天 UX 太长；显式收紧，单次请求超时即重试/失败。
+    anthropic_timeout_seconds: float = 30.0
     db_url: str = "sqlite+aiosqlite:///./ai_engine.db"
     default_model: str = "claude-sonnet-4-6"
     heavy_model: str = "claude-opus-4-7"
@@ -46,6 +50,9 @@ class Settings(BaseSettings):
     topic_classifier_enabled: bool = False  # spec §6.4 第二层 haiku 前置分类（MVP-2 起，按需开启）
     max_tool_depth: int = 12
     max_tool_result_bytes: int = 262_144
+    # 回合处理中(status=processing)超过此时长视为僵尸（服务崩溃/卡死），后台标 failed
+    stale_turn_timeout_seconds: int = 120
+    stale_sweep_interval_seconds: int = 60  # 后台清理扫描间隔；<=0 关闭后台任务
     log_level: str = "INFO"
 
 

@@ -1,5 +1,13 @@
 from ai_engine.prompts import registry
 
+# prompt 文件内容缓存（key=(version, prompt_key)）。文件运行期不变（变更走部署重启），
+# 缓存后避免每请求同步 read_text 阻塞事件循环。registry 重载时清空。
+_content_cache: dict[tuple[str, str], str] = {}
+
+
+def clear_cache() -> None:
+    _content_cache.clear()
+
 
 def _resolve_version(version: str | None, subject_id: str | None) -> str:
     if version is not None:
@@ -10,7 +18,13 @@ def _resolve_version(version: str | None, subject_id: str | None) -> str:
 def read_prompt(key: str, version: str | None = None, subject_id: str | None = None) -> str:
     """读取某版本的 prompt 文件。version 优先；否则按 subject_id 灰度；都缺省取 default。"""
     v = _resolve_version(version, subject_id)
-    return registry.file_path(v, key).read_text(encoding="utf-8")
+    cache_key = (v, key)
+    cached = _content_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    content = registry.file_path(v, key).read_text(encoding="utf-8")
+    _content_cache[cache_key] = content
+    return content
 
 
 def build_system_blocks(

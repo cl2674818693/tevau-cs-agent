@@ -5,12 +5,12 @@ from typing import cast
 from ai_engine.config import settings
 from ai_engine.integrations import anthropic_client as _ac
 from ai_engine.persistence.conversations import (
+    append_message,
     archive_conversation,
     create_conversation,
     get_conversation,
     list_messages,
 )
-from ai_engine.persistence.db import get_conn
 
 _SUMMARY_SYSTEM = (
     "你是会话压缩器。把下面这段客服对话提炼成一段中文摘要，"
@@ -54,11 +54,6 @@ async def compact_conversation(conv_id: int) -> int:
     new_id = await create_conversation(
         user_type=cast(str, conv["user_type"]), subject_id=cast(str, conv["subject_id"])
     )
-    async with get_conn() as conn:
-        await conn.execute(
-            "INSERT INTO messages(conversation_id, role, content) VALUES (?, 'system', ?)",
-            (new_id, summary),
-        )
-        await conn.commit()
+    await append_message(new_id, role="system", content=summary)
     await archive_conversation(conv_id)
     return new_id

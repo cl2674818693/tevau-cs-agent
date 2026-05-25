@@ -132,3 +132,12 @@ async def test_ticket_resolution_observed(temp_db_url, monkeypatch):
         )
     assert r.status_code == 200
     assert _hist_count(metrics.ticket_resolution_seconds, category="bug") == before + 1
+
+
+def test_reliability_counters_exist():
+    from ai_engine.observability import metrics
+
+    assert metrics.topic_verdict_total
+    assert metrics.message_feedback_total
+    assert metrics.llm_turn_failures_total
+    assert metrics.stale_turns_reclaimed_total

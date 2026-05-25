@@ -5,7 +5,10 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
-      - DB_URL=sqlite+aiosqlite:////data/ai_engine.db
+      # 自有库默认 Postgres（compose 的 postgres 服务）；如需回退 SQLite 单文件，设
+      # DB_URL=sqlite+aiosqlite:////data/ai_engine.db。启动时 init_db 自动建表；
+      # 生产建议改用 `alembic upgrade head` 做版本化迁移（见 docs/db-postgres-migration-eval.md）。
+      - DB_URL=${DB_URL:-postgresql+asyncpg://ai:${POSTGRES_PASSWORD:-ai_local_pw}@postgres:5432/ai_engine}
       - OPENAPI_DOC_PATH=/repos/api-docs/openapi.json
       # 多份 OpenAPI 文档目录（C端/B端各一份 *.json）；挂载在容器内 /repos/api-docs
       - OPENAPI_DOCS_DIR=/repos/api-docs
@@ -43,9 +46,14 @@ services:
       - ./data:/data
       - ./repos:/repos:ro
     depends_on:
-      - sourcegraph
-      - mysql
-      - redis
+      sourcegraph:
+        condition: service_started
+      mysql:
+        condition: service_started
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
 
   sourcegraph:
     image: sourcegraph/server:5.3.0
@@ -59,6 +67,24 @@ services:
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
+    restart: unless-stopped
+
+  # AI engine 自有库（会话/消息/工单/审计/token 计量）。多副本/高可用/写并发需求下
+  # 替代 SQLite 单文件（见 docs/db-postgres-migration-eval.md）。
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_local_pw}
+      POSTGRES_DB: ai_engine
+    ports: ["5432:5432"]
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai -d ai_engine"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     restart: unless-stopped
 
   # 本地开发用 MySQL；生产用阿里云 RDS 只读账号（见 docs/resources.md）
@@ -87,3 +113,4 @@ volumes:
   sg-config:
   sg-data:
   mysql-data:
+  pg-data:

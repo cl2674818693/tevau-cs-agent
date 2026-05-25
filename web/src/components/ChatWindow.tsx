@@ -1,5 +1,7 @@
-import { sendTicketUserEvent } from "../api/chat";
+import { sendFeedback, sendTicketUserEvent } from "../api/chat";
 import { userType } from "../api/identity";
+import type { ConversationInit } from "../types";
+import i18n from "../i18n";
 import { useChat } from "../hooks/useChat";
 import { useTicketStream } from "../hooks/useTicketStream";
 import { useKeyboardInset } from "../hooks/useVisualViewport";
@@ -13,9 +15,9 @@ import { TicketStatusBanner } from "./TicketStatusBanner";
 type TicketStatus = "pending" | "assigned" | "in_progress" | "resolved" | "closed";
 
 function inputPlaceholder(rateLimited: boolean, mode: string): string {
-  if (rateLimited) return "请求过于频繁，请稍后再试…";
-  if (mode === "human_takeover") return "向客服留言…";
-  return "描述你的问题…";
+  if (rateLimited) return i18n.t("chat.inputRateLimited");
+  if (mode === "human_takeover") return i18n.t("chat.inputHumanMode");
+  return i18n.t("chat.inputPlaceholder");
 }
 
 function TicketCardSlot({
@@ -35,13 +37,19 @@ function TicketCardSlot({
     <div className="px-page pb-2">
       <TicketCard
         externalId={ticket.external_id}
-        summary={ticket.comment ?? "您的工单进展"}
+        summary={ticket.comment ?? i18n.t("ticket.cardSummaryFallback")}
         status={ticket.event as TicketStatus}
         onConfirm={() => send(true)}
         onReject={() => send(false)}
       />
     </div>
   );
+}
+
+/** 反馈回调：init 就绪才返回处理函数（把分支挪出组件主体，控制圈复杂度）。 */
+function feedbackHandler(init: ConversationInit | null) {
+  if (!init) return undefined;
+  return (i: number, rating: "up" | "down") => void sendFeedback(init.conversation_id, i, rating);
 }
 
 export function ChatWindow() {
@@ -67,7 +75,11 @@ export function ChatWindow() {
 
       <StatusBanners connection={chat.connection} limitPct={chat.limitPct} />
       <TicketStatusBanner events={ticketEvents} />
-      <MessageList messages={messages} userType={isC ? "c" : "b"} />
+      <MessageList
+        messages={messages}
+        userType={isC ? "c" : "b"}
+        onFeedback={feedbackHandler(init)}
+      />
 
       <TicketCardSlot ticket={latestTicket} mode={mode} />
 

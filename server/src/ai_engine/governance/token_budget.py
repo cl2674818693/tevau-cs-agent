@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ai_engine.config import settings
-from ai_engine.persistence.db import get_conn
+from ai_engine.persistence import db
 
 _WARN_RATIO = 0.8
 
@@ -17,30 +17,27 @@ def _today() -> str:
 
 
 async def _get_used(subject_id: str, user_type: str, day: str) -> tuple[int, int]:
-    async with get_conn() as conn:
-        row = await (
-            await conn.execute(
-                "SELECT input_tokens, output_tokens FROM daily_token_usage "
-                "WHERE subject_id=? AND user_type=? AND date=?",
-                (subject_id, user_type, day),
-            )
-        ).fetchone()
+    row = await db.fetch_one(
+        "SELECT input_tokens, output_tokens FROM daily_token_usage "
+        "WHERE subject_id=:sid AND user_type=:ut AND date=:day",
+        {"sid": subject_id, "ut": user_type, "day": day},
+    )
     if not row:
         return 0, 0
     return int(row["input_tokens"]), int(row["output_tokens"])
 
 
 async def _record(subject_id: str, user_type: str, day: str, in_tok: int, out_tok: int) -> None:
-    async with get_conn() as conn:
-        await conn.execute(
-            "INSERT INTO daily_token_usage(subject_id, user_type, date, input_tokens, "
-            "output_tokens) VALUES (?,?,?,?,?) "
-            "ON CONFLICT(subject_id, user_type, date) DO UPDATE SET "
-            "input_tokens=input_tokens+excluded.input_tokens, "
-            "output_tokens=output_tokens+excluded.output_tokens",
-            (subject_id, user_type, day, in_tok, out_tok),
-        )
-        await conn.commit()
+    # ON CONFLICT...DO UPDATE...excluded. 两库（SQLite/Postgres）通用
+    await db.execute(
+        "INSERT INTO daily_token_usage(subject_id, user_type, date, input_tokens, "
+        "output_tokens) VALUES (:sid, :ut, :day, :in_tok, :out_tok) "
+        # 用表名限定累加列：PG 上裸列名在 DO UPDATE 里有歧义；SQLite 也接受表名限定
+        "ON CONFLICT(subject_id, user_type, date) DO UPDATE SET "
+        "input_tokens=daily_token_usage.input_tokens+excluded.input_tokens, "
+        "output_tokens=daily_token_usage.output_tokens+excluded.output_tokens",
+        {"sid": subject_id, "ut": user_type, "day": day, "in_tok": in_tok, "out_tok": out_tok},
+    )
 
 
 async def is_exhausted(user_type: str, subject_id: str) -> bool:

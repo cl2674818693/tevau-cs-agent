@@ -1,15 +1,17 @@
 import { Send } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
 
 export function InputBox({
   onSend,
   disabled,
-  placeholder = "描述你的问题…",
+  placeholder,
 }: {
   onSend: (t: string) => void;
   disabled: boolean;
   placeholder?: string;
 }) {
+  const { t } = useTranslation();
   const [v, setV] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -43,7 +45,7 @@ export function InputBox({
           ref={ref}
           value={v}
           rows={1}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t("chat.inputPlaceholder")}
           onChange={(e) => setV(e.target.value)}
           onKeyDown={onKey}
           className="flex-1 resize-none bg-transparent text-body1 leading-6 text-chat-on-surface placeholder:text-chat-on-surface-variant/40 outline-none max-h-32 overflow-y-auto py-0.5"
@@ -51,7 +53,7 @@ export function InputBox({
         <button
           onClick={submit}
           disabled={disabled || !v.trim()}
-          aria-label="发送"
+          aria-label={t("chat.send")}
           className="grid h-10 w-10 place-items-center rounded-xl bg-chat-primary text-chat-on-primary transition-transform active:scale-90 disabled:opacity-50"
           style={{ boxShadow: "0 0 15px rgba(34,211,238,0.3)" }}
         >

@@ -8,6 +8,8 @@ import {
   streamConversationMessages,
 } from "../api/chat";
 import { AuthExpiredError, resolveIdentity, userType } from "../api/identity";
+import i18n from "../i18n";
+import { backoffDelay } from "../lib/backoff";
 import type { ChatEvent, ConversationInit, ConversationMode, Message } from "../types";
 
 type AssistantMsg = Extract<Message, { role: "assistant" }>;
@@ -112,11 +114,13 @@ function useStaffMessageStream(
   useEffect(() => {
     if (convId == null) return;
     let stopped = false;
+    let attempt = 0;
     void (async () => {
       while (!stopped) {
         try {
           for await (const ev of streamConversationMessages({ conversationId: convId })) {
             if (stopped) break;
+            attempt = 0; // 成功收到事件即视为连上，重置退避
             if (ev.type === "mode_change") setMode(ev.to as ConversationMode);
             else if (ev.type === "human_message") {
               setStaffName(ev.display_name);
@@ -124,10 +128,11 @@ function useStaffMessageStream(
             } else if (ev.type === "assistant_message") setMessages((p) => applyEvent(p, ev));
           }
         } catch {
-          /* 流断开，退避后重连 */
+          /* 流断开，指数退避后重连 */
         }
         if (stopped) break;
-        await new Promise((r) => setTimeout(r, 2000));
+        // 指数退避 + 抖动：避免大量客户端断线后同时重连压垮服务端
+        await new Promise((r) => setTimeout(r, backoffDelay(attempt++)));
       }
     })();
     return () => {
@@ -201,18 +206,21 @@ export function useChat() {
         setRateLimited,
         onAuthExpired: handleAuthExpired,
       };
+      // 幂等键：本次发送固定一个 id，重连/重发复用以避免后端重复处理
+      const clientMessageId = crypto.randomUUID();
       try {
         for await (const ev of streamChat({
           conversationId: init.conversation_id,
           message: text,
           lastEventId: lastEventIdRef.current,
+          clientMessageId,
         })) {
           if (ev._eventId) lastEventIdRef.current = ev._eventId;
           await handleStreamEvent(ev, actions);
         }
       } catch (e) {
         if (e instanceof AuthExpiredError) await handleAuthExpired();
-        else pushSystem(actions, "网络中断，请检查连接后重试。");
+        else pushSystem(actions, i18n.t("chat.netError"));
       } finally {
         setSending(false);
       }

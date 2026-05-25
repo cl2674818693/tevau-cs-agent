@@ -3,7 +3,8 @@ import hmac
 import secrets
 from typing import Any
 
-from ai_engine.persistence.db import get_conn
+from ai_engine.persistence import db
+from ai_engine.persistence.schema import now_str
 
 _VALID_ROLES = {"agent", "senior", "engineer", "admin"}
 _PBKDF2_ITERATIONS = 600_000
@@ -31,25 +32,24 @@ def verify_password(plain: str, hashed: str) -> bool:
 async def create_staff(staff_id: str, display_name: str, role: str, password: str) -> int:
     if role not in _VALID_ROLES:
         raise ValueError("invalid role")
-    async with get_conn() as conn:
-        cur = await conn.execute(
-            "INSERT INTO staff(staff_id, display_name, role, password_hash) VALUES (?,?,?,?)",
-            (staff_id, display_name, role, hash_password(password)),
-        )
-        await conn.commit()
-        assert cur.lastrowid is not None
-        return cur.lastrowid
+    return await db.insert_returning_id(
+        "INSERT INTO staff(staff_id, display_name, role, password_hash, created_at) "
+        "VALUES (:sid, :name, :role, :pw, :now) RETURNING id",
+        {
+            "sid": staff_id,
+            "name": display_name,
+            "role": role,
+            "pw": hash_password(password),
+            "now": now_str(),
+        },
+    )
 
 
 async def authenticate(staff_id: str, password: str) -> dict[str, Any] | None:
-    async with get_conn() as conn:
-        row = await (
-            await conn.execute(
-                "SELECT staff_id, display_name, role, password_hash, active "
-                "FROM staff WHERE staff_id=?",
-                (staff_id,),
-            )
-        ).fetchone()
+    row = await db.fetch_one(
+        "SELECT staff_id, display_name, role, password_hash, active FROM staff WHERE staff_id=:sid",
+        {"sid": staff_id},
+    )
     if not row or int(row["active"]) != 1:
         return None
     if not verify_password(password, row["password_hash"]):
@@ -62,11 +62,7 @@ async def authenticate(staff_id: str, password: str) -> dict[str, Any] | None:
 
 
 async def get_staff(staff_id: str) -> dict[str, Any] | None:
-    async with get_conn() as conn:
-        row = await (
-            await conn.execute(
-                "SELECT staff_id, display_name, role, active FROM staff WHERE staff_id=?",
-                (staff_id,),
-            )
-        ).fetchone()
-    return dict(row) if row else None
+    return await db.fetch_one(
+        "SELECT staff_id, display_name, role, active FROM staff WHERE staff_id=:sid",
+        {"sid": staff_id},
+    )
