@@ -26,6 +26,10 @@ def reload_registry() -> None:
     """改了 registry.yaml（如灰度比例）后调用，使其重新生效。"""
     global _cache
     _cache = None
+    # 同步清空 loader 的 prompt 内容缓存（延迟 import 避免与 loader 循环依赖）
+    from ai_engine.prompts import loader
+
+    loader.clear_cache()
 
 
 def default_version() -> str:
