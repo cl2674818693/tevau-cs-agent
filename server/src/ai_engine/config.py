@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,7 +24,10 @@ class Settings(BaseSettings):
     openapi_doc_path: str = "./repos/api-docs/openapi.json"  # 单文件兼容（deprecated，优先用目录）
     prompts_dir: str = "./src/ai_engine/prompts"
     lark_webhook_url: str | None = None
-    event_center_url: str = "http://localhost:8000/_mock/event-center"
+    # 事项中心推送地址。默认空：未配置时工单推送失败→走 Lark 兜底（安全可见），
+    # 而不是静默打到一个不存在的 localhost mock。生产必配；本地 dev 用 mock 时设为
+    # http://localhost:8000/_mock/event-center 并开 MOCK_EVENT_CENTER=true。
+    event_center_url: str = ""
     event_center_secret: str = ""  # deprecated（MVP-3 用 _current/_previous）
     event_center_secret_current: str = ""  # HMAC 双 key 轮换（spec §7.4）；必填，空则拒所有回调
     event_center_secret_previous: str | None = None
@@ -47,6 +50,14 @@ class Settings(BaseSettings):
     max_tool_depth: int = 12
     max_tool_result_bytes: int = 262_144
     log_level: str = "INFO"
+
+    @model_validator(mode="after")
+    def _default_mock_event_center_url(self) -> "Settings":
+        # 本地 dev 开了 mock 但没显式配 URL 时，自动指向本地 mock receiver，
+        # 省去手动配 EVENT_CENTER_URL；生产（mock 关）保持空 → Lark 兜底。
+        if self.mock_event_center and not self.event_center_url:
+            self.event_center_url = "http://localhost:8000/_mock/event-center"
+        return self
 
 
 _instance: Settings | None = None

@@ -10,10 +10,17 @@ from ai_engine.agent.tools import (  # noqa: F401  import 即注册工具
     base,  # 触发工具注册
     create_ticket,
     lookup_api_doc,
+    lookup_error_code,
     query_balance,
+    query_bu_card,
     query_bu_order,
     query_bu_request_log,
+    query_bu_user,
     query_card,
+    query_card_authorization,
+    query_card_jit_decision,
+    query_card_ledger,
+    query_card_trans_error,
     query_kyc,
     query_transaction,
     query_user,
@@ -27,7 +34,11 @@ from ai_engine.integrations import anthropic_client as _ac
 from ai_engine.integrations.anthropic_client import build_messages_request
 from ai_engine.integrations.redact import scan_and_redact_text
 from ai_engine.observability import metrics
-from ai_engine.persistence.conversations import append_message, list_messages
+from ai_engine.persistence.conversations import (
+    append_message,
+    list_messages,
+    set_inferred_locale,
+)
 from ai_engine.prompts.loader import build_system_blocks, read_prompt
 from ai_engine.prompts.registry import model_for, pick_version
 
@@ -161,6 +172,24 @@ async def _load_history(conv_id: int) -> list[dict[str, Any]]:
     return _coalesce(msgs)
 
 
+def _detect_locale(text: str) -> str | None:
+    """spec §6.2：从用户消息粗判语言，供 AI 镜像回复语言。命中按 Unicode 区段优先级返回。"""
+    for ch in text:
+        o = ord(ch)
+        if 0xAC00 <= o <= 0xD7A3:  # Hangul（韩）
+            return "ko"
+        if 0x3040 <= o <= 0x30FF:  # Hiragana/Katakana（日）
+            return "ja"
+        if 0x0E00 <= o <= 0x0E7F:  # Thai（泰）
+            return "th"
+        if 0x4E00 <= o <= 0x9FFF:  # CJK 统一表意（中）
+            return "zh"
+    # 无 CJK/东南亚字符：含拉丁字母按英文记，纯标点/数字不更新
+    if any(c.isascii() and c.isalpha() for c in text):
+        return "en"
+    return None
+
+
 async def run_turn(
     *,
     conversation_id: int,
@@ -185,6 +214,10 @@ async def run_turn(
 
     messages.append({"role": "user", "content": user_message})
     await append_message(conversation_id, role="user", content=user_message)
+    # spec §6.2：按用户消息语言更新会话推断语言（None 时不覆盖，保留上轮判定）
+    locale = _detect_locale(user_message)
+    if locale:
+        await set_inferred_locale(conversation_id, locale)
 
     # spec §6.4 第二层：haiku 前置话题分类（按需开启）。
     if settings.topic_classifier_enabled:
@@ -211,6 +244,67 @@ async def run_turn(
             yield ev
 
 
+class _StreamRedactor:
+    """按换行边界做流式脱敏：PII 正则不跨换行，故按整行 redact 后即可安全流出；
+
+    行内未完成的尾段先缓冲，到流末（flush）再脱敏，避免把跨增量的 PII 切成两半漏脱。
+    """
+
+    def __init__(self) -> None:
+        self._buf = ""
+
+    def feed(self, text: str) -> list[str]:
+        self._buf += text
+        out: list[str] = []
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            out.append(scan_and_redact_text(line + "\n"))
+        return out
+
+    def flush(self) -> str:
+        rest, self._buf = self._buf, ""
+        return scan_and_redact_text(rest) if rest else ""
+
+
+def _is_tool_round(resp: Any, tool_calls: list[dict[str, Any]]) -> bool:
+    return resp.stop_reason == "tool_use" and bool(tool_calls)
+
+
+def _needs_self_check(resp: Any, self_check_done: bool, texts: list[str]) -> bool:
+    """end_turn 出文本且尚未自检 → 强制一轮 self-check（spec §8.3）。"""
+    return resp.stop_reason == "end_turn" and not self_check_done and bool(texts)
+
+
+def _final_text_events(streamed: bool, texts: list[str]) -> list[dict[str, Any]]:
+    """最终轮未实时流出时（无 self-check 的 end_turn / 无文本），一次性脱敏后发出。"""
+    if streamed:
+        return []
+    return [{"type": "text", "text": scan_and_redact_text(t)} for t in texts]
+
+
+async def _run_llm_streaming(req: dict[str, Any], live: bool) -> AsyncIterator[dict[str, Any]]:
+    """跑一轮 LLM 流。live=True 时把文本增量按换行边界脱敏后实时 yield {"type":"text"}；
+    最后 yield {"__final__": resp, "__streamed__": bool} 把完整消息与是否已流出回传给调用方。
+    """
+    redactor = _StreamRedactor()
+    resp = None
+    streamed = False
+    # 通过模块属性引用 _ac.stream_turn，便于测试 monkeypatch
+    async for chunk in _ac.stream_turn(req):
+        if "final" in chunk:
+            resp = chunk["final"]
+            break
+        if live:
+            streamed = True
+            for piece in redactor.feed(chunk["text_delta"]):
+                yield {"type": "text", "text": piece}
+    if live and streamed:
+        tail = redactor.flush()
+        if tail:
+            yield {"type": "text", "text": tail}
+    yield {"__final__": resp, "__streamed__": streamed}
+
+
 async def _agent_loop(
     system_blocks: list[dict[str, str]],
     tools: list[dict[str, Any]],
@@ -229,10 +323,19 @@ async def _agent_loop(
         req = build_messages_request(
             system_blocks=system_blocks, messages=messages, tools=tools, model=model
         )
-        # 通过模块属性引用，便于测试用 monkeypatch.setattr 替换
-        resp = await _ac._client.messages.create(**req)  # 非流式骨架，MVP-3 换 stream
-        _record_llm(resp, model)
+        # self-check 已完成 → 本轮是最终回复，真 token 流式实时推出；否则（首轮/工具轮）先缓冲，
+        # 因为首轮 end_turn 文本会被 self-check 修订，不能提前发给用户。
+        live = self_check_done
+        resp = None
+        streamed = False
+        async for item in _run_llm_streaming(req, live):
+            if "__final__" in item:
+                resp = item["__final__"]
+                streamed = bool(item["__streamed__"])
+            else:
+                yield item
 
+        _record_llm(resp, model)
         # spec §8 成本治理：每轮 LLM 返回后记账；超额拒服、80% 提醒
         stop, budget_event, warned_budget = await _budget_gate(
             resp, user_type, subject_id, warned_budget
@@ -242,26 +345,31 @@ async def _agent_loop(
         if stop:
             return
 
-        # 累积本轮 assistant 内容（文本先不流出：可能要走 self-check 修订）
         assistant_blocks, tool_calls_in_round, texts = _collect_blocks(resp)
         await _persist_assistant(conversation_id, messages, assistant_blocks)
 
-        if resp.stop_reason == "tool_use" and tool_calls_in_round:
+        if _is_tool_round(resp, tool_calls_in_round):
             async for ev in _emit_tool_round(
-                texts, tool_calls_in_round, guard, user_type, subject_id, conversation_id, messages
+                texts,
+                tool_calls_in_round,
+                guard,
+                user_type,
+                subject_id,
+                conversation_id,
+                messages,
+                texts_streamed=streamed,
             ):
                 yield ev
             continue
 
-        # 最终回复轮：end_turn 后强制一轮 self-check（spec §8.3），不计工具深度
-        if resp.stop_reason == "end_turn" and not self_check_done and texts:
+        if _needs_self_check(resp, self_check_done, texts):
             self_check_done = True
             _inject_self_check(messages, prompt_version)
             continue
 
-        # self-check 后（或无文本）：流出最终文本
-        for t in texts:
-            yield {"type": "text", "text": scan_and_redact_text(t)}
+        # 未实时流出（无 self-check 的最终轮 / 无文本）：一次性流出最终文本
+        for ev in _final_text_events(streamed, texts):
+            yield ev
         return
 
 
@@ -323,12 +431,17 @@ async def _emit_tool_round(
     subject_id: str,
     conversation_id: int,
     messages: list[dict[str, Any]],
+    texts_streamed: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
-    """工具轮：中间文本即时流出 + 工具调用事件，执行工具并把结果回灌 messages。"""
-    for t in texts:
-        yield {"type": "text", "text": scan_and_redact_text(t)}
+    """工具轮：中间文本即时流出 + 工具调用事件，执行工具并把结果回灌 messages。
+
+    texts_streamed=True 时本轮文本已在 _agent_loop 实时流过，避免重复发出。
+    """
+    if not texts_streamed:
+        for t in texts:
+            yield {"type": "text", "text": scan_and_redact_text(t)}
     for tc in tool_calls:
-        yield {"type": "tool_call", "name": tc["name"], "input": tc["input"]}
+        yield {"type": "tool_call", "id": tc["id"], "name": tc["name"], "input": tc["input"]}
     result_blocks, events = await _run_tools(
         tool_calls, guard, user_type, subject_id, conversation_id
     )
@@ -380,5 +493,5 @@ async def _run_tools(
                 "is_error": not r["ok"],
             }
         )
-        events.append({"type": "tool_result", "name": tc["name"], "ok": r["ok"]})
+        events.append({"type": "tool_result", "id": tc["id"], "name": tc["name"], "ok": r["ok"]})
     return blocks, events

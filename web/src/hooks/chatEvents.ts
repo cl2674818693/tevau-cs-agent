@@ -1,0 +1,98 @@
+import type { ChatEvent, ConversationMode, Message } from "../types";
+
+type AssistantMsg = Extract<Message, { role: "assistant" }>;
+
+function _patchLastAssistant(prev: Message[], patch: (a: AssistantMsg) => AssistantMsg): Message[] {
+  const last = prev[prev.length - 1] as AssistantMsg;
+  return [...prev.slice(0, -1), patch(last)];
+}
+
+/** 把一个 SSE 事件应用到消息列表（纯函数）。 */
+export function applyEvent(prev: Message[], ev: ChatEvent): Message[] {
+  if (ev.type === "message_start")
+    return [...prev, { role: "assistant", content: "", tool_calls: [] }];
+  if (ev.type === "human_message")
+    return [...prev, { role: "human_agent", content: ev.content, display_name: ev.display_name }];
+  if (ev.type === "assistant_message") return [...prev, { role: "assistant", content: ev.content }];
+  if (ev.type === "content_block_delta") {
+    const text = ev.delta?.text ?? "";
+    return _patchLastAssistant(prev, (a) => ({ ...a, content: a.content + text }));
+  }
+  if (ev.type === "tool_use") {
+    const tc = { tool_use_id: ev.tool_use_id, name: ev.name, input: ev.input };
+    return _patchLastAssistant(prev, (a) => ({ ...a, tool_calls: [...(a.tool_calls ?? []), tc] }));
+  }
+  if (ev.type === "tool_result") {
+    return _patchLastAssistant(prev, (a) => {
+      const calls = (a.tool_calls ?? []).slice();
+      // 按 tool_use_id 精确配对（并发多工具时不会错配）；缺 id 时回退到最后一个
+      let i = ev.tool_use_id ? calls.findIndex((c) => c.tool_use_id === ev.tool_use_id) : -1;
+      if (i === -1) i = calls.length - 1;
+      if (i >= 0) calls[i] = { ...calls[i], ok: !ev.is_error };
+      return { ...a, tool_calls: calls };
+    });
+  }
+  return prev;
+}
+
+export type ChatActions = {
+  setMode: (m: ConversationMode) => void;
+  setMessages: (fn: (p: Message[]) => Message[]) => void;
+  setLimitPct: (n: number) => void;
+  setRateLimited: (b: boolean) => void;
+  onAuthExpired: () => Promise<void>;
+};
+
+export function pushSystem(a: ChatActions, content: string) {
+  a.setMessages((p) => [...p, { role: "system", content }]);
+}
+
+async function handleErrorEvent(
+  ev: Extract<ChatEvent, { type: "error" }>,
+  a: ChatActions,
+): Promise<void> {
+  if (ev.code === "RATE_LIMITED") {
+    a.setRateLimited(true);
+    pushSystem(a, ev.message || "请求过于频繁，请稍后再试。");
+  } else if (ev.code === "AUTH_EXPIRED") {
+    await a.onAuthExpired();
+  } else {
+    pushSystem(a, ev.message || "出错了，请重试。");
+  }
+}
+
+/** 处理一个主链路 SSE 事件（拆出以降低 send 复杂度）。 */
+export async function handleStreamEvent(ev: ChatEvent, a: ChatActions): Promise<void> {
+  if (ev.type === "mode_change") {
+    a.setMode(ev.to as ConversationMode);
+    if (ev.to !== "ai") pushSystem(a, "已为您转接人工客服，请稍候…");
+  } else if (ev.type === "warning") {
+    if (typeof ev.pct === "number") a.setLimitPct(ev.pct);
+    if (ev.text) pushSystem(a, ev.text);
+  } else if (ev.type === "error") {
+    await handleErrorEvent(ev, a);
+  } else {
+    a.setMessages((p) => applyEvent(p, ev));
+  }
+}
+
+export type StaffStreamActions = {
+  setMode: (m: ConversationMode) => void;
+  setStaffName: (n: string | undefined) => void;
+  setMessages: (fn: (p: Message[]) => Message[]) => void;
+};
+
+/** 把一条用户侧常驻流事件应用到状态（客服→用户方向）。 */
+export function applyUserStreamEvent(ev: ChatEvent, a: StaffStreamActions): void {
+  if (ev.type === "mode_change") a.setMode(ev.to as ConversationMode);
+  else if (ev.type === "human_message") {
+    a.setStaffName(ev.display_name ?? ev.sender_staff_id);
+    a.setMessages((p) => applyEvent(p, ev));
+  } else if (ev.type === "assistant_message") a.setMessages((p) => applyEvent(p, ev));
+  else if (ev.type === "transferred")
+    a.setMessages((p) => [...p, { role: "system", content: "已为您转接给其他客服，请稍候…" }]);
+  else if (ev.type === "request_human") {
+    a.setMode("human_pending");
+    a.setMessages((p) => [...p, { role: "system", content: "已为您请求人工，请稍候…" }]);
+  }
+}

@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -113,7 +113,7 @@ async def test_approve_not_your_conversation(staff_token):
     assert r.status_code == 403
 
 
-async def test_chat_in_ai_draft_mode_does_not_stream_to_user(seeded_db, monkeypatch):
+async def test_chat_in_ai_draft_mode_does_not_stream_to_user(seeded_db, monkeypatch, fake_stream):
     """ai_draft 模式：chat 不把 AI 文本流给用户，只提示 review 并落草稿。"""
     monkeypatch.setenv("STAFF_JWT_SECRET", "test")
     from ai_engine.config import settings
@@ -131,8 +131,8 @@ async def test_chat_in_ai_draft_mode_does_not_stream_to_user(seeded_db, monkeypa
     await set_mode(cid, "ai_draft", "S100")
 
     fake = MagicMock()
-    fake.messages.create = AsyncMock(
-        side_effect=[
+    fake.messages.stream = fake_stream(
+        [
             MagicMock(
                 content=[MagicMock(type="text", text="AI 想说的回答")],
                 stop_reason="end_turn",

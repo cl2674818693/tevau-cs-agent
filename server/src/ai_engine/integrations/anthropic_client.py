@@ -54,11 +54,14 @@ async def classify_topic(message: str) -> str:
     return "".join(parts).strip().lower()
 
 
-async def stream_text_only(request_body: dict[str, object]) -> AsyncIterator[str]:
-    """只 yield 文本增量。给后续 agent runtime 用 stream 的复杂版替换。"""
+async def stream_turn(request_body: dict[str, object]) -> AsyncIterator[dict[str, Any]]:
+    """流式跑一轮 LLM。先逐段 yield {"text_delta": str} 文本增量，最后 yield {"final": Message}。
+
+    runtime 据此实现真 token 流式：最终回复轮把增量实时推给用户；预自检/工具轮先缓冲。
+    {"final"} 携带完整消息（content / stop_reason / usage），供记账、工具判定、落库。
+    """
     async with _client.messages.stream(**request_body) as stream:  # type: ignore[arg-type]
-        async for ev in stream:
-            if getattr(ev, "type", None) == "content_block_delta":
-                delta = getattr(ev, "delta", None)
-                if delta and getattr(delta, "type", None) == "text_delta":
-                    yield delta.text
+        async for text in stream.text_stream:
+            yield {"text_delta": text}
+        final = await stream.get_final_message()
+    yield {"final": final}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   cancelStream,
@@ -8,82 +8,17 @@ import {
   streamConversationMessages,
 } from "../api/chat";
 import { AuthExpiredError, resolveIdentity, userType } from "../api/identity";
-import type { ChatEvent, ConversationInit, ConversationMode, Message } from "../types";
+import type { ConversationInit, ConversationMode, Message } from "../types";
+import {
+  type ChatActions,
+  type StaffStreamActions,
+  applyUserStreamEvent,
+  handleStreamEvent,
+  pushSystem,
+} from "./chatEvents";
 
-type AssistantMsg = Extract<Message, { role: "assistant" }>;
 type InitStatus = "loading" | "ready" | "error";
 type Connection = "online" | "offline" | "reconnecting";
-
-function _patchLastAssistant(prev: Message[], patch: (a: AssistantMsg) => AssistantMsg): Message[] {
-  const last = prev[prev.length - 1] as AssistantMsg;
-  return [...prev.slice(0, -1), patch(last)];
-}
-
-/** 把一个 SSE 事件应用到消息列表（纯函数，降低 useChat 复杂度）。 */
-function applyEvent(prev: Message[], ev: ChatEvent): Message[] {
-  if (ev.type === "message_start")
-    return [...prev, { role: "assistant", content: "", tool_calls: [] }];
-  if (ev.type === "human_message")
-    return [...prev, { role: "human_agent", content: ev.content, display_name: ev.display_name }];
-  if (ev.type === "assistant_message") return [...prev, { role: "assistant", content: ev.content }];
-  if (ev.type === "content_block_delta") {
-    const text = ev.delta?.text ?? "";
-    return _patchLastAssistant(prev, (a) => ({ ...a, content: a.content + text }));
-  }
-  if (ev.type === "tool_use") {
-    const tc = { name: ev.name, input: ev.input };
-    return _patchLastAssistant(prev, (a) => ({ ...a, tool_calls: [...(a.tool_calls ?? []), tc] }));
-  }
-  if (ev.type === "tool_result") {
-    return _patchLastAssistant(prev, (a) => {
-      const calls = (a.tool_calls ?? []).slice();
-      if (calls.length) calls[calls.length - 1] = { ...calls[calls.length - 1], ok: !ev.is_error };
-      return { ...a, tool_calls: calls };
-    });
-  }
-  return prev;
-}
-
-type ChatActions = {
-  setMode: (m: ConversationMode) => void;
-  setMessages: (fn: (p: Message[]) => Message[]) => void;
-  setLimitPct: (n: number) => void;
-  setRateLimited: (b: boolean) => void;
-  onAuthExpired: () => Promise<void>;
-};
-
-function pushSystem(a: ChatActions, content: string) {
-  a.setMessages((p) => [...p, { role: "system", content }]);
-}
-
-async function handleErrorEvent(
-  ev: Extract<ChatEvent, { type: "error" }>,
-  a: ChatActions,
-): Promise<void> {
-  if (ev.code === "RATE_LIMITED") {
-    a.setRateLimited(true);
-    pushSystem(a, ev.message || "请求过于频繁，请稍后再试。");
-  } else if (ev.code === "AUTH_EXPIRED") {
-    await a.onAuthExpired();
-  } else {
-    pushSystem(a, ev.message || "出错了，请重试。");
-  }
-}
-
-/** 处理一个主链路 SSE 事件（拆出以降低 send 复杂度）。 */
-async function handleStreamEvent(ev: ChatEvent, a: ChatActions): Promise<void> {
-  if (ev.type === "mode_change") {
-    a.setMode(ev.to as ConversationMode);
-    if (ev.to !== "ai") pushSystem(a, "已为您转接人工客服，请稍候…");
-  } else if (ev.type === "warning") {
-    if (typeof ev.pct === "number") a.setLimitPct(ev.pct);
-    if (ev.text) pushSystem(a, ev.text);
-  } else if (ev.type === "error") {
-    await handleErrorEvent(ev, a);
-  } else {
-    a.setMessages((p) => applyEvent(p, ev));
-  }
-}
 
 /** 在线/离线监听（spec §13.6 offline）。 */
 function useOnlineStatus(): [Connection, (c: Connection) => void] {
@@ -112,16 +47,13 @@ function useStaffMessageStream(
   useEffect(() => {
     if (convId == null) return;
     let stopped = false;
+    const actions: StaffStreamActions = { setMode, setStaffName, setMessages };
     void (async () => {
       while (!stopped) {
         try {
           for await (const ev of streamConversationMessages({ conversationId: convId })) {
             if (stopped) break;
-            if (ev.type === "mode_change") setMode(ev.to as ConversationMode);
-            else if (ev.type === "human_message") {
-              setStaffName(ev.display_name);
-              setMessages((p) => applyEvent(p, ev));
-            } else if (ev.type === "assistant_message") setMessages((p) => applyEvent(p, ev));
+            applyUserStreamEvent(ev, actions);
           }
         } catch {
           /* 流断开，退避后重连 */
@@ -174,61 +106,87 @@ function useChatInit(
   return { init, status, retryInit: loadInit };
 }
 
-export function useChat() {
-  const [messages, setMessages] = useState<Message[]>([]);
+/** 发送 + 停止：封装 AbortController（停止时立刻复位 sending 并中断本地 SSE 读取）。 */
+function useChatSend(
+  init: ConversationInit | null,
+  rateLimited: boolean,
+  handleAuthExpired: () => Promise<void>,
+  actions: ChatActions,
+) {
   const [sending, setSending] = useState(false);
-  const [mode, setMode] = useState<ConversationMode>("ai");
-  const [staffName, setStaffName] = useState<string | undefined>();
-  const [connection, setConnection] = useOnlineStatus();
-  const [limitPct, setLimitPct] = useState(0);
-  const [rateLimited, setRateLimited] = useState(false);
   const lastEventIdRef = useRef<string | undefined>(undefined);
-  const { init, status, retryInit } = useChatInit(setMessages, setLimitPct);
-
-  useStaffMessageStream(init?.conversation_id, setMode, setStaffName, setMessages);
-
-  const handleAuthExpired = useAuthExpiredHandler(setConnection);
+  const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(
     async (text: string) => {
       if (!init || rateLimited) return;
       setSending(true);
-      setMessages((prev) => [...prev, { role: "user", content: text }]);
-      const actions: ChatActions = {
-        setMode,
-        setMessages,
-        setLimitPct,
-        setRateLimited,
-        onAuthExpired: handleAuthExpired,
-      };
+      actions.setMessages((prev) => [...prev, { role: "user", content: text }]);
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
         for await (const ev of streamChat({
           conversationId: init.conversation_id,
           message: text,
           lastEventId: lastEventIdRef.current,
+          signal: controller.signal,
         })) {
           if (ev._eventId) lastEventIdRef.current = ev._eventId;
           await handleStreamEvent(ev, actions);
         }
       } catch (e) {
-        if (e instanceof AuthExpiredError) await handleAuthExpired();
+        if (controller.signal.aborted) {
+          /* 用户主动停止，不提示错误 */
+        } else if (e instanceof AuthExpiredError) await handleAuthExpired();
         else pushSystem(actions, "网络中断，请检查连接后重试。");
       } finally {
+        if (abortRef.current === controller) abortRef.current = null;
         setSending(false);
       }
     },
-    [init, rateLimited, handleAuthExpired],
+    [init, rateLimited, handleAuthExpired, actions],
   );
+
+  const stop = useCallback(() => {
+    // 同时中断本地 SSE 读取（立刻复位 sending/输入框）和通知后端关流
+    abortRef.current?.abort();
+    setSending(false);
+    if (init) void cancelStream(init.conversation_id);
+  }, [init]);
+
+  return { sending, send, stop };
+}
+
+export function useChat() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [mode, setMode] = useState<ConversationMode>("ai");
+  const [staffName, setStaffName] = useState<string | undefined>();
+  const [connection, setConnection] = useOnlineStatus();
+  const [limitPct, setLimitPct] = useState(0);
+  const [rateLimited, setRateLimited] = useState(false);
+  const { init, status, retryInit } = useChatInit(setMessages, setLimitPct);
+
+  useStaffMessageStream(init?.conversation_id, setMode, setStaffName, setMessages);
+
+  const handleAuthExpired = useAuthExpiredHandler(setConnection);
+  const actions: ChatActions = useMemo(
+    () => ({ setMode, setMessages, setLimitPct, setRateLimited, onAuthExpired: handleAuthExpired }),
+    [handleAuthExpired],
+  );
+  const { sending, send, stop } = useChatSend(init, rateLimited, handleAuthExpired, actions);
 
   const requestHandoff = useCallback(async () => {
     if (!init) return;
+    if (init.user_type === "g") {
+      setMessages((prev) => [
+        ...prev,
+        { role: "system", content: "转接人工客服需要先在 APP 内登录。" },
+      ]);
+      return;
+    }
     await requestHuman(init.conversation_id);
     setMode("human_pending");
     setMessages((prev) => [...prev, { role: "system", content: "已为您请求人工，请稍候…" }]);
-  }, [init]);
-
-  const stop = useCallback(() => {
-    if (init) void cancelStream(init.conversation_id);
   }, [init]);
 
   return {

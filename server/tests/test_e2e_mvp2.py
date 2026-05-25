@@ -35,7 +35,7 @@ def _client():
 
 
 async def _login(client):
-    await client.post("/api/v1/auth/bu/login", json={"bu_id": "BU00243780"})
+    await client.post("/api/v1/auth/bu/login", json={"bu_id": "1011010000068"})
 
 
 async def _new_conv(client):
@@ -50,7 +50,7 @@ def _clear_rate():
     _RATE_BUCKET.clear()
 
 
-async def test_c_end_jwt_chat_uses_c_user_type(temp_db_url, monkeypatch):
+async def test_c_end_jwt_chat_uses_c_user_type(temp_db_url, monkeypatch, fake_stream):
     """剧本 1：C 端 APP JWT（Bearer）→ 会话识别为 user_type=c。"""
     priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     pub_pem = (
@@ -76,9 +76,7 @@ async def test_c_end_jwt_chat_uses_c_user_type(temp_db_url, monkeypatch):
         "_client",
         MagicMock(
             messages=MagicMock(
-                create=AsyncMock(
-                    return_value=_resp([_block("text", text="您好，已为您查询。")], "end_turn")
-                )
+                stream=fake_stream(_resp([_block("text", text="您好，已为您查询。")], "end_turn"))
             )
         ),
     )
@@ -96,7 +94,7 @@ async def test_c_end_jwt_chat_uses_c_user_type(temp_db_url, monkeypatch):
     assert any('"user_type": "c"' in line for line in lines)
 
 
-async def test_b_end_real_mysql_diagnosis(temp_db_url, business_mysql, monkeypatch):
+async def test_b_end_real_mysql_diagnosis(temp_db_url, business_mysql, monkeypatch, fake_stream):
     """剧本 3：B 端登录 → 问 card_bind 500 → AI 调真 MySQL query_api_call → 回复带技术细节。"""
     from ai_engine.persistence.db import init_db
 
@@ -132,7 +130,7 @@ async def test_b_end_real_mysql_diagnosis(temp_db_url, business_mysql, monkeypat
         ]
     )
     fake = MagicMock()
-    fake.messages.create = AsyncMock(side_effect=lambda **kw: next(seq))
+    fake.messages.stream = fake_stream(lambda **kw: next(seq))
     monkeypatch.setattr(ac, "_client", fake)
 
     async with _client() as client:
@@ -149,7 +147,7 @@ async def test_b_end_real_mysql_diagnosis(temp_db_url, business_mysql, monkeypat
     assert "DB_TIMEOUT" in joined
 
 
-async def test_b_end_cross_bu_blocked(temp_db_url, business_mysql, monkeypatch):
+async def test_b_end_cross_bu_blocked(temp_db_url, business_mysql, monkeypatch, fake_stream):
     """剧本 4：AI 试图查别的 BU 的卡 → router 注入会话身份 → 真 MySQL 查不到 → AI 说无权限。"""
     from ai_engine.persistence.db import init_db
 
@@ -181,7 +179,7 @@ async def test_b_end_cross_bu_blocked(temp_db_url, business_mysql, monkeypatch):
         ]
     )
     fake = MagicMock()
-    fake.messages.create = AsyncMock(side_effect=lambda **kw: next(seq))
+    fake.messages.stream = fake_stream(lambda **kw: next(seq))
     monkeypatch.setattr(ac, "_client", fake)
 
     async with _client() as client:
@@ -247,7 +245,7 @@ async def test_reverse_webhook_reopen(temp_db_url, business_mysql, monkeypatch):
 
     await init_db()
     await create_ticket(
-        external_id="AI-RW", conversation_id=1, payload={"category": "bug", "bu_id": "BU00243780"}
+        external_id="AI-RW", conversation_id=1, payload={"category": "bug", "bu_id": "1011010000068"}
     )
     pushed = []
     # user_events 直接 import 了 push_event_center，故在使用处打桩

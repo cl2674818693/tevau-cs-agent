@@ -1,4 +1,5 @@
 allowBuilds:
   esbuild: set this to true or false
+# 显式批准 esbuild 跑安装脚本（pnpm 10+ 默认不跑，否则 vite/esbuild 原生二进制装不上）
 onlyBuiltDependencies:
   - esbuild

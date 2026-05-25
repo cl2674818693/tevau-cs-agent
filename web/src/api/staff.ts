@@ -46,48 +46,38 @@ export async function takeConversation(token: string, id: number): Promise<boole
   return r.ok;
 }
 
-export async function releaseConversation(token: string, id: number): Promise<void> {
-  await fetch(`/staff/api/v1/conversations/${id}/release`, {
+/** 客服写操作统一 POST：失败抛错，调用方据此提示，不再静默乐观更新。 */
+async function postStaff(token: string, path: string, body?: unknown): Promise<void> {
+  const r = await fetch(path, {
     method: "POST",
     headers: authHeaders(token),
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
+  if (!r.ok) throw new Error(`request failed ${r.status}`);
+}
+
+export async function releaseConversation(token: string, id: number): Promise<void> {
+  await postStaff(token, `/staff/api/v1/conversations/${id}/release`);
 }
 
 export async function sendStaffMessage(token: string, id: number, content: string): Promise<void> {
-  await fetch(`/staff/api/v1/conversations/${id}/messages`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ content }),
-  });
+  await postStaff(token, `/staff/api/v1/conversations/${id}/messages`, { content });
 }
 
 export async function enableAiDraft(token: string, id: number): Promise<void> {
-  await fetch(`/staff/api/v1/conversations/${id}/ai-draft/enable`, {
-    method: "POST",
-    headers: authHeaders(token),
-  });
+  await postStaff(token, `/staff/api/v1/conversations/${id}/ai-draft/enable`);
 }
 
 export async function disableAiDraft(token: string, id: number): Promise<void> {
-  await fetch(`/staff/api/v1/conversations/${id}/ai-draft/disable`, {
-    method: "POST",
-    headers: authHeaders(token),
-  });
+  await postStaff(token, `/staff/api/v1/conversations/${id}/ai-draft/disable`);
 }
 
 export async function approveAiDraft(token: string, id: number): Promise<void> {
-  await fetch(`/staff/api/v1/conversations/${id}/ai-draft/approve`, {
-    method: "POST",
-    headers: authHeaders(token),
-  });
+  await postStaff(token, `/staff/api/v1/conversations/${id}/ai-draft/approve`);
 }
 
 export async function rejectAiDraft(token: string, id: number, rewrite: string): Promise<void> {
-  await fetch(`/staff/api/v1/conversations/${id}/ai-draft/reject`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ rewrite }),
-  });
+  await postStaff(token, `/staff/api/v1/conversations/${id}/ai-draft/reject`, { rewrite });
 }
 
 export type AiToolResult = { ok: boolean; data?: unknown; error?: string };
@@ -121,10 +111,7 @@ export async function transferConversation(
 }
 
 export async function resolveConversation(token: string, id: number): Promise<void> {
-  await fetch(`/staff/api/v1/conversations/${id}/resolve`, {
-    method: "POST",
-    headers: authHeaders(token),
-  });
+  await postStaff(token, `/staff/api/v1/conversations/${id}/resolve`);
 }
 
 export type StaffKpi = {
@@ -152,7 +139,18 @@ export type StaffStreamEvent = {
   content?: string;
   to?: string;
   draft?: string;
+  name?: string; // tool_use：工具名
+  input?: Record<string, unknown>; // tool_use：入参
+  to_staff_id?: string; // transferred
+  by_staff_id?: string; // mode_change
 };
+
+/** 取单个会话当前状态（mode/assigned_staff_id），用于详情页初始化接管态。 */
+export async function getStaffConversation(token: string, id: number): Promise<StaffConversation> {
+  const r = await fetch(`/staff/api/v1/conversations/${id}`, { headers: authHeaders(token) });
+  if (!r.ok) throw new Error(`get conversation failed ${r.status}`);
+  return r.json();
+}
 
 /** 订阅会话事件总线（user_message / human_message / mode_change）。带 Bearer，故用 fetch-stream。 */
 export function streamStaffEvents(token: string, id: number): AsyncGenerator<StaffStreamEvent> {
@@ -170,16 +168,19 @@ async function* streamSse(url: string, token: string): AsyncGenerator<StaffStrea
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  // SSE 帧分隔符：sse-starlette 默认用 \r\n\r\n（规范也允许 \r\r / \n\n）。
+  // 只认 \n\n 会导致 \r\n\r\n 永远切不出帧，staff 所有实时事件丢失。与 chat.ts 保持一致。
+  const FRAME_SEP = /\r\n\r\n|\r\r|\n\n/;
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    let idx: number;
-    while ((idx = buffer.indexOf("\n\n")) !== -1) {
-      const frame = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-      const eventLine = frame.split("\n").find((l) => l.startsWith("event:"));
-      const dataLine = frame.split("\n").find((l) => l.startsWith("data:"));
+    let m: RegExpExecArray | null;
+    while ((m = FRAME_SEP.exec(buffer)) !== null) {
+      const frame = buffer.slice(0, m.index);
+      buffer = buffer.slice(m.index + m[0].length);
+      const eventLine = frame.split(/\r\n|\r|\n/).find((l) => l.startsWith("event:"));
+      const dataLine = frame.split(/\r\n|\r|\n/).find((l) => l.startsWith("data:"));
       if (!eventLine || !dataLine) continue;
       try {
         const data = JSON.parse(dataLine.slice("data:".length).trim());

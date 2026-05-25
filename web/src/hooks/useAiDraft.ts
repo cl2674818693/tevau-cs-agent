@@ -21,6 +21,7 @@ export function useAiDraft(
   token: string | null,
   convId: number,
   events: StaffStreamEvent[],
+  onNotice?: (msg: string) => void,
 ): UseAiDraft {
   const [draftMode, setDraftMode] = useState(false);
   const [aiDraft, setAiDraft] = useState<string | null>(null);
@@ -32,27 +33,40 @@ export function useAiDraft(
 
   async function toggleDraftMode(): Promise<string> {
     if (!token) return "";
-    if (draftMode) {
-      await disableAiDraft(token, convId);
-      setDraftMode(false);
-      setAiDraft(null);
-      return "已关闭 AI 草稿模式";
+    try {
+      if (draftMode) {
+        await disableAiDraft(token, convId);
+        setDraftMode(false);
+        setAiDraft(null);
+        return "已关闭 AI 草稿模式";
+      }
+      await enableAiDraft(token, convId);
+      setDraftMode(true);
+      return "已开启 AI 草稿模式：AI 出草稿，由你 review 后发送";
+    } catch {
+      return "操作失败，请重试";
     }
-    await enableAiDraft(token, convId);
-    setDraftMode(true);
-    return "已开启 AI 草稿模式：AI 出草稿，由你 review 后发送";
   }
 
   async function approve(): Promise<void> {
     if (!token) return;
-    await approveAiDraft(token, convId);
-    setAiDraft(null);
+    // 失败时不清空草稿，保留以便重试
+    try {
+      await approveAiDraft(token, convId);
+      setAiDraft(null);
+    } catch {
+      onNotice?.("发送草稿失败，请重试");
+    }
   }
 
   async function reject(rewrite: string): Promise<void> {
     if (!token) return;
-    await rejectAiDraft(token, convId, rewrite);
-    setAiDraft(null);
+    try {
+      await rejectAiDraft(token, convId, rewrite);
+      setAiDraft(null);
+    } catch {
+      onNotice?.("改写发送失败，请重试");
+    }
   }
 
   return { draftMode, aiDraft, toggleDraftMode, approve, reject };

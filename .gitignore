@@ -38,3 +38,9 @@ web/coverage/
 
 # 后端通读 grep 中间产物（可由 docs 脚本重新生成）
 docs/backend-understanding/raw/
+
+.superpowers/
+
+# pnpm 本地缓存 / Claude Code 本地配置（勿提交）
+web/.pnpm-store/
+.claude/

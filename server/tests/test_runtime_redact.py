@@ -1,7 +1,7 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 
-async def test_runtime_redacts_pii_in_streamed_text(seeded_db, monkeypatch):
+async def test_runtime_redacts_pii_in_streamed_text(seeded_db, monkeypatch, fake_stream):
     """LLM 返回含手机/卡号/规则名的文本 → runtime yield 出来的是脱敏版。"""
     from ai_engine.agent import runtime
     from ai_engine.integrations import anthropic_client as ac
@@ -15,7 +15,7 @@ async def test_runtime_redacts_pii_in_streamed_text(seeded_db, monkeypatch):
             self.usage = MagicMock(input_tokens=1, output_tokens=1)
 
     fake_client = MagicMock()
-    fake_client.messages.create = AsyncMock(return_value=FakeResp())
+    fake_client.messages.stream = fake_stream(FakeResp())
     monkeypatch.setattr(ac, "_client", fake_client)
 
     texts = []

@@ -1,57 +1,51 @@
-import { act, render, renderHook, screen } from "@testing-library/react";
+import { render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const streamTicketEvents = vi.fn();
+vi.mock("../src/api/chat", () => ({
+  streamTicketEvents: (args: { conversationId: number }) => streamTicketEvents(args),
+}));
 
 import { TicketStatusBanner } from "../src/components/TicketStatusBanner";
 import { useTicketStream } from "../src/hooks/useTicketStream";
 
-type Listener = (e: { data: string }) => void;
-
-class FakeEventSource {
-  static instances: FakeEventSource[] = [];
-  url: string;
-  listeners: Record<string, Listener[]> = {};
-  closed = false;
-  constructor(url: string) {
-    this.url = url;
-    FakeEventSource.instances.push(this);
-  }
-  addEventListener(name: string, fn: Listener) {
-    (this.listeners[name] ??= []).push(fn);
-  }
-  emit(name: string, data: unknown) {
-    for (const fn of this.listeners[name] ?? []) fn({ data: JSON.stringify(data) });
-  }
-  close() {
-    this.closed = true;
-  }
-}
-
-beforeEach(() => {
-  FakeEventSource.instances = [];
-  vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
-});
+beforeEach(() => streamTicketEvents.mockReset());
 afterEach(() => vi.restoreAllMocks());
 
 describe("useTicketStream", () => {
-  it("opens stream and accumulates ticket events", () => {
+  it("opens stream and accumulates ticket events", async () => {
+    streamTicketEvents.mockImplementation(async function* () {
+      yield { type: "assigned", external_id: "AI-7" };
+      yield { type: "resolved", external_id: "AI-7" };
+      await new Promise(() => {}); // 长连不结束，避免重连
+    });
     const { result } = renderHook(() => useTicketStream(7));
-    const es = FakeEventSource.instances[0];
-    expect(es.url).toBe("/api/v1/conversations/7/ticket-events-stream");
-    act(() => es.emit("assigned", { external_id: "AI-7" }));
-    act(() => es.emit("resolved", { external_id: "AI-7" }));
-    expect(result.current.map((e) => e.event)).toEqual(["assigned", "resolved"]);
+    expect(streamTicketEvents).toHaveBeenCalledWith({ conversationId: 7 });
+    await waitFor(() =>
+      expect(result.current.map((e) => e.event)).toEqual(["assigned", "resolved"]),
+    );
   });
 
   it("does not open when conversationId is null", () => {
     renderHook(() => useTicketStream(null));
-    expect(FakeEventSource.instances.length).toBe(0);
+    expect(streamTicketEvents).not.toHaveBeenCalled();
   });
 
-  it("closes the stream on unmount", () => {
-    const { unmount } = renderHook(() => useTicketStream(1));
-    const es = FakeEventSource.instances[0];
+  it("stops accumulating after unmount", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    streamTicketEvents.mockImplementation(async function* () {
+      yield { type: "assigned", external_id: "AI-1" };
+      await gate;
+      yield { type: "resolved", external_id: "AI-1" };
+      await new Promise(() => {});
+    });
+    const { result, unmount } = renderHook(() => useTicketStream(1));
+    await waitFor(() => expect(result.current.length).toBe(1));
     unmount();
-    expect(es.closed).toBe(true);
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(result.current.map((e) => e.event)).toEqual(["assigned"]);
   });
 });
 

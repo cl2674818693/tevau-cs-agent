@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AuthExpiredError, authHeaders, setIdentity } from "../src/api/identity";
+import { authHeaders, setIdentity } from "../src/api/identity";
 import { ToolCallChip } from "../src/components/ToolCallChip";
 
 afterEach(() => vi.restoreAllMocks());
@@ -12,9 +12,11 @@ describe("identity authHeaders", () => {
     expect(await authHeaders()).toEqual({ "X-BU-ID": "BU9" });
   });
 
-  it("B 端无 buId（靠 cookie）返回空头", async () => {
+  it("B 端无 buId 降级游客头 X-Guest-ID（已登录时 cookie 仍由 credentials 携带）", async () => {
     setIdentity({ kind: "b" });
-    expect(await authHeaders()).toEqual({});
+    const h = await authHeaders();
+    expect(h["X-Guest-ID"]).toBeTruthy();
+    expect(h).not.toHaveProperty("X-BU-ID");
   });
 
   it("C 端返回 Bearer token", async () => {
@@ -22,9 +24,11 @@ describe("identity authHeaders", () => {
     expect(await authHeaders()).toEqual({ Authorization: "Bearer jwt-xyz" });
   });
 
-  it("C 端 token 缺失抛 AuthExpiredError", async () => {
+  it("C 端 token 缺失降级游客头 X-Guest-ID（不再抛错卡死）", async () => {
     setIdentity({ kind: "c", getToken: async () => null });
-    await expect(authHeaders()).rejects.toBeInstanceOf(AuthExpiredError);
+    const h = await authHeaders();
+    expect(h["X-Guest-ID"]).toBeTruthy();
+    expect(h).not.toHaveProperty("Authorization");
   });
 });
 

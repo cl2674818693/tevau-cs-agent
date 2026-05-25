@@ -79,13 +79,14 @@ async def test_chat_endpoint_emits_ping_constant():
     assert sse_events.PING_INTERVAL_SECONDS == 30
 
 
-async def test_chat_endpoint_rejects_no_bu_header(seeded_db):
+async def test_chat_endpoint_guest_fallback_no_bu_header(seeded_db):
+    """无身份调 /chat → 降级游客，不再 401。"""
     from ai_engine import main as main_mod
 
     transport = ASGITransport(app=main_mod.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get("/api/v1/chat?conversation_id=1&message=hi")
-    assert resp.status_code == 401
+    assert resp.status_code != 401
 
 
 async def test_chat_cancel_stream(seeded_db):

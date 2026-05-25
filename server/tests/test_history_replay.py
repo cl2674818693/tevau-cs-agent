@@ -1,5 +1,5 @@
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 
 def _resp(text: str) -> MagicMock:
@@ -10,7 +10,7 @@ def _resp(text: str) -> MagicMock:
     )
 
 
-async def test_run_turn_replays_prior_history(seeded_db, monkeypatch):
+async def test_run_turn_replays_prior_history(seeded_db, monkeypatch, fake_stream):
     """run_turn 把已落库历史回放给模型，实现多轮上下文。"""
     from ai_engine.agent import runtime
     from ai_engine.integrations import anthropic_client as ac
@@ -31,7 +31,7 @@ async def test_run_turn_replays_prior_history(seeded_db, monkeypatch):
         captured.setdefault("messages", json.loads(json.dumps(kw["messages"])))
         return _resp("好的")
 
-    fake.messages.create = AsyncMock(side_effect=lambda **kw: _create(**kw))
+    fake.messages.stream = fake_stream(_create)
     monkeypatch.setattr(ac, "_client", fake)
 
     async for _ in runtime.run_turn(
@@ -73,7 +73,7 @@ async def test_history_text_extracts_assistant_blocks():
     assert _history_text("human_agent", "纯文本") == "纯文本"
 
 
-async def test_fresh_conversation_has_no_history(seeded_db, monkeypatch):
+async def test_fresh_conversation_has_no_history(seeded_db, monkeypatch, fake_stream):
     """新会话：仅当前消息，不回放（历史为空）。"""
     from ai_engine.agent import runtime
     from ai_engine.integrations import anthropic_client as ac
@@ -87,7 +87,7 @@ async def test_fresh_conversation_has_no_history(seeded_db, monkeypatch):
         captured.setdefault("messages", json.loads(json.dumps(kw["messages"])))
         return _resp("hi")
 
-    fake.messages.create = AsyncMock(side_effect=lambda **kw: _create(**kw))
+    fake.messages.stream = fake_stream(_create)
     monkeypatch.setattr(ac, "_client", fake)
 
     async for _ in runtime.run_turn(

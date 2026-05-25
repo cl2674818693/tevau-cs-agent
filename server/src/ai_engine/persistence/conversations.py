@@ -112,6 +112,19 @@ async def set_mode(conv_id: int, mode: str, assigned_staff_id: str | None = None
         await conn.commit()
 
 
+async def get_conversation_meta(conv_id: int) -> dict[str, object] | None:
+    """客服详情页用：返回会话当前 mode / 指派人等元信息（含 mode、assigned_staff_id）。"""
+    async with get_conn() as conn:
+        row = await (
+            await conn.execute(
+                "SELECT id, user_type, subject_id, mode, assigned_staff_id, created_at "
+                "FROM conversations WHERE id=?",
+                (conv_id,),
+            )
+        ).fetchone()
+    return dict(row) if row else None
+
+
 async def get_mode(conv_id: int) -> tuple[str, str | None]:
     async with get_conn() as conn:
         row = await (

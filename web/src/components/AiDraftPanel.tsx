@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "./ui/button";
+import { Textarea } from "./ui/input";
 
 type Props = {
   draft: string | null;
@@ -21,19 +22,19 @@ export function AiDraftPanel({ draft, onApprove, onReject }: Props) {
   if (draft === null) return null;
 
   return (
-    <div className="rounded border border-line bg-fill-secondary p-3 mb-3">
-      <div className="text-footnote text-ink-secondary mb-1">AI 草稿（未发送）</div>
+    <div className="mb-3 rounded border border-line bg-surface-subtle p-3">
+      <div className="mb-1 text-footnote text-ink-secondary">AI 草稿（未发送）</div>
       {editing ? (
-        <textarea
+        <Textarea
           value={rewrite}
           onChange={(e) => setRewrite(e.target.value)}
           rows={4}
-          className="w-full rounded border border-line px-3 py-2 text-body2 outline-none"
+          className="text-body2"
         />
       ) : (
-        <div className="text-body2 text-ink-primary whitespace-pre-wrap">{draft}</div>
+        <div className="whitespace-pre-wrap text-body2 text-ink-primary">{draft}</div>
       )}
-      <div className="flex gap-2 mt-2">
+      <div className="mt-2 flex gap-2">
         {editing ? (
           <Button size="sm" onClick={() => onReject(rewrite.trim())} disabled={!rewrite.trim()}>
             改写后发送

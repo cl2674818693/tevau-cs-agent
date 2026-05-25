@@ -31,6 +31,7 @@ async def _authorize_conversation(request: Request, conversation_id: int) -> tup
         raise HTTPException(403, "not your conversation")
     return user_type, subject_id
 
+
 # conversation_id → asyncio.Event（用户点"停止生成"时 set，gen() 检测后退出）
 _cancel_signals: dict[int, asyncio.Event] = {}
 
@@ -44,10 +45,18 @@ def _map_runtime_event(ev: dict[str, Any]) -> dict[str, str] | None:
             {"index": 0, "delta": {"type": "text_delta", "text": ev.get("text", "")}},
         )
     if t == "tool_call":
-        return se.sse_payload(se.EVENT_TOOL_USE, {"name": ev.get("name"), "input": ev.get("input")})
+        return se.sse_payload(
+            se.EVENT_TOOL_USE,
+            {"tool_use_id": ev.get("id"), "name": ev.get("name"), "input": ev.get("input")},
+        )
     if t == "tool_result":
         return se.sse_payload(
-            se.EVENT_TOOL_RESULT, {"name": ev.get("name"), "is_error": not ev.get("ok", False)}
+            se.EVENT_TOOL_RESULT,
+            {
+                "tool_use_id": ev.get("id"),
+                "name": ev.get("name"),
+                "is_error": not ev.get("ok", False),
+            },
         )
     if t == "system":  # 会话治理 / 成本治理等系统提示（spec §8）
         return se.sse_payload(se.EVENT_WARNING, {"text": ev.get("text", "")})

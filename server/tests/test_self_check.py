@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 
 def _block(type_: str, **kw):
@@ -16,7 +16,7 @@ def _resp(blocks, stop_reason):
     return r
 
 
-async def test_self_check_injects_one_extra_round(seeded_db, monkeypatch):
+async def test_self_check_injects_one_extra_round(seeded_db, monkeypatch, fake_stream):
     """end_turn 后强制注入一轮 self-check（spec §8.3），最终流出修订后的文本。"""
     from ai_engine.agent import runtime
     from ai_engine.integrations import anthropic_client as ac
@@ -31,7 +31,7 @@ async def test_self_check_injects_one_extra_round(seeded_db, monkeypatch):
         ]
     )
     fake = MagicMock()
-    fake.messages.create = AsyncMock(side_effect=lambda **kw: next(seq))
+    fake.messages.stream = fake_stream(lambda **kw: next(seq))
     monkeypatch.setattr(ac, "_client", fake)
 
     texts = []
@@ -46,23 +46,23 @@ async def test_self_check_injects_one_extra_round(seeded_db, monkeypatch):
     assert "草稿" not in joined
     assert "修订" in joined
     # 调了两次模型：草稿 + self-check 修订
-    assert fake.messages.create.await_count == 2
+    assert fake.messages.stream.call_count == 2
     # 第二次请求里带入了 self_check 提示（messages 是 live 引用，搜全量即可）
-    second_req = fake.messages.create.await_args_list[1].kwargs
+    second_req = fake.messages.stream.call_args_list[1].kwargs
     assert any(
         m["role"] == "user" and isinstance(m["content"], str) and "审视" in m["content"]
         for m in second_req["messages"]
     )
 
 
-async def test_self_check_skipped_when_no_text(seeded_db, monkeypatch):
+async def test_self_check_skipped_when_no_text(seeded_db, monkeypatch, fake_stream):
     """end_turn 但无文本（罕见）：不注入 self-check，直接结束。"""
     from ai_engine.agent import runtime
     from ai_engine.integrations import anthropic_client as ac
 
     seq = iter([_resp([], "end_turn")])
     fake = MagicMock()
-    fake.messages.create = AsyncMock(side_effect=lambda **kw: next(seq))
+    fake.messages.stream = fake_stream(lambda **kw: next(seq))
     monkeypatch.setattr(ac, "_client", fake)
 
     async for _ in runtime.run_turn(
@@ -70,4 +70,4 @@ async def test_self_check_skipped_when_no_text(seeded_db, monkeypatch):
     ):
         pass
 
-    assert fake.messages.create.await_count == 1
+    assert fake.messages.stream.call_count == 1

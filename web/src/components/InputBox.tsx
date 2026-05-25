@@ -38,7 +38,7 @@ export function InputBox({
 
   return (
     <div className="border-t border-line bg-surface-card px-page py-block-sm safe-bottom">
-      <div className="flex items-end gap-2 rounded-md bg-surface-page border border-line px-3 py-2 transition-all focus-within:border-brand focus-within:shadow-focus">
+      <div className="flex items-center gap-2 rounded-md bg-surface-page border border-line px-3 py-2 transition-all focus-within:border-brand focus-within:shadow-focus">
         <textarea
           ref={ref}
           value={v}

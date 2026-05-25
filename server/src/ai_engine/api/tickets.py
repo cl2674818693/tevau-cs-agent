@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from ai_engine.api.staff_conversations import publish_conversation_event
+from ai_engine.api.staff_conversations import _publish
 from ai_engine.config import settings
 from ai_engine.observability import metrics
 from ai_engine.persistence.tickets import (
@@ -50,7 +50,7 @@ async def receive_event(
     # spec §7.2 + Task 9：推给该会话的 ticket-events-stream（SSE 替换轮询）
     ticket = await get_ticket(external_id)
     if ticket is not None:
-        publish_conversation_event(
+        _publish(
             int(ticket["conversation_id"]),  # type: ignore[call-overload]
             {
                 "type": event,

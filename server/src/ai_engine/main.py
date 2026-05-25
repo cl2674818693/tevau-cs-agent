@@ -50,3 +50,7 @@ async def _startup() -> None:
     await init_db()
     # 业务只读库（URL 未配时跳过，MVP-1 模式不连）
     await init_business_dbs(settings.unlimitpay_db_url, settings.nexus_db_url)
+    # 配置 REDIS_URL 时拉起会话事件跨副本订阅桥（多副本实时事件互通）
+    from ai_engine.api.staff_conversations import start_redis_bridge
+
+    await start_redis_bridge()

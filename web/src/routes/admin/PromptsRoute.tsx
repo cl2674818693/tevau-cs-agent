@@ -1,13 +1,41 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 import { getPromptVersions, setRollout } from "../../api/admin";
+import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
+import { PageContainer, PageHeader } from "../../components/ui/page";
 import { useStaffSession } from "../../hooks/useStaffSession";
+
+function RolloutRow({
+  version,
+  value,
+  onChange,
+}: {
+  version: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="flex-1 text-body2 text-ink-primary">{version}</span>
+      <Input
+        type="number"
+        min={0}
+        max={100}
+        aria-label={`${version} 灰度比例`}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-20 px-2 py-1 text-body2"
+      />
+      <span className="text-body3 text-ink-secondary">%</span>
+    </div>
+  );
+}
 
 export function PromptsRoute() {
   const { token, role } = useStaffSession();
-  const nav = useNavigate();
   const [versions, setVersions] = useState<string[]>([]);
   const [rollout, setRolloutState] = useState<Record<string, number>>({});
   const [notice, setNotice] = useState("");
@@ -42,43 +70,36 @@ export function PromptsRoute() {
   }
 
   return (
-    <div className="mx-auto max-w-[560px] px-page py-block-lg">
-      <div className="flex items-center mb-3">
-        <h2 className="text-sh2 text-ink-primary flex-1">Prompt 灰度管理</h2>
-        <button
-          onClick={() => nav("/staff/conversations")}
-          className="text-body3 text-ink-secondary"
-        >
-          返回
-        </button>
-      </div>
-      {err && <div className="text-body3 text-status-error mb-2">{err}</div>}
-      {notice && <div className="text-body3 text-status-success mb-2">{notice}</div>}
-      <div className="flex flex-col gap-2">
-        {versions.map((v) => (
-          <div key={v} className="flex items-center gap-3">
-            <span className="text-body2 text-ink-primary flex-1">{v}</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              aria-label={`${v} 灰度比例`}
+    <PageContainer width="form">
+      <PageHeader title="Prompt 灰度管理" />
+      {err && (
+        <Alert variant="error" className="mb-2">
+          {err}
+        </Alert>
+      )}
+      {notice && (
+        <Alert variant="success" className="mb-2">
+          {notice}
+        </Alert>
+      )}
+      <Card>
+        <div className="flex flex-col gap-2 px-page py-block-sm">
+          {versions.map((v) => (
+            <RolloutRow
+              key={v}
+              version={v}
               value={rollout[v] ?? 0}
-              onChange={(e) =>
-                setRolloutState((prev) => ({ ...prev, [v]: Number(e.target.value) }))
-              }
-              className="w-20 rounded border border-line px-2 py-1 text-body2"
+              onChange={(n) => setRolloutState((prev) => ({ ...prev, [v]: n }))}
             />
-            <span className="text-body3 text-ink-secondary">%</span>
-          </div>
-        ))}
-      </div>
-      <div className="text-footnote text-ink-secondary mt-2">
+          ))}
+        </div>
+      </Card>
+      <div className="mt-2 text-footnote text-ink-secondary">
         合计 {total}%（≤100，余量回落 default）
       </div>
       <Button size="md" className="mt-3" onClick={save} disabled={total > 100}>
         保存
       </Button>
-    </div>
+    </PageContainer>
   );
 }

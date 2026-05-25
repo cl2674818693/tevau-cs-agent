@@ -15,19 +15,19 @@ SESSION_COOKIE = "ai_engine_session"
 _SESSION_TTL = 8 * 3600
 
 
-def issue_bu_session(bu_id: str) -> str:
-    """签发 B 端 session token（HS256 签名，含 bu_id + 过期）。空密钥时拒绝签发。"""
+def issue_bu_session(tenant_id: str) -> str:
+    """签发 B 端 session token（HS256 签名，含 tenant_id + 过期）。空密钥时拒绝签发。"""
     if not settings.bu_session_secret:
         raise RuntimeError("BU_SESSION_SECRET not configured")
     return jwt.encode(
-        {"typ": "b", "sub": bu_id, "exp": int(time.time()) + _SESSION_TTL},
+        {"typ": "b", "sub": tenant_id, "exp": int(time.time()) + _SESSION_TTL},
         settings.bu_session_secret,
         algorithm="HS256",
     )
 
 
 def _verify_bu_session(token: str) -> str | None:
-    """验签 session token，返回 bu_id；非法/过期/空密钥返回 None。"""
+    """验签 session token，返回 tenant_id；非法/过期/空密钥返回 None。"""
     if not settings.bu_session_secret:
         return None
     try:
@@ -40,23 +40,24 @@ def _verify_bu_session(token: str) -> str | None:
     return str(sub) if sub else None
 
 
-def _bu_from_request(request: Request) -> str | None:
-    """从签名 session cookie 解析 bu_id。仅 dev_trust_bu_header 开启时才回退信任 X-BU-ID。"""
+def _tenant_from_request(request: Request) -> str | None:
+    """从签名 session cookie 解析 tenant_id。仅 dev_trust_bu_header 开启时才回退信任 X-BU-ID。"""
     cookie = request.cookies.get(SESSION_COOKIE)
     if cookie:
-        bu_id = _verify_bu_session(cookie)
-        if bu_id:
-            return bu_id
+        tenant_id = _verify_bu_session(cookie)
+        if tenant_id:
+            return tenant_id
     if settings.dev_trust_bu_header:
         return request.headers.get("X-BU-ID")
     return None
 
 
 async def require_bu(request: Request) -> str:
-    bu_id = _bu_from_request(request)
-    if not bu_id or not bu_id.startswith("BU"):
+    # B 端身份 = 验签 cookie 解出的 tenant_id（数字串）；非空即有效，不再按 BU 前缀判断。
+    tenant_id = _tenant_from_request(request)
+    if not tenant_id:
         raise HTTPException(401, "missing or invalid session")
-    return bu_id
+    return tenant_id
 
 
 async def resolve_identity(request: Request) -> tuple[str, str]:
@@ -74,8 +75,8 @@ async def resolve_identity(request: Request) -> tuple[str, str]:
             return USER_TYPE_C, str(claims["sub"])
         except ValueError:
             pass  # 落到 B 端 / 游客
-    bu_id = _bu_from_request(request)
-    if bu_id and bu_id.startswith("BU"):
-        return USER_TYPE_B, bu_id
+    tenant_id = _tenant_from_request(request)
+    if tenant_id:
+        return USER_TYPE_B, tenant_id
     guest_id = request.headers.get("X-Guest-ID")
     return USER_TYPE_GUEST, f"guest:{guest_id or 'anon'}"

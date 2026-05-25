@@ -27,7 +27,7 @@ export type ChatEvent = {
 // 会话初始化端点响应（spec §6.2）
 export type ConversationInit = {
   conversation_id: number;
-  user_type: "c" | "b";
+  user_type: "c" | "b" | "g";
   display_name: string;
   greeting: string;
   history_url: string | null;
@@ -43,6 +43,7 @@ export type Message =
 export type ConversationMode = "ai" | "human_pending" | "human_takeover" | "ai_draft";
 
 export type ToolCallShown = {
+  tool_use_id?: string;
   name: string;
   input: Record<string, unknown>;
   ok?: boolean;

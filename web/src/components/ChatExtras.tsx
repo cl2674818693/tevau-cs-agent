@@ -43,6 +43,23 @@ export function ChatHeader({
   );
 }
 
+/**
+ * 游客（未登录）登录引导条。区分两类登录路径：
+ * - C 端 APP 用户：在 APP 内登录（浏览器无法代办，仅提示）
+ * - B 端合作伙伴：用主账户 ID 在浏览器登录 → /bu/login
+ * 空状态与已开始对话两种状态下都常驻可见，避免「只在 APP 内登录」误导 B 端。
+ */
+export function GuestLoginBar() {
+  return (
+    <div className="px-page py-2 bg-soft-brand border-b border-line text-footnote text-ink-secondary text-center leading-relaxed">
+      查询账户、卡片或交易需登录：APP 用户请在 APP 内登录；合作伙伴可
+      <a href="/bu/login" className="ml-1 font-bold text-brand hover:underline">
+        主账户登录
+      </a>
+    </div>
+  );
+}
+
 export function EmptyState({ greeting }: { greeting: string }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-3">

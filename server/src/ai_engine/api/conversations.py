@@ -20,9 +20,13 @@ class ConversationsInitOut(BaseModel):
     limits: dict[str, int]
 
 
+# 标题（前端 EmptyState 写死「你好，我是 Tevau 助手」）已报过名，
+# 这里只写「按端区分」的纯介绍句，避免重复报名。
 _GREETING = {
-    "c": "您好，我是 Tevau 智能助手，有账户、卡片或使用问题都可以问我。",
-    "b": "您好，我是 Tevau 智能助手，可以帮您查 Open API / 卡片业务相关问题。",
+    "c": "账户、卡片、交易记录，或使用中遇到的问题，都可以直接问我。",
+    "b": "可以帮你解答 Open API 接入、卡片业务、对接联调等问题。",
+    "g": "未登录也能解答 API、APP 使用等通用问题；"
+    "查询账户、卡片或交易记录需先登录。",
 }
 
 

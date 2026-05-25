@@ -48,13 +48,14 @@ export async function* streamChat(args: {
   conversationId: number;
   message: string;
   lastEventId?: string;
+  signal?: AbortSignal;
 }): AsyncGenerator<ChatEvent> {
   const url = `/api/v1/chat?conversation_id=${args.conversationId}&message=${encodeURIComponent(
     args.message,
   )}`;
   const headers: Record<string, string> = {};
   if (args.lastEventId) headers["Last-Event-ID"] = args.lastEventId;
-  const resp = await authedFetch(url, { headers });
+  const resp = await authedFetch(url, { headers, signal: args.signal });
   if (!resp.ok || !resp.body) throw new Error(`chat http ${resp.status}`);
   yield* readSseStream(resp);
 }
@@ -65,14 +66,17 @@ async function* readSseStream(resp: Response): AsyncGenerator<ChatEvent> {
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  // SSE 帧分隔符：sse-starlette 默认用 \r\n\r\n，规范也允许 \r\r / \n\n。
+  // 只认 \n\n 会导致 \r\n\r\n 永远切不出帧（事件全丢，UI 不渲染）。
+  const FRAME_SEP = /\r\n\r\n|\r\r|\n\n/;
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    let idx: number;
-    while ((idx = buffer.indexOf("\n\n")) !== -1) {
-      const frame = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
+    let m: RegExpExecArray | null;
+    while ((m = FRAME_SEP.exec(buffer)) !== null) {
+      const frame = buffer.slice(0, m.index);
+      buffer = buffer.slice(m.index + m[0].length);
       const ev = parseSseFrame(frame);
       if (ev) yield ev;
     }
@@ -88,6 +92,21 @@ export async function* streamConversationMessages(args: {
 }): AsyncGenerator<ChatEvent> {
   const resp = await authedFetch(`/api/v1/conversations/${args.conversationId}/messages-stream`);
   if (!resp.ok || !resp.body) throw new Error(`messages-stream http ${resp.status}`);
+  yield* readSseStream(resp);
+}
+
+/**
+ * 工单状态 SSE（spec §7.2）：订阅该会话的工单生命周期事件。
+ * 必须走 authedFetch 而非原生 EventSource —— EventSource 无法携带 Bearer / X-Guest-ID 头，
+ * 会导致 C 端/游客被降级成 guest:anon 而 403（B 端因 cookie 自动携带才侥幸可用）。
+ */
+export async function* streamTicketEvents(args: {
+  conversationId: number;
+}): AsyncGenerator<ChatEvent> {
+  const resp = await authedFetch(
+    `/api/v1/conversations/${args.conversationId}/ticket-events-stream`,
+  );
+  if (!resp.ok || !resp.body) throw new Error(`ticket-events-stream http ${resp.status}`);
   yield* readSseStream(resp);
 }
 

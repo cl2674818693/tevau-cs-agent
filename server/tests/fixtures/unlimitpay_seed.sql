@@ -39,9 +39,23 @@ CREATE TABLE IF NOT EXISTS api_call_log (
     INDEX idx_bu_created (bu_id, created_at)
 );
 
+-- B 端租户主表（bu_login 现校验此表，按 tenant_id；原 bu 表已弃用）
+CREATE TABLE IF NOT EXISTS t_nexus_company_info (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id VARCHAR(32),
+    company_name VARCHAR(400),
+    status INT DEFAULT 1,
+    del_flag TINYINT DEFAULT 0
+);
+
 INSERT INTO bu(bu_id, name, status) VALUES
   ('BU00243780', '示例合作伙伴', 1),
   ('BU_OTHER', '另一个 BU', 1);
+
+INSERT INTO t_nexus_company_info(tenant_id, company_name, status, del_flag) VALUES
+  ('1011010000068', '示例租户', 1, 0),
+  ('1011010000189', '另一个租户', 1, 0),
+  ('1011010000999', '已停用租户', 2, 0);
 
 INSERT INTO user(user_id, bu_id, email, phone, status) VALUES
   ('U1', 'BU00243780', 'alice@x.com', '13812345678', 'active'),

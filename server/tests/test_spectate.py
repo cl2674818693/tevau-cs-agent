@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -36,7 +36,7 @@ async def test_agent_cannot_spectate(staff_tokens):
     assert r.status_code == 403
 
 
-async def test_chat_publishes_spectator_events(seeded_db, monkeypatch):
+async def test_chat_publishes_spectator_events(seeded_db, monkeypatch, fake_stream):
     """AI 模式下 chat 把 user_message / assistant_text 推到旁观总线。"""
     from ai_engine.api import chat as chat_mod
     from ai_engine.integrations import anthropic_client as ac
@@ -50,8 +50,8 @@ async def test_chat_publishes_spectator_events(seeded_db, monkeypatch):
     )
 
     fake = MagicMock()
-    fake.messages.create = AsyncMock(
-        return_value=MagicMock(
+    fake.messages.stream = fake_stream(
+        MagicMock(
             content=[MagicMock(type="text", text="AI 正在处理")],
             stop_reason="end_turn",
             usage=MagicMock(input_tokens=1, output_tokens=1),

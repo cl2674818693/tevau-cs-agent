@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import respx
 from httpx import ASGITransport, AsyncClient, Response
@@ -26,7 +26,7 @@ async def _init_conv(client):
 
 
 @respx.mock
-async def test_e2e_bug_diagnosis_creates_ticket(seeded_db, monkeypatch):
+async def test_e2e_bug_diagnosis_creates_ticket(seeded_db, monkeypatch, fake_stream):
     """spec §10 验收：AI 查日志 → 定位代码 → 建工单（推送 payload 为 bug）。"""
     from ai_engine import main as main_mod
     from ai_engine.agent.tools import create_ticket as ct
@@ -99,7 +99,7 @@ async def test_e2e_bug_diagnosis_creates_ticket(seeded_db, monkeypatch):
     )
 
     fake_client = MagicMock()
-    fake_client.messages.create = AsyncMock(side_effect=lambda **kw: next(seq))
+    fake_client.messages.stream = fake_stream(lambda **kw: next(seq))
     monkeypatch.setattr(ac, "_client", fake_client)
 
     transport = ASGITransport(app=main_mod.app)
@@ -121,7 +121,7 @@ async def test_e2e_bug_diagnosis_creates_ticket(seeded_db, monkeypatch):
 
 
 @respx.mock
-async def test_e2e_cross_bu_query_is_blocked(seeded_db, monkeypatch):
+async def test_e2e_cross_bu_query_is_blocked(seeded_db, monkeypatch, fake_stream):
     """spec §10 验收：AI 试图查其他 BU 的卡 → 服务端注入会话身份 → 查不到 → AI 说无权限。"""
     from ai_engine import main as main_mod
     from ai_engine.integrations import anthropic_client as ac
@@ -152,7 +152,7 @@ async def test_e2e_cross_bu_query_is_blocked(seeded_db, monkeypatch):
     )
 
     fake_client = MagicMock()
-    fake_client.messages.create = AsyncMock(side_effect=lambda **kw: next(seq))
+    fake_client.messages.stream = fake_stream(lambda **kw: next(seq))
     monkeypatch.setattr(ac, "_client", fake_client)
 
     transport = ASGITransport(app=main_mod.app)

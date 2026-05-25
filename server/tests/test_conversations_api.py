@@ -18,10 +18,12 @@ async def test_conversations_init_returns_user_type_b(seeded_db):
     assert "limits" in body
 
 
-async def test_conversations_init_rejects_no_bu(seeded_db):
+async def test_conversations_init_falls_back_to_guest(seeded_db):
+    """无 cookie / 无 X-BU-ID / 无 Bearer → 降级游客会话（user_type=g），不再 401。"""
     from ai_engine import main as main_mod
 
     transport = ASGITransport(app=main_mod.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post("/api/v1/conversations", json={})
-    assert resp.status_code == 401
+    assert resp.status_code == 200
+    assert resp.json()["user_type"] == "g"

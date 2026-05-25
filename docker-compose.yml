@@ -42,10 +42,21 @@ services:
     volumes:
       - ./data:/data
       - ./repos:/repos:ro
+      # repos/code/* 是指向宿主机绝对路径的软链，进容器会悬空；
+      # 这里把 3 个仓库真实路径只读挂到对应位置，覆盖悬空软链（0 拷贝）。
+      # app_frontend 只挂 Flutter 源码 lib/（避开 9G 构建产物/android/ios），search_code 噪音更小
+      - /Users/sunchenglin/codes/tevau-pay-flutter/lib:/repos/code/app_frontend:ro
+      - /Users/sunchenglin/codes/后端代码/TevauPay-Service:/repos/code/app_backend:ro
+      - /Users/sunchenglin/codes/后端代码/TevauNexus-Service:/repos/code/openapi_backend:ro
+    # 等 mysql/redis "就绪"再起 api（仅等容器启动不够：mysql 首次初始化 20-30s，
+    # api 抢跑会连不上业务库直接退出，且无 restart 策略 → 一直死）。
     depends_on:
-      - sourcegraph
-      - mysql
-      - redis
+      sourcegraph:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   sourcegraph:
     image: sourcegraph/server:5.3.0
@@ -60,6 +71,11 @@ services:
     image: redis:7-alpine
     ports: ["6379:6379"]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   # 本地开发用 MySQL；生产用阿里云 RDS 只读账号（见 docs/resources.md）
   mysql:
@@ -74,12 +90,26 @@ services:
       - mysql-data:/var/lib/mysql
       - ./server/tests/fixtures/unlimitpay_seed.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
     restart: unless-stopped
+    # 业务库就绪探针：api 的 depends_on service_healthy 等它通过才起
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
   web:
-    image: node:20-alpine
+    # pnpm 11.2.2（package.json packageManager 锁定）要求 Node >= v22.13（用了 node:sqlite）
+    image: node:22-alpine
     working_dir: /web
-    volumes: ["./web:/web"]
-    command: sh -c "corepack enable && CI=true pnpm install && pnpm dev --host 0.0.0.0"
+    # 匿名卷遮蔽宿主 node_modules：宿主是 macOS、容器是 linux，esbuild 等原生二进制不通用，
+    # 必须让容器装自己的一份 linux 依赖。
+    volumes:
+      - ./web:/web
+      - /web/node_modules
+    # pnpm 10+ 默认拒绝依赖跑 build 脚本（esbuild 装不上 → 致命 ERR_PNPM_IGNORED_BUILDS）；
+    # dangerouslyAllowAllBuilds 非交互批准全部 build。本地 dev 容器可接受。
+    command: sh -c "corepack enable && pnpm install --config.dangerouslyAllowAllBuilds=true && pnpm dev --host 0.0.0.0"
     ports: ["5173:5173"]
     depends_on: [api]
 

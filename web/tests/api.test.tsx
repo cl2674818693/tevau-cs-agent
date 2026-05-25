@@ -57,6 +57,24 @@ describe("api/chat", () => {
     expect(types).toEqual(["conversation", "content_block_delta"]);
   });
 
+  it("streamChat parses CRLF frames (sse-starlette emits \\r\\n\\r\\n)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          'event: message_start\r\ndata: {"message_id":"a"}\r\n\r\n',
+          'event: content_block_delta\r\ndata: {"delta":{"type":"text_delta","text":"你好"}}\r\n\r\n',
+          'event: message_stop\r\ndata: {"stop_reason":"end_turn"}\r\n\r\n',
+        ]),
+      ),
+    );
+    const types: string[] = [];
+    for await (const ev of streamChat({ conversationId: 1, message: "x" })) {
+      types.push(ev.type);
+    }
+    expect(types).toEqual(["message_start", "content_block_delta", "message_stop"]);
+  });
+
   it("cancelStream sends DELETE", async () => {
     const f = vi.fn(
       async (_url: string, _opts?: RequestInit) => new Response(null, { status: 204 }),

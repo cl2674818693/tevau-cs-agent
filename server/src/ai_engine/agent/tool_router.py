@@ -3,11 +3,18 @@ import time
 from typing import Any
 
 from ai_engine.agent.tools import base
+from ai_engine.auth.bu_session import USER_TYPE_GUEST
 from ai_engine.observability import metrics
 from ai_engine.persistence.audit import log_tool_call
 
 NEEDS_CONVERSATION_ID = {"create_ticket"}
 NEEDS_USER_TYPE = {"create_ticket"}
+
+# 游客（未登录）拒绝个人数据工具时给 AI 的回执，引导其提示用户登录
+_GUEST_BLOCKED = (
+    "用户未登录，无法查询其个人账户/卡片/余额/交易/订单等数据。"
+    "请提示用户在 APP 内登录后再查询；通用问题（API 用法、APP 功能、文档）可正常解答。"
+)
 
 
 async def dispatch(
@@ -24,6 +31,12 @@ async def dispatch(
         await log_tool_call(conversation_id, tool_name, params, 0, 0, True, "unknown tool")
         metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
         return {"ok": False, "error": f"unknown tool: {tool_name}"}
+
+    # 游客降级：未登录用户禁用一切需要身份隔离的工具（含 create_ticket），返回引导登录回执。
+    if user_type == USER_TYPE_GUEST and tool.requires_subject_id:
+        await log_tool_call(conversation_id, tool_name, params, 0, 0, True, "guest not allowed")
+        metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
+        return {"ok": False, "error": _GUEST_BLOCKED}
 
     # 身份注入：把会话身份强写入工具声明的 subject_field（覆盖 AI 传值）。
     # 工具内部按自身语义用该值查对应列（C 端 user_id / B 端 tenant_id / 工单 bu_id）。

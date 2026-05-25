@@ -16,7 +16,7 @@ async def test_login_valid_bu_sets_cookie(business_mysql):
 
     transport = ASGITransport(app=main_mod.app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
-        r = await client.post("/api/v1/auth/bu/login", json={"bu_id": "BU00243780"})
+        r = await client.post("/api/v1/auth/bu/login", json={"bu_id": "1011010000068"})
     assert r.status_code == 200
     assert "ai_engine_session" in r.headers.get("set-cookie", "")
 
@@ -26,9 +26,9 @@ async def test_login_invalid_bu_returns_generic_error(business_mysql):
 
     transport = ASGITransport(app=main_mod.app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
-        r = await client.post("/api/v1/auth/bu/login", json={"bu_id": "BU999999"})
+        r = await client.post("/api/v1/auth/bu/login", json={"bu_id": "9999999999"})
     assert r.status_code == 401
-    assert "主账户不存在或已禁用" in r.text
+    assert "主账户不存在或已停用" in r.text
 
 
 async def test_login_rate_limit(business_mysql):
@@ -42,14 +42,14 @@ async def test_login_rate_limit(business_mysql):
     assert r.status_code == 429
 
 
-async def test_chat_requires_session():
-    """无 cookie / 无 X-BU-ID 调 /chat → 401。"""
+async def test_chat_guest_fallback_no_session():
+    """无 cookie / 无 X-BU-ID 调 /chat → 降级游客，不再 401。"""
     from ai_engine import main as main_mod
 
     transport = ASGITransport(app=main_mod.app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
         r = await client.get("/api/v1/chat?conversation_id=1&message=hi")
-    assert r.status_code == 401
+    assert r.status_code != 401
 
 
 async def test_login_then_cookie_authorizes(temp_db_url, business_mysql):
@@ -60,7 +60,7 @@ async def test_login_then_cookie_authorizes(temp_db_url, business_mysql):
     await init_db()
     transport = ASGITransport(app=main_mod.app)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
-        await client.post("/api/v1/auth/bu/login", json={"bu_id": "BU00243780"})
+        await client.post("/api/v1/auth/bu/login", json={"bu_id": "1011010000068"})
         # httpx 客户端自动带回 Set-Cookie
         r = await client.post("/api/v1/conversations", json={})
     assert r.status_code == 200

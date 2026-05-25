@@ -1,8 +1,10 @@
 import asyncio
 import json
+import logging
+import uuid
 from collections import defaultdict
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -10,24 +12,113 @@ from sse_starlette.sse import EventSourceResponse
 
 from ai_engine.agent.tool_router import dispatch
 from ai_engine.auth.staff_session import require_staff
+from ai_engine.config import settings
 from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
 from ai_engine.persistence.db import get_conn
 from ai_engine.persistence.staff import get_staff
 from ai_engine.persistence.staff_metrics import log_staff_action, refresh_human_pending
 
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
-# 内存订阅总线（单进程；生产多副本时换 Redis pub/sub）
+# 会话事件订阅总线。进程内用内存队列；配置 REDIS_URL 时再叠加 Redis pub/sub 做跨副本广播：
+#   - 核心 user↔staff 事件（_publish：human_message/mode_change/transferred/assistant_message/
+#     user_message/ai_draft_ready/ticket_event/request_human）跨副本可达；
+#   - 旁观高频 firehose（publish_conversation_event）保持本进程内（spectate 为内部观测，
+#     不保证跨副本，避免每个 runtime 事件都打 Redis）。
+# 去重：每条 Redis 消息带本进程 _PROC_ID，桥接收到自己发的消息会跳过（本地已投递）。
 _subscribers: dict[int, list[asyncio.Queue[dict[str, Any]]]] = defaultdict(list)
+_PROC_ID = uuid.uuid4().hex
+_redis: "Redis | None" = None
+_bridge_task: "asyncio.Task[None] | None" = None
+_publish_tasks: set[asyncio.Task[None]] = set()  # 持有 fire-and-forget 任务引用，防被 GC
 
 
-def _publish(conv_id: int, event: dict[str, Any]) -> None:
+def _get_redis() -> "Redis | None":
+    global _redis
+    if not settings.redis_url:
+        return None
+    if _redis is None:
+        import redis.asyncio as aioredis
+
+        _redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+    return _redis
+
+
+def _deliver_local(conv_id: int, event: dict[str, Any]) -> None:
     for q in _subscribers.get(conv_id, []):
         try:
             q.put_nowait(event)
         except asyncio.QueueFull:
             pass
+
+
+async def _redis_publish(conv_id: int, event: dict[str, Any]) -> None:
+    client = _get_redis()
+    if client is None:
+        return
+    try:
+        await client.publish(
+            f"conv:{conv_id}",
+            json.dumps({"o": _PROC_ID, "c": conv_id, "e": event}, ensure_ascii=False),
+        )
+    except Exception:  # redis 故障不阻断主链路；本进程订阅者已本地投递
+        logger.warning("conversation bus redis publish failed", exc_info=True)
+
+
+def _publish(conv_id: int, event: dict[str, Any]) -> None:
+    """投递核心会话事件：本进程订阅者立即收到；配置 Redis 时跨副本广播给其他进程。"""
+    _deliver_local(conv_id, event)
+    if _get_redis() is not None:
+        try:
+            task = asyncio.get_running_loop().create_task(_redis_publish(conv_id, event))
+            _publish_tasks.add(task)
+            task.add_done_callback(_publish_tasks.discard)
+        except RuntimeError:  # 无运行中的事件循环（_publish 均在请求内调用，理论上不发生）
+            logger.warning("conversation bus _publish outside event loop", exc_info=True)
+
+
+async def _redis_bridge() -> None:
+    """进程级 Redis 订阅：把其他副本发布的会话事件 fan-out 到本进程本地队列。"""
+    client = _get_redis()
+    if client is None:
+        return
+    pubsub = client.pubsub()
+    await pubsub.psubscribe("conv:*")
+    async for msg in pubsub.listen():
+        if msg.get("type") != "pmessage":
+            continue
+        try:
+            payload = json.loads(msg["data"])
+            if payload.get("o") == _PROC_ID:  # 本进程发的已本地投递，跳过避免双发
+                continue
+            _deliver_local(int(payload["c"]), payload["e"])
+        except (ValueError, KeyError, TypeError):
+            logger.warning("conversation bus bridge bad message", exc_info=True)
+
+
+async def start_redis_bridge() -> None:
+    """应用启动时调用：配置 Redis 时拉起进程级订阅桥（多副本实时事件互通）。"""
+    global _bridge_task
+    if _get_redis() is not None and _bridge_task is None:
+        _bridge_task = asyncio.create_task(_redis_bridge())
+
+
+async def _human_message_event(staff_sub: str, content: str) -> dict[str, Any]:
+    """构造 human_message 事件，带 display_name（用户侧客服署名）；查不到时回退 staff_id。"""
+    staff = await get_staff(staff_sub)
+    display_name = staff["display_name"] if staff else staff_sub
+    return {
+        "type": "human_message",
+        "content": content,
+        "sender_staff_id": staff_sub,
+        "display_name": display_name,
+    }
 
 
 def publish_user_message(conv_id: int, content: str) -> None:
@@ -52,6 +143,17 @@ async def list_conversations(
     staff: dict[str, Any] = Depends(require_staff),
 ) -> list[dict[str, object]]:
     return await conv_dao.list_for_staff(status)
+
+
+@router.get("/staff/api/v1/conversations/{conv_id}")
+async def get_one(
+    conv_id: int, staff: dict[str, Any] = Depends(require_staff)
+) -> dict[str, object]:
+    """单会话元信息：前端详情页据此初始化接管态（刷新后已接管会话仍能继续回复）。"""
+    conv = await conv_dao.get_conversation_meta(conv_id)
+    if conv is None:
+        raise HTTPException(404, "conversation not found")
+    return conv
 
 
 @router.post("/staff/api/v1/conversations/{conv_id}/take")
@@ -146,10 +248,7 @@ async def send_message(
     if mode != "human_takeover" or sid != staff["sub"]:
         raise HTTPException(403, "not your conversation")
     await conv_dao.append_human_message(conv_id, staff["sub"], body.content)
-    _publish(
-        conv_id,
-        {"type": "human_message", "content": body.content, "sender_staff_id": staff["sub"]},
-    )
+    _publish(conv_id, await _human_message_event(staff["sub"], body.content))
     return {"ok": True}
 
 
@@ -213,10 +312,7 @@ async def ai_draft_reject(
     await _require_assigned(conv_id, staff["sub"])
     await conv_dao.clear_ai_drafts(conv_id)
     await conv_dao.append_human_message(conv_id, staff["sub"], body.rewrite)
-    _publish(
-        conv_id,
-        {"type": "human_message", "content": body.rewrite, "sender_staff_id": staff["sub"]},
-    )
+    _publish(conv_id, await _human_message_event(staff["sub"], body.rewrite))
     return {"ok": True}
 
 

@@ -22,15 +22,34 @@ export function userType(): "c" | "b" {
   return _identity?.kind === "c" ? "c" : "b";
 }
 
-/** 当前身份对应的鉴权头。C 端取 token 失败抛 AuthExpiredError（caller 触发续签）。 */
+/** 游客标识：localStorage 持久化的匿名 ID，用于未登录会话的限流隔离（X-Guest-ID）。 */
+function guestId(): string {
+  const KEY = "ai_engine_guest_id";
+  try {
+    let id = localStorage.getItem(KEY);
+    if (!id) {
+      id = crypto?.randomUUID?.() ?? `g-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem(KEY, id);
+    }
+    return id;
+  } catch {
+    return "anon";
+  }
+}
+
+/**
+ * 当前身份对应的鉴权头。拿不到登录身份（C 端无 token / B 端无 bu_id 且无 cookie）时
+ * 降级为游客头 X-Guest-ID，让后端走匿名降级会话，不再因 401 卡死。
+ * B 端已登录时 cookie 经 credentials:'include' 仍会带上，后端优先用它。
+ */
 export async function authHeaders(): Promise<Record<string, string>> {
-  if (!_identity) return {};
+  const guest = { "X-Guest-ID": guestId() };
+  if (!_identity) return guest;
   if (_identity.kind === "b") {
-    return _identity.buId ? { "X-BU-ID": _identity.buId } : {};
+    return _identity.buId ? { "X-BU-ID": _identity.buId } : guest;
   }
   const token = await _identity.getToken();
-  if (!token) throw new AuthExpiredError();
-  return { Authorization: `Bearer ${token}` };
+  return token ? { Authorization: `Bearer ${token}` } : guest;
 }
 
 export class AuthExpiredError extends Error {

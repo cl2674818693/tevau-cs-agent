@@ -2,6 +2,9 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Button } from "../../components/ui/button";
+import { Field } from "../../components/ui/field";
+import { Input } from "../../components/ui/input";
+import { PageContainer } from "../../components/ui/page";
 import { useStaffSession } from "../../hooks/useStaffSession";
 import { staffLogin } from "../../api/staff";
 
@@ -29,27 +32,24 @@ export function StaffLoginRoute() {
   }
 
   return (
-    <div className="mx-auto flex h-full max-w-[420px] flex-col justify-center px-page gap-4">
-      <h2 className="text-sh1 text-ink-primary text-center">客服工作台登录</h2>
+    <PageContainer width="narrow" center>
+      <h2 className="mb-4 text-center text-sh1 text-ink-primary">客服工作台登录</h2>
       <form onSubmit={submit} className="flex flex-col gap-3">
-        <input
-          value={staffId}
-          onChange={(e) => setStaffId(e.target.value)}
-          placeholder="工号"
-          className="focus-glow rounded border border-line px-input-x py-3 text-body1 outline-none"
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="密码"
-          className="focus-glow rounded border border-line px-input-x py-3 text-body1 outline-none"
-        />
+        <Field>
+          <Input value={staffId} onChange={(e) => setStaffId(e.target.value)} placeholder="工号" />
+        </Field>
+        <Field error={err}>
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="密码"
+          />
+        </Field>
         <Button type="submit" disabled={loading || !staffId.trim() || !password}>
           {loading ? "..." : "登录"}
         </Button>
-        {err && <div className="text-body3 text-status-error">{err}</div>}
       </form>
-    </div>
+    </PageContainer>
   );
 }

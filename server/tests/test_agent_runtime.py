@@ -1,11 +1,11 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import respx
 from httpx import Response
 
 
 @respx.mock
-async def test_runtime_runs_tool_then_replies(seeded_db, monkeypatch):
+async def test_runtime_runs_tool_then_replies(seeded_db, monkeypatch, fake_stream):
     """模拟：第一次模型返回 tool_use(search_code)；第二次返回纯文本。"""
     from ai_engine.agent import runtime
     from ai_engine.integrations import anthropic_client as ac
@@ -50,7 +50,7 @@ async def test_runtime_runs_tool_then_replies(seeded_db, monkeypatch):
         )
 
     fake_client = MagicMock()
-    fake_client.messages.create = AsyncMock(side_effect=fake_create)
+    fake_client.messages.stream = fake_stream(fake_create)
     monkeypatch.setattr(ac, "_client", fake_client)
 
     chunks = []

@@ -3,7 +3,7 @@
 import hashlib
 import hmac
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -93,7 +93,7 @@ async def test_scenario2_previous_hmac_key_still_valid(env):
     assert r.status_code == 200
 
 
-async def test_scenario3_self_check_revision_reaches_user(env, monkeypatch):
+async def test_scenario3_self_check_revision_reaches_user(env, monkeypatch, fake_stream):
     """剧本3：self-check 把草稿改写后再流给用户。"""
     from ai_engine.agent import runtime
     from ai_engine.integrations import anthropic_client as ac
@@ -102,7 +102,7 @@ async def test_scenario3_self_check_revision_reaches_user(env, monkeypatch):
     cid = await create_conversation("b", "BU00243780")
     seq = iter([_resp("草稿：随便看看"), _resp("修订：去看 card_bind.py:120，证据 X")])
     fake = MagicMock()
-    fake.messages.create = AsyncMock(side_effect=lambda **kw: next(seq))
+    fake.messages.stream = fake_stream(lambda **kw: next(seq))
     monkeypatch.setattr(ac, "_client", fake)
 
     texts = []
@@ -115,7 +115,7 @@ async def test_scenario3_self_check_revision_reaches_user(env, monkeypatch):
     assert "草稿" not in joined and "修订" in joined
 
 
-async def test_scenario4_token_budget_refusal(env, monkeypatch):
+async def test_scenario4_token_budget_refusal(env, monkeypatch, fake_stream):
     """剧本4：token 超额 → 下次 chat 拿到额度用完系统消息。"""
     monkeypatch.setenv("DAILY_TOKEN_LIMIT", "1")
     from ai_engine.config import settings
@@ -127,7 +127,7 @@ async def test_scenario4_token_budget_refusal(env, monkeypatch):
 
     cid = await create_conversation("b", "BU00243780")
     fake = MagicMock()
-    fake.messages.create = AsyncMock(return_value=_resp("回复"))
+    fake.messages.stream = fake_stream(_resp("回复"))
     monkeypatch.setattr(ac, "_client", fake)
 
     transport = ASGITransport(app=main_mod.app)
@@ -148,7 +148,7 @@ async def test_scenario4_token_budget_refusal(env, monkeypatch):
     assert "额度已用完" in "\n".join(body)
 
 
-async def test_scenario5_ai_draft_review_flow(env, monkeypatch):
+async def test_scenario5_ai_draft_review_flow(env, monkeypatch, fake_stream):
     """剧本5：ai_draft → 用户问 → 落草稿 → approve 后才有 assistant 消息。"""
     from ai_engine import main as main_mod
     from ai_engine.integrations import anthropic_client as ac
@@ -157,7 +157,7 @@ async def test_scenario5_ai_draft_review_flow(env, monkeypatch):
     cid = await create_conversation("b", "BU00243780")
     await set_mode(cid, "ai_draft", "AG1")
     fake = MagicMock()
-    fake.messages.create = AsyncMock(return_value=_resp("AI 草稿答复"))
+    fake.messages.stream = fake_stream(_resp("AI 草稿答复"))
     monkeypatch.setattr(ac, "_client", fake)
 
     transport = ASGITransport(app=main_mod.app)

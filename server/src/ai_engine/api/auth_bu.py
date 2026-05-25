@@ -12,7 +12,9 @@ router = APIRouter()
 
 
 class LoginIn(BaseModel):
-    bu_id: str = Field(min_length=4, max_length=32, pattern=r"^BU[A-Za-z0-9]+$")
+    # 主账户 ID = nexus 真实租户 tenant_id（数字串，如 1011010000068）。
+    # 字段名保留 bu_id 不破坏前端契约，值语义已是 tenant_id。
+    bu_id: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9]+$")
 
 
 # 简易内存速率限制（生产换 Redis）
@@ -38,11 +40,15 @@ async def bu_login(body: LoginIn, request: Request, response: Response) -> dict[
     if not _check_rate(ip):
         raise HTTPException(429, "too many attempts, please wait")
 
-    # 查 BU 存在且 active（spec §4.1 简化方案）
-    db = get_db("unlimitpay")
-    row = await db.fetch_one("SELECT bu_id, status FROM bu WHERE bu_id=%s", (body.bu_id,))
-    if not row or int(row.get("status") or 0) != 1:
-        raise HTTPException(401, "主账户不存在或已禁用")  # 通用错误，防枚举
+    # 校验主账户身份：查 nexus 真实租户主表 t_nexus_company_info（按 tenant_id）。
+    # status: 0待开启 1运行中 2已停用；仅拒绝「已停用」。原 unlimitpay.bu 简化表已弃用。
+    db = get_db("nexus")
+    row = await db.fetch_one(
+        "SELECT tenant_id, status FROM t_nexus_company_info WHERE tenant_id=%s AND del_flag=0",
+        (body.bu_id,),
+    )
+    if not row or int(row.get("status") or 0) == 2:
+        raise HTTPException(401, "主账户不存在或已停用")  # 通用错误，防枚举
 
     # 签发签名 session cookie（HttpOnly + SameSite=Strict + 8h）。
     # cookie 值是 HS256 签名 token（含 bu_id + 过期），服务端验签，无法伪造。

@@ -3,7 +3,14 @@ import { userType } from "../api/identity";
 import { useChat } from "../hooks/useChat";
 import { useTicketStream } from "../hooks/useTicketStream";
 import { useKeyboardInset } from "../hooks/useVisualViewport";
-import { ChatHeader, EmptyState, ErrorView, LoadingView, StatusBanners } from "./ChatExtras";
+import {
+  ChatHeader,
+  EmptyState,
+  ErrorView,
+  GuestLoginBar,
+  LoadingView,
+  StatusBanners,
+} from "./ChatExtras";
 import { HandoffPrompt } from "./HandoffButton";
 import { InputBox } from "./InputBox";
 import { MessageList } from "./MessageList";
@@ -88,6 +95,7 @@ export function ChatWindow() {
       <ChatHeader mode={mode} staffName={chat.staffName} sending={sending} onStop={chat.stop} />
 
       <StatusBanners connection={chat.connection} limitPct={chat.limitPct} />
+      {init?.user_type === "g" && <GuestLoginBar />}
       <TicketStatusBanner events={ticketEvents} />
 
       <ChatBody messages={messages} mode={mode} userType={isC ? "c" : "b"} />
