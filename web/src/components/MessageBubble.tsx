@@ -10,10 +10,7 @@ export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c
   if (m.role === "user") {
     return (
       <div className="flex justify-end">
-        <div
-          className="max-w-[80%] rounded-2xl rounded-tr-none bg-gradient-to-r from-[#0891B2] to-[#22D3EE] text-chat-on-primary px-4 py-3 text-body1 font-medium whitespace-pre-wrap"
-          style={{ boxShadow: "0 4px 14px rgba(34,211,238,0.2)" }}
-        >
+        <div className="max-w-[80%] rounded-lg rounded-tr-sm bg-brand text-ink-onbrand px-4 py-2.5 text-body1 font-medium whitespace-pre-wrap">
           {m.content}
         </div>
       </div>
@@ -22,7 +19,7 @@ export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c
   if (m.role === "system") {
     return (
       <div className="flex justify-center">
-        <span className="text-footnote text-chat-on-surface-variant/60 py-1 px-3 rounded-full bg-chat-surface-variant/30 border border-white/5">
+        <span className="text-footnote text-ink-secondary py-1 px-3 rounded-full bg-surface-subtle">
           {m.content}
         </span>
       </div>
@@ -31,20 +28,20 @@ export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c
   if (m.role === "human_agent") {
     return (
       <div className="flex gap-3 items-start">
-        <Avatar>
-          <AvatarFallback className="bg-chat-accent/20 text-chat-accent font-bold border-2 border-chat-accent/40">
+        <Avatar className="rounded-sm h-7 w-7">
+          <AvatarFallback className="rounded-sm bg-soft-warning text-status-warning font-bold">
             客
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 max-w-[85%]">
           <div className="flex items-center gap-1.5 mb-1 px-1">
-            <span className="text-footnote font-bold text-chat-accent">
+            <span className="text-footnote font-bold text-status-warning">
               客服 {m.display_name ?? ""}
             </span>
-            <BadgeCheck className="h-3 w-3 text-chat-accent/80" />
-            <span className="text-footnote text-chat-on-surface-variant/60">· 已认证</span>
+            <BadgeCheck className="h-3 w-3 text-status-warning" />
+            <span className="text-footnote text-ink-secondary">· 已认证</span>
           </div>
-          <div className="glass amber-glow-border rounded-xl rounded-tl-none px-4 py-3 text-body1 text-chat-on-surface/90 whitespace-pre-wrap">
+          <div className="bg-soft-warning border border-status-warning/30 rounded-lg rounded-tl-sm px-4 py-2.5 text-body1 text-ink whitespace-pre-wrap">
             {m.content}
           </div>
         </div>
@@ -54,20 +51,29 @@ export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c
   // assistant
   return (
     <div className="flex gap-3 items-start">
-      <Avatar>
-        <AvatarFallback className="bg-chat-surface-variant text-chat-primary border-2 border-chat-primary/30">
-          AI
-        </AvatarFallback>
+      <Avatar className="rounded-sm h-7 w-7">
+        <AvatarFallback className="rounded-sm bg-brand text-ink-onbrand font-bold">T</AvatarFallback>
       </Avatar>
-      <div className="flex-1 max-w-[85%] glass cyan-glow-border rounded-xl rounded-tl-none px-4 py-3 space-y-2">
+      <div className="flex-1 max-w-[85%] bg-surface-card border border-line shadow-sm rounded-lg rounded-tl-sm px-4 py-3 space-y-2">
         {(m.tool_calls ?? []).map((tc, i) => (
           <ToolCallChip key={i} tc={tc} userType={userType} />
         ))}
-        <div className="markdown-body-dark text-chat-on-surface/90">
+        <div className="markdown-body-dark">
           {m.content ? (
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                table: ({ node: _node, ...props }) => (
+                  <div className="overflow-x-auto scrollbar-hide -mx-1 px-1">
+                    <table {...props} />
+                  </div>
+                ),
+              }}
+            >
+              {m.content}
+            </ReactMarkdown>
           ) : (
-            <span className="text-chat-on-surface-variant text-body2">思考中…</span>
+            <span className="text-ink-secondary text-body2">思考中…</span>
           )}
         </div>
       </div>
