@@ -14,7 +14,7 @@ export function TicketStatusBanner({ events }: { events: TicketEvent[] }) {
   if (events.length === 0) return null;
   const last = events[events.length - 1];
   return (
-    <div className="px-page py-2 glass border-b border-white/5 text-body3 text-chat-on-surface-variant">
+    <div className="px-page py-2 bg-surface-card border-b border-line text-body3 text-ink-secondary">
       {LABELS[last.event] ?? last.event}
       {last.external_id ? ` · ${last.external_id}` : ""}
     </div>
