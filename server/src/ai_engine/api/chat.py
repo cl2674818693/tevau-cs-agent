@@ -51,6 +51,8 @@ def _map_runtime_event(ev: dict[str, Any]) -> dict[str, str] | None:
         )
     if t == "system":  # 会话治理 / 成本治理等系统提示（spec §8）
         return se.sse_payload(se.EVENT_WARNING, {"text": ev.get("text", "")})
+    if t == "error":  # runtime fail-soft 兜底（spec §3.3 错误码）
+        return se.error_event(ev.get("code", "INTERNAL_ERROR"), ev.get("text", ""))
     return None
 
 
@@ -66,9 +68,10 @@ async def chat(
     request: Request,
     conversation_id: int = Query(...),
     message: str = Query(...),
+    client_message_id: str | None = Query(default=None),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> EventSourceResponse:
-    """SSE 主链路（两端：C 端 Bearer JWT / B 端 cookie）。Last-Event-ID 用于重连补推。"""
+    """SSE 主链路（两端：C 端 Bearer JWT / B 端 cookie）。client_message_id 用于幂等重放。"""
     user_type, subject_id = await _authorize_conversation(request, conversation_id)
     cancel_evt = asyncio.Event()
     _cancel_signals[conversation_id] = cancel_evt
@@ -97,6 +100,29 @@ async def chat(
                 )
                 yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "rate_limited"})
                 return
+            # 幂等：同一 client_message_id 已完成过则重放历史回复，不重复跑 LLM（防重连/重发刷量）
+            if client_message_id:
+                prev = await conv_dao.find_completed_turn(conversation_id, client_message_id)
+                if prev:
+                    yield se.sse_payload(
+                        se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)}
+                    )
+                    texts = await conv_dao.get_turn_assistant_texts(
+                        conversation_id, int(prev["id"])
+                    )
+                    for raw in texts:
+                        yield se.sse_payload(
+                            se.EVENT_CONTENT_BLOCK_DELTA,
+                            {
+                                "index": 0,
+                                "delta": {
+                                    "type": "text_delta",
+                                    "text": runtime._history_text("assistant", raw),
+                                },
+                            },
+                        )
+                    yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "replayed"})
+                    return
             # spec §13：客服已接管 / 待接管时不调 AI，用户消息只入库 + 推给客服侧
             mode, _ = await conv_dao.get_mode(conversation_id)
             if mode in ("human_takeover", "human_pending"):
@@ -138,6 +164,7 @@ async def chat(
                 user_type=user_type,
                 subject_id=subject_id,
                 user_message=message,
+                client_message_id=client_message_id,
             ):
                 if cancel_evt.is_set():
                     yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "cancelled"})
