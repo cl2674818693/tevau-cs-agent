@@ -14,26 +14,19 @@ export function ChatHeader({
   onStop: () => void;
 }) {
   return (
-    <header className="safe-top sticky top-0 z-10 flex items-center justify-between px-page py-3 glass border-b border-chat-primary/20">
+    <header className="safe-top sticky top-0 z-10 flex items-center justify-between px-page py-3 bg-surface-card border-b border-line">
       <div className="flex items-center gap-3">
-        <div className="h-9 w-9 rounded-lg grid place-items-center bg-chat-primary/10 border border-chat-primary/30">
-          <span className="text-chat-primary font-chat-headline text-body0 font-bold">T</span>
+        <div className="h-9 w-9 rounded-md grid place-items-center bg-brand">
+          <span className="text-ink-onbrand font-bold text-body0">T</span>
         </div>
         <div className="flex flex-col">
-          <div className="font-chat-headline text-sh3 font-bold text-chat-primary leading-none">
-            Tevau AI 客服
-          </div>
+          <div className="text-sh3 font-bold text-ink-primary leading-none">Tevau 客服</div>
           <div className="flex items-center gap-1.5 mt-1">
             {mode !== "human_takeover" && (
-              <span
-                className="w-2 h-2 rounded-full bg-chat-primary animate-breathe"
-                style={{ boxShadow: "0 0 8px rgba(34,211,238,0.8)" }}
-              />
+              <span className="w-1.5 h-1.5 rounded-full bg-status-success" />
             )}
-            <span className="text-footnote text-chat-on-surface-variant">
-              {mode === "human_takeover"
-                ? `客服 ${staffName ?? ""} · 已认证`
-                : "由 AI 驱动 · 复杂问题转人工"}
+            <span className="text-footnote text-ink-secondary">
+              {mode === "human_takeover" ? `客服 ${staffName ?? ""} · 已认证` : "在线 · 智能助手"}
             </span>
           </div>
         </div>
@@ -41,7 +34,7 @@ export function ChatHeader({
       {sending && (
         <button
           onClick={onStop}
-          className="px-3 py-1.5 rounded-lg border border-chat-primary/20 bg-chat-primary/5 text-body3 text-chat-primary hover:bg-chat-primary/10 transition-colors"
+          className="px-3 py-1.5 rounded text-body3 text-ink-secondary border border-line hover:bg-surface-hover transition-colors"
         >
           停止生成
         </button>
@@ -50,21 +43,33 @@ export function ChatHeader({
   );
 }
 
+export function EmptyState({ greeting }: { greeting: string }) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-3">
+      <div className="h-14 w-14 rounded-xl grid place-items-center bg-soft-brand">
+        <span className="text-brand font-bold text-h2">T</span>
+      </div>
+      <div className="text-sh1 font-bold text-ink-primary">你好，我是 Tevau 助手</div>
+      <p className="text-body2 text-ink-secondary leading-relaxed max-w-[320px]">{greeting}</p>
+    </div>
+  );
+}
+
 export function LoadingView() {
   return (
-    <div className="mx-auto flex h-full max-w-[720px] items-center justify-center bg-chat-surface grid-bg text-chat-on-surface-variant">
-      <div className="animate-pulse text-body2 font-chat-body">正在连接 Tevau AI 客服…</div>
+    <div className="mx-auto flex h-full max-w-[720px] items-center justify-center bg-surface-page text-ink-secondary">
+      <div className="animate-pulse text-body2">正在连接 Tevau 客服…</div>
     </div>
   );
 }
 
 export function ErrorView({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-3 bg-chat-surface grid-bg font-chat-body">
+    <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-3 bg-surface-page">
       <div className="text-body2 text-status-error">连接失败，请检查网络后重试。</div>
       <button
         onClick={onRetry}
-        className="rounded-lg border border-chat-primary/30 px-4 py-2 text-body2 text-chat-primary hover:bg-chat-primary/10 transition-colors"
+        className="rounded border border-line px-4 py-2 text-body2 text-brand hover:bg-soft-brand transition-colors"
       >
         重试
       </button>
@@ -82,34 +87,16 @@ export function StatusBanners({
   return (
     <>
       {connection !== "online" && (
-        <div className="flex items-center justify-center gap-1.5 px-page py-1.5 bg-chat-accent/10 border-b border-chat-accent/30 text-body3 text-chat-accent text-center">
+        <div className="flex items-center justify-center gap-1.5 px-page py-1.5 bg-soft-warning border-b border-status-warning/30 text-body3 text-status-warning text-center">
           <Wifi className="h-3.5 w-3.5" />
           {connection === "offline" ? "网络已断开，正在等待重新连接…" : "正在重新连接…"}
         </div>
       )}
       {limitPct >= 80 && limitPct < 100 && (
-        <div className="px-page py-1.5 bg-chat-accent/10 text-body3 text-chat-accent text-center">
+        <div className="px-page py-1.5 bg-soft-warning text-body3 text-status-warning text-center">
           您今日用量已达 {limitPct}%，建议核心问题尽快咨询。
         </div>
       )}
     </>
-  );
-}
-
-const SUGGESTIONS = ["我的卡为什么被锁了？", "如何对接 Open API？", "查一下我最近的订单"];
-
-export function Suggestions({ onPick }: { onPick: (q: string) => void }) {
-  return (
-    <div className="px-page pb-2 flex flex-wrap gap-2">
-      {SUGGESTIONS.map((s) => (
-        <button
-          key={s}
-          onClick={() => onPick(s)}
-          className="rounded-full glass border border-chat-primary/20 px-4 py-1.5 text-body3 text-chat-primary hover:bg-chat-primary/10 transition-colors"
-        >
-          {s}
-        </button>
-      ))}
-    </div>
   );
 }
