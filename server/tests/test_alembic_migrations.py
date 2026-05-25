@@ -6,7 +6,8 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 
-from ai_engine.persistence.db import SCHEMA, _path_from_url
+from ai_engine.persistence.db import _path_from_url
+from ai_engine.persistence.schema import metadata
 
 
 def _alembic_config(db_url: str) -> Config:
@@ -28,9 +29,7 @@ def _tables(path: str) -> set[str]:
 
 
 def _expected_table_names() -> set[str]:
-    import re
-
-    return set(re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", SCHEMA))
+    return set(metadata.tables.keys())
 
 
 async def test_alembic_upgrade_matches_init_db_schema(temp_db_url):

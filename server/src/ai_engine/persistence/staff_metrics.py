@@ -8,8 +8,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ai_engine.observability import metrics
+from ai_engine.persistence import db
 from ai_engine.persistence.conversations import count_pending
-from ai_engine.persistence.db import get_conn
+from ai_engine.persistence.schema import now_str
 
 
 async def refresh_human_pending() -> None:
@@ -21,22 +22,18 @@ _END_ACTIONS = {"release", "resolved", "transfer_out"}
 
 
 async def log_staff_action(conv_id: int, staff_id: str, action: str) -> None:
-    async with get_conn() as conn:
-        await conn.execute(
-            "INSERT INTO staff_actions(conversation_id, staff_id, action) VALUES (?,?,?)",
-            (conv_id, staff_id, action),
-        )
-        if action in _END_ACTIONS:
-            row = await (
-                await conn.execute(
-                    "SELECT at FROM staff_actions WHERE conversation_id=? AND staff_id=? "
-                    "AND action='take' ORDER BY id DESC LIMIT 1",
-                    (conv_id, staff_id),
-                )
-            ).fetchone()
-        else:
-            row = None
-        await conn.commit()
+    await db.execute(
+        "INSERT INTO staff_actions(conversation_id, staff_id, action, at) "
+        "VALUES (:cid, :sid, :action, :now)",
+        {"cid": conv_id, "sid": staff_id, "action": action, "now": now_str()},
+    )
+    if action not in _END_ACTIONS:
+        return
+    row = await db.fetch_one(
+        "SELECT at FROM staff_actions WHERE conversation_id=:cid AND staff_id=:sid "
+        "AND action='take' ORDER BY id DESC LIMIT 1",
+        {"cid": conv_id, "sid": staff_id},
+    )
     if row:
         elapsed = (datetime.now(UTC).replace(tzinfo=None) - _parse(row["at"])).total_seconds()
         if elapsed >= 0:
@@ -45,19 +42,18 @@ async def log_staff_action(conv_id: int, staff_id: str, action: str) -> None:
 
 async def _load_actions(date_from: str | None, date_to: str | None) -> list[dict[str, Any]]:
     sql = "SELECT conversation_id, staff_id, action, at FROM staff_actions"
-    clauses, args = [], []
+    clauses: list[str] = []
+    params: dict[str, Any] = {}
     if date_from:
-        clauses.append("at >= ?")
-        args.append(date_from)
+        clauses.append("at >= :date_from")
+        params["date_from"] = date_from
     if date_to:
-        clauses.append("at <= ?")
-        args.append(date_to)
+        clauses.append("at <= :date_to")
+        params["date_to"] = date_to
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY id"
-    async with get_conn() as conn:
-        rows = await (await conn.execute(sql, tuple(args))).fetchall()
-    return [dict(r) for r in rows]
+    return await db.fetch_all(sql, params)
 
 
 def _parse(at: str) -> datetime:

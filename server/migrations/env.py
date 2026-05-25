@@ -1,7 +1,7 @@
 """Alembic 环境：从 settings.db_url 读取目标库，把 async 驱动转成 sync URL。
 
-迁移用原生 SQL（op.execute），不依赖 SQLAlchemy ORM 模型，因此 target_metadata=None，
-autogenerate 不可用——迁移手写。这样同一套 alembic 既管 SQLite 也管将来的 Postgres。
+target_metadata = persistence.schema.metadata：autogenerate 与 create_all 共用同一份
+schema 定义，迁移按方言生成正确 DDL，同一套 alembic 既管 SQLite 也管 Postgres。
 """
 
 from logging.config import fileConfig
@@ -10,6 +10,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from ai_engine.config import settings
+from ai_engine.persistence.schema import metadata
 
 config = context.config
 
@@ -17,7 +18,7 @@ if config.config_file_name is not None:
     # disable_existing_loggers=False：否则进程内跑 alembic 会静默掉所有 ai_engine.* logger
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-target_metadata = None
+target_metadata = metadata
 
 
 def _sync_url() -> str:

@@ -37,7 +37,8 @@ uv run alembic downgrade -1            # 回退一格
 uv run alembic revision -m "add x col" # 新增迁移（手写 op.execute）
 uv run alembic history / heads / current
 ```
-> 因用原生 SQL 模式（`target_metadata=None`），`--autogenerate` 不可用，迁移手写。
+> `env.py` 的 `target_metadata=schema.metadata`，`--autogenerate` 可用：改 schema.py
+> 后自动 diff 生成迁移。
 
 ## 二、SQLite → Postgres 评估
 
@@ -71,10 +72,30 @@ SQLite 单文件对**自有业务数据**（会话/工单是写密集、需并�
    让 alembic 生成方言相关 DDL。
 3. 连接层换成 SQLAlchemy async engine + pool，`get_conn()` 收敛为统一会话入口。
 
-### 结论与建议
-- **本轮已解决最高风险点**：用 alembic 版本化迁移替代"就地重建丢列"。
-- **是否立即迁 Postgres**：取决于自有库的并发写量与多副本部署需求。若近期单副本、
-  写量不大，SQLite + alembic 可继续；**一旦要多副本或写量上来，必须迁 Postgres**。
-- **迁移真正的成本不在 DDL，而在 persistence 层散落的原生 SQL**。建议先做
-  SQLAlchemy Core 收敛（可独立成一个 reviewed 的重构 PR），再切库，风险最低。
-- 这一步是较大的持久层重构，**不宜与本轮可靠性加固混在一起**，单独立项执行。
+## 三、实施状态（已完成）
+
+评估推荐的"SQLAlchemy Core 收敛 + Postgres 支持"已实施：
+
+- **持久层全量改造为 SQLAlchemy Core**：`persistence/schema.py` 用 MetaData/Table 定义
+  方言无关 schema；`db.py` 提供 async engine（按 url 缓存）+ `fetch_one/fetch_all/
+  execute/insert_returning_id` helper，对外仍返回 dict（消费方零改动）。
+- **方言无关写法**：`?`→命名参数；自增主键由 SQLAlchemy Integer pk 处理；时间列用
+  String 由应用 `now_str()` 写入（避免 PG 上 DateTime 回写不一致）；窗口查询用 Python
+  算 cutoff；INSERT 用 `RETURNING id`（SQLite≥3.35 与 PG 均支持）。
+- **schema 演进统一走 alembic**：`env.py` target_metadata=metadata，初始迁移由
+  autogenerate 生成（按方言出正确 DDL）；`init_db`=create_all（dev/test 快速路径）。
+- **真 Postgres 验证**：`tests/test_postgres_smoke.py` 用 testcontainers 起真 PG16，
+  跑通建表 + 会话/消息/工单/时间窗口/token upsert/客服认证全链路。
+- **docker-compose**：新增 `postgres` 服务并设为 `api` 默认库（`DB_URL` 可 env 覆盖回
+  SQLite）。
+- **跨方言 bug（真 PG 测试抓出）**：token 计量的 `ON CONFLICT DO UPDATE` 裸列名在 PG
+  上有歧义，已改表名限定（两库通用）。
+
+### 运维切换
+1. 生产把 `DB_URL` 指向 Postgres（`postgresql+asyncpg://...`）。
+2. 首次部署 `cd server && uv run alembic upgrade head` 建表（或依赖启动 init_db）。
+3. 后续 schema 变更：改 `schema.py` → `alembic revision --autogenerate` → review →
+   `alembic upgrade head`。
+
+> 仍可回退 SQLite（设 `DB_URL=sqlite+aiosqlite:///...`）；同一套代码两库通用。
+> 业务只读库 unlimitpay/nexus 不受影响（仍走 aiomysql / 阿里云 RDS）。
