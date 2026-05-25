@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { HandoffButton } from "../src/components/HandoffButton";
+import { HandoffPrompt } from "../src/components/HandoffButton";
 import { MessageBubble } from "../src/components/MessageBubble";
 import { TicketCard } from "../src/components/TicketCard";
 import { ToolCallChip } from "../src/components/ToolCallChip";
@@ -72,11 +72,11 @@ describe("TicketCard", () => {
   });
 });
 
-describe("HandoffButton", () => {
+describe("HandoffPrompt", () => {
   it("fires onClick", () => {
     const onClick = vi.fn();
-    render(<HandoffButton onClick={onClick} disabled={false} />);
-    fireEvent.click(screen.getByText("没解决？转人工 →"));
+    render(<HandoffPrompt onClick={onClick} disabled={false} />);
+    fireEvent.click(screen.getByText("转接人工客服"));
     expect(onClick).toHaveBeenCalled();
   });
 });

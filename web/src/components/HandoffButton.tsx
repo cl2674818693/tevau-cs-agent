@@ -1,19 +1,19 @@
 import { Headphones } from "lucide-react";
 
 /**
- * "没解决？转人工 →" 按钮。点击调 useChat.requestHandoff →
- * POST /request-human（置 human_pending + 建人工介入工单，spec §13.7）。
+ * 内联「转人工」行动条。由 ChatWindow 在 AI 模式、对话已开始时渲染于消息流末尾。
+ * 点击调 useChat.requestHandoff → POST /request-human（spec §13.7）。
  */
-export function HandoffButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+export function HandoffPrompt({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
   return (
-    <div className="px-page py-2">
+    <div className="flex justify-center px-page pb-1">
       <button
         onClick={onClick}
         disabled={disabled}
-        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full glass border border-white/10 text-body2 text-chat-on-surface-variant transition-all hover:border-chat-primary/40 hover:text-chat-primary disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full text-body3 text-ink-secondary transition-colors hover:text-brand hover:bg-soft-brand disabled:opacity-40"
       >
-        <Headphones className="h-4 w-4" />
-        没解决？转人工 →
+        <Headphones className="h-3.5 w-3.5" />
+        转接人工客服
       </button>
     </div>
   );
