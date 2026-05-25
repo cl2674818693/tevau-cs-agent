@@ -54,8 +54,14 @@ messages = Table(
     Column("role", String(32), nullable=False),
     Column("content", Text, nullable=False),
     Column("sender_staff_id", String(64)),
+    # 回合状态机：user 行 processing→done/failed；其余行恒 done。
+    Column("status", String(16), nullable=False, server_default="done"),
+    Column("error_code", String(32)),  # status=failed 时写入（INTERNAL_ERROR / STALE_RECLAIMED）
+    Column("client_message_id", String(64)),  # 幂等键，仅 user 行写
+    Column("topic_verdict", String(16)),  # 话题判定，仅 user 行写：yes/no/uncertain
     Column("created_at", String(32), nullable=False),
 )
+Index("idx_msg_client", messages.c.conversation_id, messages.c.client_message_id)
 
 staff = Table(
     "staff",
@@ -127,3 +133,20 @@ ticket_events = Table(
     Column("raw_json", Text, nullable=False),
     Column("created_at", String(32), nullable=False),
 )
+
+# 消息级 👍/👎 反馈（spec 留痕：采集"答了但不满意"的细粒度信号）。
+# message_id 不加 FK：前端消息无真实 DB id，仅作关联记录列，避免 PG 外键违例。
+message_feedback = Table(
+    "message_feedback",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("conversation_id", Integer, nullable=False),
+    Column("message_id", Integer, nullable=False),
+    Column("rating", String(8), nullable=False),
+    Column("reason", Text),
+    Column("subject_id", String(128), nullable=False),
+    Column("user_type", String(8), nullable=False),
+    Column("created_at", String(32), nullable=False),
+    CheckConstraint("rating IN ('up','down')", name="ck_feedback_rating"),
+)
+Index("idx_feedback_conv", message_feedback.c.conversation_id)
