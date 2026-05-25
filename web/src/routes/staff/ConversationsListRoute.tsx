@@ -31,6 +31,12 @@ export function ConversationsListRoute() {
         <Link to="/staff/kpi" className="text-body3 text-ink-secondary mr-3">
           KPI
         </Link>
+        <Link to="/staff/insights" className="text-body3 text-ink-secondary mr-3">
+          知识缺口
+        </Link>
+        <Link to="/staff/audits" className="text-body3 text-ink-secondary mr-3">
+          工具审计
+        </Link>
         <button onClick={logout} className="text-body3 text-ink-secondary">
           退出
         </button>
@@ -60,6 +66,12 @@ export function ConversationsListRoute() {
                 #{c.id} · {c.user_type === "c" ? "C 端用户" : "BU"} {c.subject_id}
               </span>
               <span className="ml-2 text-body3 text-ink-secondary">{c.mode}</span>
+            </Link>
+            <Link
+              to={`/staff/conversations/${c.id}/logs`}
+              className="text-body3 text-ink-secondary px-2 py-1 rounded bg-surface-container"
+            >
+              留痕
             </Link>
             {canSpectate && (
               <Link
