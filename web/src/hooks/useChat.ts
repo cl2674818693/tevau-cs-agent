@@ -206,11 +206,14 @@ export function useChat() {
         setRateLimited,
         onAuthExpired: handleAuthExpired,
       };
+      // 幂等键：本次发送固定一个 id，重连/重发复用以避免后端重复处理
+      const clientMessageId = crypto.randomUUID();
       try {
         for await (const ev of streamChat({
           conversationId: init.conversation_id,
           message: text,
           lastEventId: lastEventIdRef.current,
+          clientMessageId,
         })) {
           if (ev._eventId) lastEventIdRef.current = ev._eventId;
           await handleStreamEvent(ev, actions);

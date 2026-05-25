@@ -1,3 +1,4 @@
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import remarkGfm from "remark-gfm";
@@ -7,7 +8,37 @@ import type { Message } from "../types";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { ToolCallChip } from "./ToolCallChip";
 
-export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c" | "b" }) {
+/** AI 回复下方的 👍/👎 反馈条。点过一次即锁定并显示致谢。 */
+function FeedbackBar({ onFeedback }: { onFeedback: (rating: "up" | "down") => void }) {
+  const { t } = useTranslation();
+  const [done, setDone] = useState(false);
+  if (done)
+    return <div className="text-footnote text-ink-secondary">{t("chat.feedbackThanks")}</div>;
+  const click = (rating: "up" | "down") => {
+    setDone(true);
+    onFeedback(rating);
+  };
+  return (
+    <div className="flex gap-3 text-footnote text-ink-secondary">
+      <button type="button" aria-label={t("chat.feedbackUp")} onClick={() => click("up")}>
+        👍 {t("chat.feedbackUp")}
+      </button>
+      <button type="button" aria-label={t("chat.feedbackDown")} onClick={() => click("down")}>
+        👎 {t("chat.feedbackDown")}
+      </button>
+    </div>
+  );
+}
+
+export function MessageBubble({
+  m,
+  userType = "b",
+  onFeedback,
+}: {
+  m: Message;
+  userType?: "c" | "b";
+  onFeedback?: (rating: "up" | "down") => void;
+}) {
   const { t } = useTranslation();
   if (m.role === "user") {
     return (
@@ -64,6 +95,7 @@ export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c
             <span className="text-ink-secondary text-body2">{t("chat.thinking")}</span>
           )}
         </div>
+        {m.content && onFeedback && <FeedbackBar onFeedback={onFeedback} />}
       </div>
     </div>
   );

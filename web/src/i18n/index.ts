@@ -29,6 +29,9 @@ const resources = {
         agentBadge: "客服 {{name}} · 已认证",
         agentAvatar: "客",
         netError: "网络中断，请检查连接后重试。",
+        feedbackUp: "有帮助",
+        feedbackDown: "没帮助",
+        feedbackThanks: "感谢反馈",
         suggestions: ["我的卡为什么被锁了？", "如何对接 Open API？", "查一下我最近的订单"],
       },
       ticket: {
@@ -72,6 +75,9 @@ const resources = {
         agentBadge: "Agent {{name}} · Verified",
         agentAvatar: "A",
         netError: "Network interrupted. Check your connection and retry.",
+        feedbackUp: "Helpful",
+        feedbackDown: "Not helpful",
+        feedbackThanks: "Thanks for the feedback",
         suggestions: [
           "Why is my card locked?",
           "How do I integrate the Open API?",

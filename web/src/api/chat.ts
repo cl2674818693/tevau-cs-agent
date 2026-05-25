@@ -48,15 +48,32 @@ export async function* streamChat(args: {
   conversationId: number;
   message: string;
   lastEventId?: string;
+  clientMessageId?: string;
 }): AsyncGenerator<ChatEvent> {
-  const url = `/api/v1/chat?conversation_id=${args.conversationId}&message=${encodeURIComponent(
+  let url = `/api/v1/chat?conversation_id=${args.conversationId}&message=${encodeURIComponent(
     args.message,
   )}`;
+  // 幂等键：重发/重连时同 id 命中后端会重放历史回复，不重复跑 LLM
+  if (args.clientMessageId) url += `&client_message_id=${encodeURIComponent(args.clientMessageId)}`;
   const headers: Record<string, string> = {};
   if (args.lastEventId) headers["Last-Event-ID"] = args.lastEventId;
   const resp = await authedFetch(url, { headers });
   if (!resp.ok || !resp.body) throw new Error(`chat http ${resp.status}`);
   yield* readSseStream(resp);
+}
+
+/** 消息级反馈（👍/👎）。messageId 为该回复在消息列表中的序号（后端仅作关联记录）。 */
+export async function sendFeedback(
+  conversationId: number,
+  messageId: number,
+  rating: "up" | "down",
+  reason?: string,
+): Promise<void> {
+  await authedFetch(`/api/v1/conversations/${conversationId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message_id: messageId, rating, reason }),
+  });
 }
 
 /** 读取一个 SSE 响应体，逐 frame 解析成 ChatEvent。 */

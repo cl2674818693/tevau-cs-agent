@@ -1,5 +1,6 @@
-import { sendTicketUserEvent } from "../api/chat";
+import { sendFeedback, sendTicketUserEvent } from "../api/chat";
 import { userType } from "../api/identity";
+import type { ConversationInit } from "../types";
 import i18n from "../i18n";
 import { useChat } from "../hooks/useChat";
 import { useTicketStream } from "../hooks/useTicketStream";
@@ -45,6 +46,12 @@ function TicketCardSlot({
   );
 }
 
+/** 反馈回调：init 就绪才返回处理函数（把分支挪出组件主体，控制圈复杂度）。 */
+function feedbackHandler(init: ConversationInit | null) {
+  if (!init) return undefined;
+  return (i: number, rating: "up" | "down") => void sendFeedback(init.conversation_id, i, rating);
+}
+
 export function ChatWindow() {
   const chat = useChat();
   const { messages, sending, mode, send, init } = chat;
@@ -68,7 +75,11 @@ export function ChatWindow() {
 
       <StatusBanners connection={chat.connection} limitPct={chat.limitPct} />
       <TicketStatusBanner events={ticketEvents} />
-      <MessageList messages={messages} userType={isC ? "c" : "b"} />
+      <MessageList
+        messages={messages}
+        userType={isC ? "c" : "b"}
+        onFeedback={feedbackHandler(init)}
+      />
 
       <TicketCardSlot ticket={latestTicket} mode={mode} />
 

@@ -7,9 +7,11 @@ import { MessageBubble } from "./MessageBubble";
 export function MessageList({
   messages,
   userType = "b",
+  onFeedback,
 }: {
   messages: Message[];
   userType?: "c" | "b";
+  onFeedback?: (messageIndex: number, rating: "up" | "down") => void;
 }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
@@ -28,7 +30,14 @@ export function MessageList({
       className="flex-1 overflow-y-auto px-page py-block-lg flex flex-col gap-3"
     >
       {messages.map((m, i) => (
-        <MessageBubble key={i} m={m} userType={userType} />
+        <MessageBubble
+          key={i}
+          m={m}
+          userType={userType}
+          onFeedback={
+            m.role === "assistant" && onFeedback ? (rating) => onFeedback(i, rating) : undefined
+          }
+        />
       ))}
     </div>
   );
