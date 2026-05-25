@@ -36,12 +36,13 @@ async def test_should_compact_on_tokens(temp_db_url):
 
 async def test_compact_creates_new_conv_and_archives(temp_db_url, monkeypatch):
     from ai_engine.agent import conversation_compactor as cc
+    from ai_engine.persistence import db
     from ai_engine.persistence.conversations import (
         create_conversation,
         get_conversation,
         list_messages,
     )
-    from ai_engine.persistence.db import get_conn, init_db
+    from ai_engine.persistence.db import init_db
 
     await init_db()
     cid = await create_conversation("b", "BU1")
@@ -66,11 +67,8 @@ async def test_compact_creates_new_conv_and_archives(temp_db_url, monkeypatch):
     # 同 subject、老会话归档
     new_conv = await get_conversation(new_id)
     assert new_conv is not None and new_conv["subject_id"] == "BU1"
-    async with get_conn() as conn:
-        row = await (
-            await conn.execute("SELECT archived FROM conversations WHERE id=?", (cid,))
-        ).fetchone()
-    assert row["archived"] == 1
+    row = await db.fetch_one("SELECT archived FROM conversations WHERE id=:id", {"id": cid})
+    assert row is not None and row["archived"] == 1
 
 
 async def test_runtime_triggers_compaction(seeded_db, monkeypatch):

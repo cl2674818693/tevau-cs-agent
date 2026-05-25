@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import text
 from sse_starlette.sse import EventSourceResponse
 
 from ai_engine.agent.tool_router import dispatch
@@ -16,6 +17,7 @@ from ai_engine.config import settings
 from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
 from ai_engine.persistence.db import get_conn
+from ai_engine.persistence.schema import now_str
 from ai_engine.persistence.staff import get_staff
 from ai_engine.persistence.staff_metrics import log_staff_action, refresh_human_pending
 
@@ -161,12 +163,12 @@ async def take(conv_id: int, staff: dict[str, Any] = Depends(require_staff)) -> 
     # 原子接管：仅 assigned_staff_id IS NULL 时才更新（防多客服抢同一会话）
     async with get_conn() as conn:
         cur = await conn.execute(
-            "UPDATE conversations SET mode='human_takeover', assigned_staff_id=?, "
-            "assigned_at=datetime('now') "
-            "WHERE id=? AND assigned_staff_id IS NULL",
-            (staff["sub"], conv_id),
+            text(
+                "UPDATE conversations SET mode='human_takeover', assigned_staff_id=:sub, "
+                "assigned_at=:now WHERE id=:id AND assigned_staff_id IS NULL"
+            ),
+            {"sub": staff["sub"], "now": now_str(), "id": conv_id},
         )
-        await conn.commit()
         if cur.rowcount == 0:
             raise HTTPException(409, "already taken by another staff")
     await log_staff_action(conv_id, staff["sub"], "take")
@@ -180,11 +182,12 @@ async def take(conv_id: int, staff: dict[str, Any] = Depends(require_staff)) -> 
 async def release(conv_id: int, staff: dict[str, Any] = Depends(require_staff)) -> dict[str, bool]:
     async with get_conn() as conn:
         cur = await conn.execute(
-            "UPDATE conversations SET mode='ai', assigned_staff_id=NULL, assigned_at=NULL "
-            "WHERE id=? AND assigned_staff_id=?",
-            (conv_id, staff["sub"]),
+            text(
+                "UPDATE conversations SET mode='ai', assigned_staff_id=NULL, assigned_at=NULL "
+                "WHERE id=:id AND assigned_staff_id=:sub"
+            ),
+            {"id": conv_id, "sub": staff["sub"]},
         )
-        await conn.commit()
         if cur.rowcount == 0:
             raise HTTPException(409, "not assigned to you")
     await log_staff_action(conv_id, staff["sub"], "release")
@@ -197,11 +200,12 @@ async def resolve(conv_id: int, staff: dict[str, Any] = Depends(require_staff)) 
     """客服标记已解决：释放回 AI 并记 resolved（用于 KPI 解决率）。"""
     async with get_conn() as conn:
         cur = await conn.execute(
-            "UPDATE conversations SET mode='ai', assigned_staff_id=NULL, assigned_at=NULL "
-            "WHERE id=? AND assigned_staff_id=?",
-            (conv_id, staff["sub"]),
+            text(
+                "UPDATE conversations SET mode='ai', assigned_staff_id=NULL, assigned_at=NULL "
+                "WHERE id=:id AND assigned_staff_id=:sub"
+            ),
+            {"id": conv_id, "sub": staff["sub"]},
         )
-        await conn.commit()
         if cur.rowcount == 0:
             raise HTTPException(409, "not assigned to you")
     await log_staff_action(conv_id, staff["sub"], "resolved")
@@ -223,11 +227,12 @@ async def transfer_to(
         raise HTTPException(403, "agent can only transfer to engineer")
     async with get_conn() as conn:
         cur = await conn.execute(
-            "UPDATE conversations SET mode='human_takeover', assigned_staff_id=?, "
-            "assigned_at=datetime('now') WHERE id=? AND assigned_staff_id=?",
-            (target_staff_id, conv_id, staff["sub"]),
+            text(
+                "UPDATE conversations SET mode='human_takeover', assigned_staff_id=:target, "
+                "assigned_at=:now WHERE id=:id AND assigned_staff_id=:sub"
+            ),
+            {"target": target_staff_id, "now": now_str(), "id": conv_id, "sub": staff["sub"]},
         )
-        await conn.commit()
         if cur.rowcount == 0:
             raise HTTPException(409, "not assigned to you")
     await log_staff_action(conv_id, staff["sub"], "transfer_out")
@@ -265,11 +270,12 @@ async def ai_draft_enable(
     """切到 ai_draft：AI 出草稿、客服 review 后发。先把会话指派给本客服。"""
     async with get_conn() as conn:
         await conn.execute(
-            "UPDATE conversations SET mode='ai_draft', assigned_staff_id=?, "
-            "assigned_at=COALESCE(assigned_at, datetime('now')) WHERE id=?",
-            (staff["sub"], conv_id),
+            text(
+                "UPDATE conversations SET mode='ai_draft', assigned_staff_id=:sub, "
+                "assigned_at=COALESCE(assigned_at, :now) WHERE id=:id"
+            ),
+            {"sub": staff["sub"], "now": now_str(), "id": conv_id},
         )
-        await conn.commit()
     await refresh_human_pending()
     _publish(conv_id, {"type": "mode_change", "to": "ai_draft", "by_staff_id": staff["sub"]})
     return {"ok": True}

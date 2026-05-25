@@ -76,7 +76,7 @@ describe("HandoffPrompt", () => {
   it("fires onClick", () => {
     const onClick = vi.fn();
     render(<HandoffPrompt onClick={onClick} disabled={false} />);
-    fireEvent.click(screen.getByText("转接人工客服"));
+    fireEvent.click(screen.getByText("没解决？转人工 →"));
     expect(onClick).toHaveBeenCalled();
   });
 });

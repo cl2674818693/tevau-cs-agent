@@ -1,12 +1,46 @@
 import { BadgeCheck } from "lucide-react";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import type { Message } from "../types";
-import { Avatar, AvatarFallback } from "./ui/avatar";
 import { ToolCallChip } from "./ToolCallChip";
+import { Avatar, AvatarFallback } from "./ui/avatar";
 
-export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c" | "b" }) {
+/** AI 回复下方的 👍/👎 反馈条。点过一次即锁定并显示致谢。 */
+function FeedbackBar({ onFeedback }: { onFeedback: (rating: "up" | "down") => void }) {
+  const { t } = useTranslation();
+  const [done, setDone] = useState(false);
+  if (done)
+    return <div className="text-footnote text-ink-secondary">{t("chat.feedbackThanks")}</div>;
+  const click = (rating: "up" | "down") => {
+    setDone(true);
+    onFeedback(rating);
+  };
+  return (
+    <div className="flex gap-3 text-footnote text-ink-secondary">
+      <button type="button" aria-label={t("chat.feedbackUp")} onClick={() => click("up")}>
+        👍 {t("chat.feedbackUp")}
+      </button>
+      <button type="button" aria-label={t("chat.feedbackDown")} onClick={() => click("down")}>
+        👎 {t("chat.feedbackDown")}
+      </button>
+    </div>
+  );
+}
+
+// eslint-disable-next-line max-lines-per-function -- 合并后保留两端 user/system/human_agent/assistant 分支
+export function MessageBubble({
+  m,
+  userType = "b",
+  onFeedback,
+}: {
+  m: Message;
+  userType?: "c" | "b";
+  onFeedback?: (rating: "up" | "down") => void;
+}) {
+  const { t } = useTranslation();
   if (m.role === "user") {
     return (
       <div className="flex justify-end">
@@ -30,16 +64,16 @@ export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c
       <div className="flex gap-3 items-start">
         <Avatar className="rounded-sm h-7 w-7">
           <AvatarFallback className="rounded-sm bg-soft-warning text-status-warning font-bold">
-            客
+            {t("chat.agentAvatar")}
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 max-w-[85%]">
           <div className="flex items-center gap-1.5 mb-1 px-1">
             <span className="text-footnote font-bold text-status-warning">
-              客服 {m.display_name ?? ""}
+              {t("chat.agentLabel")} {m.display_name ?? ""}
             </span>
             <BadgeCheck className="h-3 w-3 text-status-warning" />
-            <span className="text-footnote text-ink-secondary">· 已认证</span>
+            <span className="text-footnote text-ink-secondary">· {t("chat.agentVerified")}</span>
           </div>
           <div className="bg-soft-warning border border-status-warning/30 rounded-lg rounded-tl-sm px-4 py-2.5 text-body1 text-ink whitespace-pre-wrap">
             {m.content}
@@ -75,9 +109,10 @@ export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c
               {m.content}
             </ReactMarkdown>
           ) : (
-            <span className="text-ink-secondary text-body2">思考中…</span>
+            <span className="text-ink-secondary text-body2">{t("chat.thinking")}</span>
           )}
         </div>
+        {m.content && onFeedback && <FeedbackBar onFeedback={onFeedback} />}
       </div>
     </div>
   );

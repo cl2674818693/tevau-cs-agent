@@ -14,7 +14,7 @@
   "tags": ["tevau", "ai-engine"],
   "timezone": "Asia/Shanghai",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "templating": {
@@ -184,6 +184,59 @@
           "expr": "topk(10, sum(rate(ai_engine_staff_takeovers_total[1h])) by (staff_id))",
           "refId": "A",
           "legendFormat": "{{staff_id}}"
+        }
+      ]
+    },
+    { "type": "row", "title": "留痕 / 可靠性", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 } },
+    {
+      "type": "timeseries",
+      "title": "话题判定分布 (yes/no/uncertain)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 31 },
+      "targets": [
+        {
+          "expr": "sum(rate(ai_engine_topic_verdict_total[5m])) by (verdict)",
+          "refId": "A",
+          "legendFormat": "{{verdict}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "消息反馈 👍/👎",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 7, "w": 6, "x": 6, "y": 31 },
+      "targets": [
+        {
+          "expr": "sum(rate(ai_engine_message_feedback_total[5m])) by (rating)",
+          "refId": "A",
+          "legendFormat": "{{rating}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "回合失败兜底 (fail-soft)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 31 },
+      "targets": [
+        {
+          "expr": "sum(rate(ai_engine_llm_turn_failures_total[5m]))",
+          "refId": "A",
+          "legendFormat": "失败/s"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "僵尸回合清理",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 31 },
+      "targets": [
+        {
+          "expr": "sum(rate(ai_engine_stale_turns_reclaimed_total[5m]))",
+          "refId": "A",
+          "legendFormat": "清理/s"
         }
       ]
     }

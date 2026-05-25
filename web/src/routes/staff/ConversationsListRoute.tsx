@@ -53,6 +53,9 @@ export function ConversationsListRoute() {
                 </div>
               </Link>
             </Card>
+            <Button asChild variant="ghost" size="sm">
+              <Link to={`/staff/conversations/${c.id}/logs`}>留痕</Link>
+            </Button>
             {canSpectate && (
               <Button asChild variant="ghost" size="sm">
                 <Link to={`/staff/conversations/${c.id}/spectate`}>旁观</Link>

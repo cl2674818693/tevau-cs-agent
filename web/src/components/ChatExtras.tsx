@@ -1,6 +1,6 @@
 import { Wifi } from "lucide-react";
-
 /** ChatWindow 的辅助呈现块（拆出以控制单组件复杂度）。 */
+import { useTranslation } from "react-i18next";
 
 export function ChatHeader({
   mode,
@@ -13,6 +13,7 @@ export function ChatHeader({
   sending: boolean;
   onStop: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <header className="safe-top sticky top-0 z-10 flex items-center justify-between px-page py-3 bg-surface-card border-b border-line">
       <div className="flex items-center gap-3">
@@ -20,13 +21,15 @@ export function ChatHeader({
           <span className="text-ink-onbrand font-bold text-body0">T</span>
         </div>
         <div className="flex flex-col">
-          <div className="text-sh3 font-bold text-ink-primary leading-none">Tevau 客服</div>
+          <div className="text-sh3 font-bold text-ink-primary leading-none">{t("header.title")}</div>
           <div className="flex items-center gap-1.5 mt-1">
             {mode !== "human_takeover" && (
               <span className="w-1.5 h-1.5 rounded-full bg-status-success" />
             )}
             <span className="text-footnote text-ink-secondary">
-              {mode === "human_takeover" ? `客服 ${staffName ?? ""} · 已认证` : "在线 · 智能助手"}
+              {mode === "human_takeover"
+                ? t("header.staffMode", { name: staffName ?? "" })
+                : t("header.aiMode")}
             </span>
           </div>
         </div>
@@ -36,7 +39,7 @@ export function ChatHeader({
           onClick={onStop}
           className="px-3 py-1.5 rounded text-body3 text-ink-secondary border border-line hover:bg-surface-hover transition-colors"
         >
-          停止生成
+          {t("header.stop")}
         </button>
       )}
     </header>
@@ -73,22 +76,24 @@ export function EmptyState({ greeting }: { greeting: string }) {
 }
 
 export function LoadingView() {
+  const { t } = useTranslation();
   return (
     <div className="mx-auto flex h-full max-w-[720px] items-center justify-center bg-surface-page text-ink-secondary">
-      <div className="animate-pulse text-body2">正在连接 Tevau 客服…</div>
+      <div className="animate-pulse text-body2">{t("chat.loading")}</div>
     </div>
   );
 }
 
 export function ErrorView({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-3 bg-surface-page">
-      <div className="text-body2 text-status-error">连接失败，请检查网络后重试。</div>
+      <div className="text-body2 text-status-error">{t("chat.connectFailed")}</div>
       <button
         onClick={onRetry}
         className="rounded border border-line px-4 py-2 text-body2 text-brand hover:bg-soft-brand transition-colors"
       >
-        重试
+        {t("chat.retry")}
       </button>
     </div>
   );
@@ -101,17 +106,18 @@ export function StatusBanners({
   connection: "online" | "offline" | "reconnecting";
   limitPct: number;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       {connection !== "online" && (
         <div className="flex items-center justify-center gap-1.5 px-page py-1.5 bg-soft-warning border-b border-status-warning/30 text-body3 text-status-warning text-center">
           <Wifi className="h-3.5 w-3.5" />
-          {connection === "offline" ? "网络已断开，正在等待重新连接…" : "正在重新连接…"}
+          {connection === "offline" ? t("chat.offline") : t("chat.reconnecting")}
         </div>
       )}
       {limitPct >= 80 && limitPct < 100 && (
         <div className="px-page py-1.5 bg-soft-warning text-body3 text-status-warning text-center">
-          您今日用量已达 {limitPct}%，建议核心问题尽快咨询。
+          {t("chat.quota", { pct: limitPct })}
         </div>
       )}
     </>

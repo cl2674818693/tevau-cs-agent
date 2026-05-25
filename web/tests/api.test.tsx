@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { cancelStream, initConversation, streamChat } from "../src/api/chat";
+import { cancelStream, initConversation, sendFeedback, streamChat } from "../src/api/chat";
 import { ChatRoute } from "../src/routes/ChatRoute";
 
 afterEach(() => vi.restoreAllMocks());
@@ -73,6 +73,33 @@ describe("api/chat", () => {
       types.push(ev.type);
     }
     expect(types).toEqual(["message_start", "content_block_delta", "message_stop"]);
+  });
+
+  it("streamChat appends client_message_id to url", async () => {
+    const f = vi.fn(async (_url: string, _opts?: RequestInit) =>
+      sseResponse(['event: message_stop\ndata: {"stop_reason":"x"}\n\n']),
+    );
+    vi.stubGlobal("fetch", f);
+    const types: string[] = [];
+    for await (const ev of streamChat({
+      conversationId: 1,
+      message: "x",
+      clientMessageId: "cm-9",
+    })) {
+      types.push(ev.type);
+    }
+    expect(f.mock.calls[0][0]).toContain("client_message_id=cm-9");
+  });
+
+  it("sendFeedback posts rating", async () => {
+    const f = vi.fn(
+      async (_url: string, _opts?: RequestInit) => new Response(null, { status: 200 }),
+    );
+    vi.stubGlobal("fetch", f);
+    await sendFeedback(1, 3, "down", "答非所问");
+    expect(f.mock.calls[0][0]).toBe("/api/v1/conversations/1/feedback");
+    const body = JSON.parse((f.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).toMatchObject({ message_id: 3, rating: "down", reason: "答非所问" });
   });
 
   it("cancelStream sends DELETE", async () => {

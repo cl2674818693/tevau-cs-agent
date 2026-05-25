@@ -245,7 +245,9 @@ async def test_reverse_webhook_reopen(temp_db_url, business_mysql, monkeypatch):
 
     await init_db()
     await create_ticket(
-        external_id="AI-RW", conversation_id=1, payload={"category": "bug", "bu_id": "1011010000068"}
+        external_id="AI-RW",
+        conversation_id=1,
+        payload={"category": "bug", "bu_id": "1011010000068"},
     )
     pushed = []
     # user_events 直接 import 了 push_event_center，故在使用处打桩

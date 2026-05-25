@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -36,11 +37,19 @@ from ai_engine.integrations.redact import scan_and_redact_text
 from ai_engine.observability import metrics
 from ai_engine.persistence.conversations import (
     append_message,
+    append_user_turn,
+    finalize_turn,
     list_messages,
     set_inferred_locale,
+    set_turn_verdict,
 )
 from ai_engine.prompts.loader import build_system_blocks, read_prompt
 from ai_engine.prompts.registry import model_for, pick_version
+
+logger = logging.getLogger(__name__)
+
+# 回合内 LLM/工具失败时对用户的兜底文案（不外泄内部错误细节）。
+_FAILSOFT_TEXT = "抱歉，我这边暂时出了点问题，请重发一次，或点'转人工'。"
 
 
 def _block_to_dict(b: object) -> dict[str, Any]:
@@ -197,6 +206,7 @@ async def run_turn(
     subject_id: str,
     user_message: str,
     model: str | None = None,
+    client_message_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     # spec §8 prompt 版本化：按 subject_id 哈希分桶选版本；该版本贯穿本轮
     prompt_version = pick_version(subject_id)
@@ -213,18 +223,22 @@ async def run_turn(
         messages = await _load_history(conversation_id)
 
     messages.append({"role": "user", "content": user_message})
-    await append_message(conversation_id, role="user", content=user_message)
+    # 回合开始：user 行入库置 processing，承载状态机/幂等键/verdict
+    turn_id = await append_user_turn(conversation_id, user_message, client_message_id)
     # spec §6.2：按用户消息语言更新会话推断语言（None 时不覆盖，保留上轮判定）
     locale = _detect_locale(user_message)
     if locale:
         await set_inferred_locale(conversation_id, locale)
 
-    # spec §6.4 第二层：haiku 前置话题分类（按需开启）。
+    # spec §6.4 第二层：haiku 前置话题分类（按需开启）。判定一律落库 + 计数。
     if settings.topic_classifier_enabled:
         verdict = await topic_classifier.classify(user_message)
+        await set_turn_verdict(turn_id, verdict)
+        metrics.topic_verdict_total.labels(verdict=verdict).inc()
         if verdict == "no":
             refusal = topic_classifier.refusal_text(user_type)
             await append_message(conversation_id, role="assistant", content=refusal)
+            await finalize_turn(turn_id, "done")
             yield {"type": "text", "text": refusal}
             return
         if verdict == "uncertain":
@@ -237,11 +251,19 @@ async def run_turn(
         max_depth=settings.max_tool_depth, max_result_bytes=settings.max_tool_result_bytes
     )
 
-    with metrics.active_conversations.track_inprogress():
-        async for ev in _agent_loop(
-            system_blocks, tools, model, messages, guard, user_type, subject_id, conversation_id
-        ):
-            yield ev
+    try:
+        with metrics.active_conversations.track_inprogress():
+            async for ev in _agent_loop(
+                system_blocks, tools, model, messages, guard, user_type, subject_id, conversation_id
+            ):
+                yield ev
+        await finalize_turn(turn_id, "done")
+    except Exception:
+        # fail-soft：LLM/工具异常不裸抛，标 failed + 给用户固定兜底文案
+        logger.exception("agent turn failed (conversation_id=%s)", conversation_id)
+        metrics.llm_turn_failures_total.inc()
+        await finalize_turn(turn_id, "failed", "INTERNAL_ERROR")
+        yield {"type": "error", "code": "INTERNAL_ERROR", "text": _FAILSOFT_TEXT}
 
 
 class _StreamRedactor:

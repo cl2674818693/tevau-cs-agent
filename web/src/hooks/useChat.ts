@@ -8,6 +8,8 @@ import {
   streamConversationMessages,
 } from "../api/chat";
 import { AuthExpiredError, resolveIdentity, userType } from "../api/identity";
+import i18n from "../i18n";
+import { backoffDelay } from "../lib/backoff";
 import type { ConversationInit, ConversationMode, Message } from "../types";
 import {
   type ChatActions,
@@ -47,19 +49,22 @@ function useStaffMessageStream(
   useEffect(() => {
     if (convId == null) return;
     let stopped = false;
+    let attempt = 0;
     const actions: StaffStreamActions = { setMode, setStaffName, setMessages };
     void (async () => {
       while (!stopped) {
         try {
           for await (const ev of streamConversationMessages({ conversationId: convId })) {
             if (stopped) break;
+            attempt = 0; // 成功收到事件即视为连上，重置退避
             applyUserStreamEvent(ev, actions);
           }
         } catch {
-          /* 流断开，退避后重连 */
+          /* 流断开，指数退避后重连 */
         }
         if (stopped) break;
-        await new Promise((r) => setTimeout(r, 2000));
+        // 指数退避 + 抖动：避免大量客户端断线后同时重连压垮服务端
+        await new Promise((r) => setTimeout(r, backoffDelay(attempt++)));
       }
     })();
     return () => {
@@ -124,12 +129,15 @@ function useChatSend(
       actions.setMessages((prev) => [...prev, { role: "user", content: text }]);
       const controller = new AbortController();
       abortRef.current = controller;
+      // 幂等键：本次发送固定一个 id，重连/重发复用以避免后端重复处理
+      const clientMessageId = crypto.randomUUID();
       try {
         for await (const ev of streamChat({
           conversationId: init.conversation_id,
           message: text,
           lastEventId: lastEventIdRef.current,
           signal: controller.signal,
+          clientMessageId,
         })) {
           if (ev._eventId) lastEventIdRef.current = ev._eventId;
           await handleStreamEvent(ev, actions);
@@ -138,7 +146,7 @@ function useChatSend(
         if (controller.signal.aborted) {
           /* 用户主动停止，不提示错误 */
         } else if (e instanceof AuthExpiredError) await handleAuthExpired();
-        else pushSystem(actions, "网络中断，请检查连接后重试。");
+        else pushSystem(actions, i18n.t("chat.netError"));
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
         setSending(false);

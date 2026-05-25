@@ -7,6 +7,8 @@ import { Button } from "./ui/button";
 const NAV_ITEMS: { to: string; label: string; adminOnly?: boolean }[] = [
   { to: "/staff/conversations", label: "工单" },
   { to: "/staff/kpi", label: "KPI" },
+  { to: "/staff/insights", label: "知识缺口" },
+  { to: "/staff/audits", label: "工具审计" },
   { to: "/admin/prompts", label: "Prompt 灰度", adminOnly: true },
 ];
 

@@ -1,6 +1,7 @@
 import json
 
-from ai_engine.persistence.db import get_conn
+from ai_engine.persistence import db
+from ai_engine.persistence.schema import now_str
 
 
 async def log_tool_call(
@@ -12,35 +13,46 @@ async def log_tool_call(
     rejected: bool,
     reject_reason: str | None,
 ) -> int:
-    async with get_conn() as conn:
-        cur = await conn.execute(
-            """INSERT INTO tool_audits
-            (conversation_id, tool_name, params_json, result_size, duration_ms,
-             rejected, reject_reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                conversation_id,
-                tool_name,
-                json.dumps(params, ensure_ascii=False),
-                result_size,
-                duration_ms,
-                1 if rejected else 0,
-                reject_reason,
-            ),
-        )
-        await conn.commit()
-        assert cur.lastrowid is not None
-        return cur.lastrowid
+    return await db.insert_returning_id(
+        """INSERT INTO tool_audits
+        (conversation_id, tool_name, params_json, result_size, duration_ms,
+         rejected, reject_reason, created_at)
+        VALUES (:cid, :name, :params, :size, :ms, :rej, :reason, :now) RETURNING id""",
+        {
+            "cid": conversation_id,
+            "name": tool_name,
+            "params": json.dumps(params, ensure_ascii=False),
+            "size": result_size,
+            "ms": duration_ms,
+            "rej": 1 if rejected else 0,
+            "reason": reject_reason,
+            "now": now_str(),
+        },
+    )
 
 
 async def list_audits(conversation_id: int) -> list[dict[str, object]]:
-    async with get_conn() as conn:
-        rows = await (
-            await conn.execute(
-                "SELECT id, tool_name, params_json, result_size, duration_ms, "
-                "rejected, reject_reason, created_at "
-                "FROM tool_audits WHERE conversation_id=? ORDER BY id",
-                (conversation_id,),
-            )
-        ).fetchall()
-    return [dict(r) for r in rows]
+    return await db.fetch_all(
+        "SELECT id, tool_name, params_json, result_size, duration_ms, "
+        "rejected, reject_reason, created_at "
+        "FROM tool_audits WHERE conversation_id=:cid ORDER BY id",
+        {"cid": conversation_id},
+    )
+
+
+# 全局近期工具调用审计：全部 / 仅被拒。limit 由调用方钳制，谓词用恒定绑定避免动态拼 SQL。
+_RECENT_ALL = (
+    "SELECT id, conversation_id, tool_name, params_json, result_size, duration_ms, "
+    "rejected, reject_reason, created_at FROM tool_audits ORDER BY id DESC LIMIT :lim"
+)
+_RECENT_REJECTED = (
+    "SELECT id, conversation_id, tool_name, params_json, result_size, duration_ms, "
+    "rejected, reject_reason, created_at FROM tool_audits WHERE rejected=1 "
+    "ORDER BY id DESC LIMIT :lim"
+)
+
+
+async def recent_audits(limit: int, rejected_only: bool) -> list[dict[str, object]]:
+    """跨会话近期工具调用审计流（最新在前）。rejected_only=True 只看被拒调用。"""
+    sql = _RECENT_REJECTED if rejected_only else _RECENT_ALL
+    return await db.fetch_all(sql, {"lim": limit})

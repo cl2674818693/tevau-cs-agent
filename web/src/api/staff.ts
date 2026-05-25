@@ -134,6 +134,100 @@ export async function getKpi(token: string, from?: string, to?: string): Promise
   return body.staff as StaffKpi[];
 }
 
+// ---- 留痕查看（只读）----
+
+export type KnowledgeGaps = {
+  out_of_scope: number;
+  failed_turns: number;
+  thumbs_down: number;
+};
+
+export async function getKnowledgeGaps(
+  token: string,
+  from?: string,
+  to?: string,
+): Promise<KnowledgeGaps> {
+  const qs = new URLSearchParams();
+  if (from) qs.set("from", from);
+  if (to) qs.set("to", to);
+  const r = await fetch(`/staff/api/v1/insights/knowledge-gaps?${qs.toString()}`, {
+    headers: authHeaders(token),
+  });
+  if (!r.ok) throw new Error(`insights failed ${r.status}`);
+  return r.json();
+}
+
+export type StaffMessage = {
+  id: number;
+  role: string;
+  content: string;
+  status: string;
+  error_code: string | null;
+  topic_verdict: string | null;
+  created_at: string;
+};
+
+export async function getConversationMessages(token: string, id: number): Promise<StaffMessage[]> {
+  const r = await fetch(`/staff/api/v1/conversations/${id}/messages`, {
+    headers: authHeaders(token),
+  });
+  if (!r.ok) throw new Error(`messages failed ${r.status}`);
+  return (await r.json()).messages as StaffMessage[];
+}
+
+export type ToolAudit = {
+  id: number;
+  conversation_id?: number;
+  tool_name: string;
+  params_json: string;
+  result_size: number;
+  duration_ms: number;
+  rejected: number;
+  reject_reason: string | null;
+  created_at: string;
+};
+
+export async function getConversationAudits(token: string, id: number): Promise<ToolAudit[]> {
+  const r = await fetch(`/staff/api/v1/conversations/${id}/tool-audits`, {
+    headers: authHeaders(token),
+  });
+  if (!r.ok) throw new Error(`audits failed ${r.status}`);
+  return (await r.json()).audits as ToolAudit[];
+}
+
+export type MessageFeedback = {
+  id: number;
+  message_id: number;
+  rating: string;
+  reason: string | null;
+  created_at: string;
+};
+
+export async function getConversationFeedback(
+  token: string,
+  id: number,
+): Promise<MessageFeedback[]> {
+  const r = await fetch(`/staff/api/v1/conversations/${id}/feedback`, {
+    headers: authHeaders(token),
+  });
+  if (!r.ok) throw new Error(`feedback failed ${r.status}`);
+  return (await r.json()).feedback as MessageFeedback[];
+}
+
+export async function getRecentAudits(
+  token: string,
+  rejectedOnly: boolean,
+  limit = 100,
+): Promise<ToolAudit[]> {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (rejectedOnly) qs.set("rejected", "true");
+  const r = await fetch(`/staff/api/v1/audits/recent?${qs.toString()}`, {
+    headers: authHeaders(token),
+  });
+  if (!r.ok) throw new Error(`recent audits failed ${r.status}`);
+  return (await r.json()).audits as ToolAudit[];
+}
+
 export type StaffStreamEvent = {
   type: string;
   content?: string;
