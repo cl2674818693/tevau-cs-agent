@@ -56,7 +56,10 @@ function urlParams(): URLSearchParams {
 export const bridge = {
   whenReady,
   async getToken(): Promise<string | null> {
-    const t = await call<string>("getToken");
+    // native getToken 的 data 包了一层 {token}（js_bridge.dart _handleGetToken），
+    // 这里取出裸字符串；兼容旧实现直接返回字符串的情况。
+    const d = await call<{ token?: string } | string | null>("getToken");
+    const t = typeof d === "string" ? d : (d?.token ?? null);
     if (t) return t;
     return urlParams().get("token"); // dev / 旧 APP 兜底
   },
