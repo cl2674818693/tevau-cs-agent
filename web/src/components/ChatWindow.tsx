@@ -9,6 +9,7 @@ import { InputBox } from "./InputBox";
 import { MessageList } from "./MessageList";
 import { TicketCard } from "./TicketCard";
 import { TicketStatusBanner } from "./TicketStatusBanner";
+import type { Message } from "../types";
 
 type TicketStatus = "pending" | "assigned" | "in_progress" | "resolved" | "closed";
 
@@ -16,6 +17,28 @@ function inputPlaceholder(rateLimited: boolean, mode: string): string {
   if (rateLimited) return "请求过于频繁，请稍后再试…";
   if (mode === "human_takeover") return "向客服留言…";
   return "描述你的问题…";
+}
+
+/** AI 模式、对话已开始、未在生成时才给转人工入口（纯前端呈现规则，无后端建议信号）。 */
+function shouldShowHandoff(mode: string, msgCount: number, sending: boolean): boolean {
+  return mode === "ai" && msgCount > 1 && !sending;
+}
+
+/** 空状态（仅欢迎语 + AI 模式）→ 居中欢迎；否则消息流。 */
+function ChatBody({
+  messages,
+  mode,
+  userType,
+}: {
+  messages: Message[];
+  mode: string;
+  userType: "c" | "b";
+}) {
+  if (messages.length <= 1 && mode === "ai") {
+    const greeting = messages[0]?.role === "system" ? messages[0].content : "";
+    return <EmptyState greeting={greeting} />;
+  }
+  return <MessageList messages={messages} userType={userType} />;
 }
 
 function TicketCardSlot({
@@ -55,12 +78,7 @@ export function ChatWindow() {
   if (chat.status === "error") return <ErrorView onRetry={chat.retryInit} />;
 
   const latestTicket = ticketEvents[ticketEvents.length - 1];
-  const onlyGreeting = messages.length <= 1;
-  const isAi = mode === "ai";
-  const greeting = (messages[0]?.role === "system" && messages[0].content) || "";
-  // 按需转人工：AI 模式、对话已开始、未在生成时，于消息流末尾给一个克制入口
-  //（无后端建议信号，纯前端呈现规则）。
-  const showHandoff = isAi && !onlyGreeting && !sending;
+  const showHandoff = shouldShowHandoff(mode, messages.length, sending);
 
   return (
     <div
@@ -72,11 +90,7 @@ export function ChatWindow() {
       <StatusBanners connection={chat.connection} limitPct={chat.limitPct} />
       <TicketStatusBanner events={ticketEvents} />
 
-      {onlyGreeting && isAi ? (
-        <EmptyState greeting={greeting} />
-      ) : (
-        <MessageList messages={messages} userType={isC ? "c" : "b"} />
-      )}
+      <ChatBody messages={messages} mode={mode} userType={isC ? "c" : "b"} />
 
       <TicketCardSlot ticket={latestTicket} mode={mode} />
 

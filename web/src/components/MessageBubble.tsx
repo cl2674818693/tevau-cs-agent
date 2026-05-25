@@ -52,7 +52,9 @@ export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c
   return (
     <div className="flex gap-3 items-start">
       <Avatar className="rounded-sm h-7 w-7">
-        <AvatarFallback className="rounded-sm bg-brand text-ink-onbrand font-bold">T</AvatarFallback>
+        <AvatarFallback className="rounded-sm bg-brand text-ink-onbrand font-bold">
+          T
+        </AvatarFallback>
       </Avatar>
       <div className="flex-1 max-w-[85%] bg-surface-card border border-line shadow-sm rounded-lg rounded-tl-sm px-4 py-3 space-y-2">
         {(m.tool_calls ?? []).map((tc, i) => (
