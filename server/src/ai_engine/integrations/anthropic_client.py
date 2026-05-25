@@ -7,10 +7,16 @@ from ai_engine.config import settings
 
 # base_url 为 None 时 SDK 默认连官方 api.anthropic.com;
 # 设了就走公司自建网关
-_client = AsyncAnthropic(
-    api_key=settings.anthropic_api_key,
-    base_url=settings.anthropic_base_url,  # None => SDK 用默认
-)
+def _build_client() -> AsyncAnthropic:
+    return AsyncAnthropic(
+        api_key=settings.anthropic_api_key,
+        base_url=settings.anthropic_base_url,  # None => SDK 用默认
+        max_retries=settings.anthropic_max_retries,  # 显式重试（指数退避）
+        timeout=settings.anthropic_timeout_seconds,  # 显式超时，避免默认 600s
+    )
+
+
+_client = _build_client()
 
 
 def build_messages_request(

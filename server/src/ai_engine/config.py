@@ -9,6 +9,10 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = Field(...)
     anthropic_base_url: str | None = None  # 自建 Claude 网关; None 走官方 API
+    # SDK 默认 max_retries=2（指数退避，对 429/5xx/连接错误生效），显式化便于按环境调。
+    anthropic_max_retries: int = 2
+    # SDK 默认 timeout=600s 对聊天 UX 太长；显式收紧，单次请求超时即重试/失败。
+    anthropic_timeout_seconds: float = 30.0
     db_url: str = "sqlite+aiosqlite:///./ai_engine.db"
     default_model: str = "claude-sonnet-4-6"
     heavy_model: str = "claude-opus-4-7"
