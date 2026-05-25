@@ -38,3 +38,21 @@ async def list_audits(conversation_id: int) -> list[dict[str, object]]:
         "FROM tool_audits WHERE conversation_id=:cid ORDER BY id",
         {"cid": conversation_id},
     )
+
+
+# 全局近期工具调用审计：全部 / 仅被拒。limit 由调用方钳制，谓词用恒定绑定避免动态拼 SQL。
+_RECENT_ALL = (
+    "SELECT id, conversation_id, tool_name, params_json, result_size, duration_ms, "
+    "rejected, reject_reason, created_at FROM tool_audits ORDER BY id DESC LIMIT :lim"
+)
+_RECENT_REJECTED = (
+    "SELECT id, conversation_id, tool_name, params_json, result_size, duration_ms, "
+    "rejected, reject_reason, created_at FROM tool_audits WHERE rejected=1 "
+    "ORDER BY id DESC LIMIT :lim"
+)
+
+
+async def recent_audits(limit: int, rejected_only: bool) -> list[dict[str, object]]:
+    """跨会话近期工具调用审计流（最新在前）。rejected_only=True 只看被拒调用。"""
+    sql = _RECENT_REJECTED if rejected_only else _RECENT_ALL
+    return await db.fetch_all(sql, {"lim": limit})

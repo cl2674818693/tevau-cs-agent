@@ -1,5 +1,7 @@
 """消息级 👍/👎 反馈落库。采集"答了但不满意"的细粒度信号，供知识缺口统计。"""
 
+from typing import Any
+
 from ai_engine.persistence import db
 from ai_engine.persistence.schema import now_str
 
@@ -25,4 +27,13 @@ async def add_feedback(
             "ut": user_type,
             "now": now_str(),
         },
+    )
+
+
+async def list_feedback(conversation_id: int) -> list[dict[str, Any]]:
+    """某会话的全部反馈（按时间）。供客服留痕查看。"""
+    return await db.fetch_all(
+        "SELECT id, message_id, rating, reason, created_at FROM message_feedback "
+        "WHERE conversation_id=:cid ORDER BY id",
+        {"cid": conversation_id},
     )

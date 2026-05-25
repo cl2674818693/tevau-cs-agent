@@ -15,6 +15,7 @@ from ai_engine.api.metrics import router as metrics_router
 from ai_engine.api.staff_auth import router as staff_auth_router
 from ai_engine.api.staff_conversations import router as staff_conv_router
 from ai_engine.api.staff_kpi import router as staff_kpi_router
+from ai_engine.api.staff_logs import router as staff_logs_router
 from ai_engine.api.ticket_events_sse import router as ticket_sse_router
 from ai_engine.api.tickets import router as tickets_router
 from ai_engine.api.user_events import router as user_events_router
@@ -44,6 +45,7 @@ app.include_router(ticket_sse_router)
 app.include_router(staff_auth_router)
 app.include_router(staff_conv_router)
 app.include_router(staff_kpi_router)
+app.include_router(staff_logs_router)
 app.include_router(admin_prompts_router)
 app.include_router(user_events_router)
 app.include_router(feedback_router)
