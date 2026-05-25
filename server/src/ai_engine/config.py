@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     topic_classifier_enabled: bool = False  # spec §6.4 第二层 haiku 前置分类（MVP-2 起，按需开启）
     max_tool_depth: int = 12
     max_tool_result_bytes: int = 262_144
+    # 回合处理中(status=processing)超过此时长视为僵尸（服务崩溃/卡死），后台标 failed
+    stale_turn_timeout_seconds: int = 120
+    stale_sweep_interval_seconds: int = 60  # 后台清理扫描间隔；<=0 关闭后台任务
     log_level: str = "INFO"
 
 
