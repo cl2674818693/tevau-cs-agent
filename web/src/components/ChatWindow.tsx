@@ -1,5 +1,6 @@
 import { sendTicketUserEvent } from "../api/chat";
 import { userType } from "../api/identity";
+import i18n from "../i18n";
 import { useChat } from "../hooks/useChat";
 import { useTicketStream } from "../hooks/useTicketStream";
 import { useKeyboardInset } from "../hooks/useVisualViewport";
@@ -13,9 +14,9 @@ import { TicketStatusBanner } from "./TicketStatusBanner";
 type TicketStatus = "pending" | "assigned" | "in_progress" | "resolved" | "closed";
 
 function inputPlaceholder(rateLimited: boolean, mode: string): string {
-  if (rateLimited) return "请求过于频繁，请稍后再试…";
-  if (mode === "human_takeover") return "向客服留言…";
-  return "描述你的问题…";
+  if (rateLimited) return i18n.t("chat.inputRateLimited");
+  if (mode === "human_takeover") return i18n.t("chat.inputHumanMode");
+  return i18n.t("chat.inputPlaceholder");
 }
 
 function TicketCardSlot({
@@ -35,7 +36,7 @@ function TicketCardSlot({
     <div className="px-page pb-2">
       <TicketCard
         externalId={ticket.external_id}
-        summary={ticket.comment ?? "您的工单进展"}
+        summary={ticket.comment ?? i18n.t("ticket.cardSummaryFallback")}
         status={ticket.event as TicketStatus}
         onConfirm={() => send(true)}
         onReject={() => send(false)}

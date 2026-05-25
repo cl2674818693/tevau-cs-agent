@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
+import i18n from "../i18n";
+
 type Props = { children: ReactNode; fallback?: ReactNode };
 type State = { hasError: boolean };
 
@@ -31,14 +33,14 @@ export class ErrorBoundary extends Component<Props, State> {
         role="alert"
         className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center"
       >
-        <p className="text-lg font-semibold text-slate-800">页面出错了</p>
-        <p className="text-sm text-slate-500">请刷新页面重试。若反复出现，请联系客服。</p>
+        <p className="text-lg font-semibold text-slate-800">{i18n.t("error.title")}</p>
+        <p className="text-sm text-slate-500">{i18n.t("error.detail")}</p>
         <button
           type="button"
           onClick={this.handleReload}
           className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
         >
-          刷新页面
+          {i18n.t("error.reload")}
         </button>
       </div>
     );

@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+import { useTranslation } from "react-i18next";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "../lib/utils";
@@ -7,6 +8,7 @@ import { Avatar, AvatarFallback } from "./ui/avatar";
 import { ToolCallChip } from "./ToolCallChip";
 
 export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c" | "b" }) {
+  const { t } = useTranslation();
   if (m.role === "user") {
     return (
       <div className="flex justify-end">
@@ -27,11 +29,13 @@ export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c
     return (
       <div className="flex gap-2 items-start">
         <Avatar>
-          <AvatarFallback className="bg-status-warning text-white">客</AvatarFallback>
+          <AvatarFallback className="bg-status-warning text-white">
+            {t("chat.agentAvatar")}
+          </AvatarFallback>
         </Avatar>
         <div className="flex-1 max-w-[80%] rounded-lg bg-yellow-50 border border-status-warning/30 px-page py-block-sm">
           <div className="text-footnote text-ink-secondary mb-0.5">
-            客服 {m.display_name ?? ""} · 已认证
+            {t("chat.agentBadge", { name: m.display_name ?? "" })}
           </div>
           <div className="text-body1 text-ink-primary whitespace-pre-wrap">{m.content}</div>
         </div>
@@ -57,7 +61,7 @@ export function MessageBubble({ m, userType = "b" }: { m: Message; userType?: "c
           {m.content ? (
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
           ) : (
-            <span className="text-ink-secondary text-body2">思考中…</span>
+            <span className="text-ink-secondary text-body2">{t("chat.thinking")}</span>
           )}
         </div>
       </div>

@@ -8,6 +8,7 @@ import {
   streamConversationMessages,
 } from "../api/chat";
 import { AuthExpiredError, resolveIdentity, userType } from "../api/identity";
+import i18n from "../i18n";
 import { backoffDelay } from "../lib/backoff";
 import type { ChatEvent, ConversationInit, ConversationMode, Message } from "../types";
 
@@ -216,7 +217,7 @@ export function useChat() {
         }
       } catch (e) {
         if (e instanceof AuthExpiredError) await handleAuthExpired();
-        else pushSystem(actions, "网络中断，请检查连接后重试。");
+        else pushSystem(actions, i18n.t("chat.netError"));
       } finally {
         setSending(false);
       }

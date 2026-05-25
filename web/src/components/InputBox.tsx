@@ -1,17 +1,19 @@
 import { Send } from "lucide-react";
 import { useState, type KeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "./ui/button";
 
 export function InputBox({
   onSend,
   disabled,
-  placeholder = "描述你的问题…",
+  placeholder,
 }: {
   onSend: (t: string) => void;
   disabled: boolean;
   placeholder?: string;
 }) {
+  const { t } = useTranslation();
   const [v, setV] = useState("");
 
   function submit() {
@@ -35,7 +37,7 @@ export function InputBox({
         <textarea
           value={v}
           rows={1}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t("chat.inputPlaceholder")}
           onChange={(e) => setV(e.target.value)}
           onKeyDown={onKey}
           className="flex-1 resize-none bg-transparent text-body1 placeholder:text-ink-secondary outline-none max-h-32"
@@ -44,7 +46,7 @@ export function InputBox({
           size="icon"
           onClick={submit}
           disabled={disabled || !v.trim()}
-          aria-label="发送"
+          aria-label={t("chat.send")}
           className="h-9 w-9 rounded"
         >
           <Send className="h-4 w-4" />
