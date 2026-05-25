@@ -35,7 +35,5 @@ async def push_event_center(payload: dict[str, Any]) -> bool:
         return True
     except Exception:
         # 不抛、返回 False 不变；但记录便于排障（外部回调失败会静默丢事件）
-        logger.warning(
-            "event_center push failed (type=%s)", payload.get("type"), exc_info=True
-        )
+        logger.warning("event_center push failed (type=%s)", payload.get("type"), exc_info=True)
         return False

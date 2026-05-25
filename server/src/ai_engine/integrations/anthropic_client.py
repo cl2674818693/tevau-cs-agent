@@ -5,6 +5,7 @@ from anthropic import AsyncAnthropic
 
 from ai_engine.config import settings
 
+
 # base_url 为 None 时 SDK 默认连官方 api.anthropic.com;
 # 设了就走公司自建网关
 def _build_client() -> AsyncAnthropic:

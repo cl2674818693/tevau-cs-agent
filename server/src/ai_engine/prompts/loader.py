@@ -1,7 +1,7 @@
 from ai_engine.prompts import registry
 
-# prompt 文件内容缓存（key=(version, prompt_key)）。文件在运行期不变（变更走部署重启），
-# 缓存后避免每次请求同步 read_text 阻塞事件循环。registry 重载时清空（见 registry.reload_registry）。
+# prompt 文件内容缓存（key=(version, prompt_key)）。文件运行期不变（变更走部署重启），
+# 缓存后避免每请求同步 read_text 阻塞事件循环。registry 重载时清空。
 _content_cache: dict[tuple[str, str], str] = {}
 
 

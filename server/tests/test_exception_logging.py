@@ -20,10 +20,8 @@ async def test_classify_logs_warning_on_failure(monkeypatch, caplog):
         verdict = await topic_classifier.classify("hello")
 
     assert verdict == "uncertain"  # fail-open 不变
-    assert any(
-        r.levelno >= logging.WARNING and "topic" in r.name.lower()
-        for r in caplog.records
-    ), f"expected a WARNING from topic_classifier, got {[(r.name, r.message) for r in caplog.records]}"
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any("topic" in r.name.lower() for r in warnings), [r.name for r in warnings]
 
 
 async def test_push_event_logs_warning_on_failure(monkeypatch, caplog):
@@ -46,7 +44,5 @@ async def test_push_event_logs_warning_on_failure(monkeypatch, caplog):
         ok = await ec.push_event_center({"type": "closed", "external_id": "T-1"})
 
     assert ok is False  # 失败不抛、返回 False 不变
-    assert any(
-        r.levelno >= logging.WARNING and "event_center" in r.name.lower()
-        for r in caplog.records
-    ), f"expected a WARNING from event_center_client, got {[(r.name, r.message) for r in caplog.records]}"
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any("event_center" in r.name.lower() for r in warnings), [r.name for r in warnings]
