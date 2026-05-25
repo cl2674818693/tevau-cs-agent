@@ -36,3 +36,11 @@ staff_takeover_seconds = Histogram(
 
 # 用户满意度
 user_resolved_total = Counter("ai_engine_user_resolved_total", "用户标记解决", ["event"])
+
+# 留痕与可靠性：话题判定 / 消息反馈 / 回合失败兜底 / 僵尸回合清理
+topic_verdict_total = Counter("ai_engine_topic_verdict_total", "话题分类判定", ["verdict"])
+message_feedback_total = Counter("ai_engine_message_feedback_total", "消息反馈", ["rating"])
+llm_turn_failures_total = Counter("ai_engine_llm_turn_failures_total", "回合内 LLM 失败兜底次数")
+stale_turns_reclaimed_total = Counter(
+    "ai_engine_stale_turns_reclaimed_total", "超时僵尸回合被标记 failed 的数量"
+)
