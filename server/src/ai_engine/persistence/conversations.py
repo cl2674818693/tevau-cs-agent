@@ -34,6 +34,58 @@ async def append_message(conv_id: int, role: str, content: str) -> int:
     )
 
 
+async def append_user_turn(conv_id: int, content: str, client_message_id: str | None) -> int:
+    """开启一个 AI 回合：user 消息入库，status=processing。返回 message_id(turn_id)。"""
+    return await db.insert_returning_id(
+        "INSERT INTO messages"
+        "(conversation_id, role, content, status, client_message_id, created_at) "
+        "VALUES (:cid, 'user', :content, 'processing', :cmid, :now) RETURNING id",
+        {"cid": conv_id, "content": content, "cmid": client_message_id, "now": now_str()},
+    )
+
+
+async def finalize_turn(turn_id: int, status: str, error_code: str | None = None) -> None:
+    """收尾回合：status=done/failed（failed 时带 error_code）。"""
+    await db.execute(
+        "UPDATE messages SET status=:st, error_code=:ec WHERE id=:id",
+        {"st": status, "ec": error_code, "id": turn_id},
+    )
+
+
+async def set_turn_verdict(turn_id: int, verdict: str) -> None:
+    """记录该回合的话题判定（yes/no/uncertain），用于留痕与知识缺口统计。"""
+    await db.execute(
+        "UPDATE messages SET topic_verdict=:v WHERE id=:id",
+        {"v": verdict, "id": turn_id},
+    )
+
+
+async def find_completed_turn(conv_id: int, client_message_id: str) -> dict[str, object] | None:
+    """幂等：按 client_message_id 找已完成(status=done)的 user 回合行。"""
+    return await db.fetch_one(
+        "SELECT id, content FROM messages WHERE conversation_id=:cid "
+        "AND client_message_id=:cmid AND role='user' AND status='done' "
+        "ORDER BY id DESC LIMIT 1",
+        {"cid": conv_id, "cmid": client_message_id},
+    )
+
+
+async def get_turn_assistant_texts(conv_id: int, turn_id: int) -> list[str]:
+    """取某回合 user 行(turn_id)之后、下一条 user 行之前的所有 assistant content（原样）。"""
+    rows = await db.fetch_all(
+        "SELECT id, role, content FROM messages WHERE conversation_id=:cid AND id>:tid "
+        "ORDER BY id",
+        {"cid": conv_id, "tid": turn_id},
+    )
+    out: list[str] = []
+    for r in rows:
+        if r["role"] == "user":
+            break
+        if r["role"] == "assistant":
+            out.append(str(r["content"]))
+    return out
+
+
 async def count_pending() -> int:
     """当前等待人工接管的会话数（spec §11 human_pending gauge）。"""
     row = await db.fetch_one("SELECT COUNT(*) AS n FROM conversations WHERE mode='human_pending'")
@@ -63,7 +115,8 @@ async def sum_content_chars(conv_id: int) -> int:
 
 async def list_messages(conv_id: int) -> list[dict[str, object]]:
     return await db.fetch_all(
-        "SELECT id, role, content, sender_staff_id, created_at FROM messages "
+        "SELECT id, role, content, sender_staff_id, status, error_code, "
+        "client_message_id, topic_verdict, created_at FROM messages "
         "WHERE conversation_id=:id ORDER BY id",
         {"id": conv_id},
     )
