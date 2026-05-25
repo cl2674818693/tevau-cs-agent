@@ -8,6 +8,7 @@ import {
   streamConversationMessages,
 } from "../api/chat";
 import { AuthExpiredError, resolveIdentity, userType } from "../api/identity";
+import { backoffDelay } from "../lib/backoff";
 import type { ChatEvent, ConversationInit, ConversationMode, Message } from "../types";
 
 type AssistantMsg = Extract<Message, { role: "assistant" }>;
@@ -112,11 +113,13 @@ function useStaffMessageStream(
   useEffect(() => {
     if (convId == null) return;
     let stopped = false;
+    let attempt = 0;
     void (async () => {
       while (!stopped) {
         try {
           for await (const ev of streamConversationMessages({ conversationId: convId })) {
             if (stopped) break;
+            attempt = 0; // 成功收到事件即视为连上，重置退避
             if (ev.type === "mode_change") setMode(ev.to as ConversationMode);
             else if (ev.type === "human_message") {
               setStaffName(ev.display_name);
@@ -124,10 +127,11 @@ function useStaffMessageStream(
             } else if (ev.type === "assistant_message") setMessages((p) => applyEvent(p, ev));
           }
         } catch {
-          /* 流断开，退避后重连 */
+          /* 流断开，指数退避后重连 */
         }
         if (stopped) break;
-        await new Promise((r) => setTimeout(r, 2000));
+        // 指数退避 + 抖动：避免大量客户端断线后同时重连压垮服务端
+        await new Promise((r) => setTimeout(r, backoffDelay(attempt++)));
       }
     })();
     return () => {
