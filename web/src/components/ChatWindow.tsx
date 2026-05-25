@@ -3,8 +3,8 @@ import { userType } from "../api/identity";
 import { useChat } from "../hooks/useChat";
 import { useTicketStream } from "../hooks/useTicketStream";
 import { useKeyboardInset } from "../hooks/useVisualViewport";
-import { ChatHeader, ErrorView, LoadingView, StatusBanners, Suggestions } from "./ChatExtras";
-import { HandoffButton } from "./HandoffButton";
+import { ChatHeader, EmptyState, ErrorView, LoadingView, StatusBanners } from "./ChatExtras";
+import { HandoffPrompt } from "./HandoffButton";
 import { InputBox } from "./InputBox";
 import { MessageList } from "./MessageList";
 import { TicketCard } from "./TicketCard";
@@ -57,23 +57,31 @@ export function ChatWindow() {
   const latestTicket = ticketEvents[ticketEvents.length - 1];
   const onlyGreeting = messages.length <= 1;
   const isAi = mode === "ai";
+  const greeting = (messages[0]?.role === "system" && messages[0].content) || "";
+  // 按需转人工：AI 模式、对话已开始、未在生成时，于消息流末尾给一个克制入口
+  //（无后端建议信号，纯前端呈现规则）。
+  const showHandoff = isAi && !onlyGreeting && !sending;
 
   return (
     <div
-      className="mx-auto flex h-full max-w-[720px] flex-col bg-chat-surface grid-bg text-chat-on-surface font-chat-body"
+      className="mx-auto flex h-full max-w-[720px] flex-col bg-surface-page text-ink"
       style={{ paddingBottom: inset }}
     >
       <ChatHeader mode={mode} staffName={chat.staffName} sending={sending} onStop={chat.stop} />
 
       <StatusBanners connection={chat.connection} limitPct={chat.limitPct} />
       <TicketStatusBanner events={ticketEvents} />
-      <MessageList messages={messages} userType={isC ? "c" : "b"} />
+
+      {onlyGreeting && isAi ? (
+        <EmptyState greeting={greeting} />
+      ) : (
+        <MessageList messages={messages} userType={isC ? "c" : "b"} />
+      )}
 
       <TicketCardSlot ticket={latestTicket} mode={mode} />
 
-      {onlyGreeting && isAi && <Suggestions onPick={send} />}
+      {showHandoff && <HandoffPrompt onClick={chat.requestHandoff} disabled={sending} />}
 
-      {isAi && <HandoffButton onClick={chat.requestHandoff} disabled={sending} />}
       <InputBox
         onSend={send}
         disabled={sending || chat.rateLimited}
