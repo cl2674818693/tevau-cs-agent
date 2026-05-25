@@ -11,7 +11,7 @@ async def test_reclaim_marks_old_processing_failed(seeded_db):
     n = await reclaim_stale_turns(120)
     assert n == 1
     rows = await c.list_messages(1)
-    turn = [r for r in rows if r["id"] == tid][0]
+    turn = next(r for r in rows if r["id"] == tid)
     assert turn["status"] == "failed"
     assert turn["error_code"] == "STALE_RECLAIMED"
 
@@ -23,7 +23,7 @@ async def test_reclaim_keeps_recent_processing(seeded_db):
     tid = await c.append_user_turn(1, "刚发的", "fresh-1")
     assert await reclaim_stale_turns(120) == 0
     rows = await c.list_messages(1)
-    assert [r for r in rows if r["id"] == tid][0]["status"] == "processing"
+    assert next(r for r in rows if r["id"] == tid)["status"] == "processing"
 
 
 async def test_sweep_loop_disabled_returns_immediately(monkeypatch):

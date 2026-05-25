@@ -7,37 +7,34 @@
 按 created_at 字符串窗口过滤（沿用项目时间列约定，定宽格式字典序==时间序）。
 """
 
-from typing import Any
-
 from ai_engine.persistence import db
 
+# 全字面量 SQL（无动态构造）。时间窗用 :df/:dt 恒定绑定，None 时谓词短路。
+_Q_OUT_OF_SCOPE = (
+    "SELECT COUNT(*) AS n FROM messages "
+    "WHERE role='user' AND topic_verdict='no' "
+    "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+)
+_Q_FAILED = (
+    "SELECT COUNT(*) AS n FROM messages "
+    "WHERE role='user' AND status='failed' "
+    "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+)
+_Q_THUMBS_DOWN = (
+    "SELECT COUNT(*) AS n FROM message_feedback "
+    "WHERE rating='down' "
+    "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+)
 
-def _range(date_from: str | None, date_to: str | None) -> tuple[str, dict[str, Any]]:
-    clause, params = "", {}
-    if date_from:
-        clause += " AND created_at >= :df"
-        params["df"] = date_from
-    if date_to:
-        clause += " AND created_at <= :dt"
-        params["dt"] = date_to
-    return clause, params
 
-
-async def _count(sql: str, params: dict[str, Any]) -> int:
-    row = await db.fetch_one(sql, params)
+async def _count(sql: str, date_from: str | None, date_to: str | None) -> int:
+    row = await db.fetch_one(sql, {"df": date_from, "dt": date_to})
     return int(row["n"]) if row else 0
 
 
 async def knowledge_gaps(date_from: str | None, date_to: str | None) -> dict[str, int]:
-    rng, p = _range(date_from, date_to)
     return {
-        "out_of_scope": await _count(
-            f"SELECT COUNT(*) AS n FROM messages WHERE role='user' AND topic_verdict='no'{rng}", p
-        ),
-        "failed_turns": await _count(
-            f"SELECT COUNT(*) AS n FROM messages WHERE role='user' AND status='failed'{rng}", p
-        ),
-        "thumbs_down": await _count(
-            f"SELECT COUNT(*) AS n FROM message_feedback WHERE rating='down'{rng}", p
-        ),
+        "out_of_scope": await _count(_Q_OUT_OF_SCOPE, date_from, date_to),
+        "failed_turns": await _count(_Q_FAILED, date_from, date_to),
+        "thumbs_down": await _count(_Q_THUMBS_DOWN, date_from, date_to),
     }

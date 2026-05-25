@@ -31,6 +31,7 @@ async def _authorize_conversation(request: Request, conversation_id: int) -> tup
         raise HTTPException(403, "not your conversation")
     return user_type, subject_id
 
+
 # conversation_id → asyncio.Event（用户点"停止生成"时 set，gen() 检测后退出）
 _cancel_signals: dict[int, asyncio.Event] = {}
 
@@ -61,6 +62,56 @@ def _spectator_event(ev: dict[str, Any]) -> dict[str, Any]:
     if ev.get("type") == "text":
         return {"type": "assistant_text", "content": ev.get("text", "")}
     return ev
+
+
+async def _replay_turn(conversation_id: int, turn_id: int) -> AsyncIterator[dict[str, str]]:
+    """幂等重放：把某已完成回合的 assistant 文本按 SSE 帧重新流出，不调 LLM。"""
+    yield se.sse_payload(se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)})
+    for raw in await conv_dao.get_turn_assistant_texts(conversation_id, turn_id):
+        yield se.sse_payload(
+            se.EVENT_CONTENT_BLOCK_DELTA,
+            {
+                "index": 0,
+                "delta": {"type": "text_delta", "text": runtime._history_text("assistant", raw)},
+            },
+        )
+    yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "replayed"})
+
+
+async def _duplicate_turn_id(conversation_id: int, client_message_id: str | None) -> int | None:
+    """幂等键命中已完成回合则返回其 turn_id，否则 None。"""
+    if not client_message_id:
+        return None
+    prev = await conv_dao.find_completed_turn(conversation_id, client_message_id)
+    return int(prev["id"]) if prev else None
+
+
+async def _stream_ai_turn(
+    conversation_id: int,
+    user_type: str,
+    subject_id: str,
+    message: str,
+    client_message_id: str | None,
+    cancel_evt: asyncio.Event,
+) -> AsyncIterator[dict[str, str]]:
+    """正常 AI 回合：message_start → run_turn 事件映射 → message_stop。"""
+    yield se.sse_payload(se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)})
+    publish_conversation_event(conversation_id, {"type": "user_message", "content": message})
+    async for ev in runtime.run_turn(
+        conversation_id=conversation_id,
+        user_type=user_type,
+        subject_id=subject_id,
+        user_message=message,
+        client_message_id=client_message_id,
+    ):
+        if cancel_evt.is_set():
+            yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "cancelled"})
+            return
+        publish_conversation_event(conversation_id, _spectator_event(ev))
+        mapped = _map_runtime_event(ev)
+        if mapped is not None:
+            yield mapped
+    yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "end_turn"})
 
 
 @router.get("/api/v1/chat")
@@ -101,28 +152,11 @@ async def chat(
                 yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "rate_limited"})
                 return
             # 幂等：同一 client_message_id 已完成过则重放历史回复，不重复跑 LLM（防重连/重发刷量）
-            if client_message_id:
-                prev = await conv_dao.find_completed_turn(conversation_id, client_message_id)
-                if prev:
-                    yield se.sse_payload(
-                        se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)}
-                    )
-                    texts = await conv_dao.get_turn_assistant_texts(
-                        conversation_id, int(prev["id"])
-                    )
-                    for raw in texts:
-                        yield se.sse_payload(
-                            se.EVENT_CONTENT_BLOCK_DELTA,
-                            {
-                                "index": 0,
-                                "delta": {
-                                    "type": "text_delta",
-                                    "text": runtime._history_text("assistant", raw),
-                                },
-                            },
-                        )
-                    yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "replayed"})
-                    return
+            dup_id = await _duplicate_turn_id(conversation_id, client_message_id)
+            if dup_id is not None:
+                async for frame in _replay_turn(conversation_id, dup_id):
+                    yield frame
+                return
             # spec §13：客服已接管 / 待接管时不调 AI，用户消息只入库 + 推给客服侧
             mode, _ = await conv_dao.get_mode(conversation_id)
             if mode in ("human_takeover", "human_pending"):
@@ -155,25 +189,10 @@ async def chat(
                 yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "ai_draft_pending"})
                 return
 
-            yield se.sse_payload(se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)})
-            publish_conversation_event(
-                conversation_id, {"type": "user_message", "content": message}
-            )
-            async for ev in runtime.run_turn(
-                conversation_id=conversation_id,
-                user_type=user_type,
-                subject_id=subject_id,
-                user_message=message,
-                client_message_id=client_message_id,
+            async for frame in _stream_ai_turn(
+                conversation_id, user_type, subject_id, message, client_message_id, cancel_evt
             ):
-                if cancel_evt.is_set():
-                    yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "cancelled"})
-                    return
-                publish_conversation_event(conversation_id, _spectator_event(ev))
-                mapped = _map_runtime_event(ev)
-                if mapped is not None:
-                    yield mapped
-            yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "end_turn"})
+                yield frame
         except Exception:  # 顶层兜底：记日志，对外只回固定文案，不外泄内部错误细节
             logger.exception("chat stream failed (conversation_id=%s)", conversation_id)
             yield se.error_event("INTERNAL_ERROR", "服务暂时不可用，请稍后再试。")

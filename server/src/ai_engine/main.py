@@ -52,7 +52,7 @@ if settings.mock_event_center:  # 仅本地 dev；生产连真实事项中心
     app.include_router(mock_ec_router)
 
 
-_sweep_task: asyncio.Task | None = None
+_sweep_task: asyncio.Task[None] | None = None
 
 
 @app.on_event("startup")

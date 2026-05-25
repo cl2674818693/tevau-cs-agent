@@ -1,3 +1,5 @@
+from typing import Any
+
 from ai_engine.persistence import db
 from ai_engine.persistence.schema import now_str
 
@@ -60,7 +62,7 @@ async def set_turn_verdict(turn_id: int, verdict: str) -> None:
     )
 
 
-async def find_completed_turn(conv_id: int, client_message_id: str) -> dict[str, object] | None:
+async def find_completed_turn(conv_id: int, client_message_id: str) -> dict[str, Any] | None:
     """幂等：按 client_message_id 找已完成(status=done)的 user 回合行。"""
     return await db.fetch_one(
         "SELECT id, content FROM messages WHERE conversation_id=:cid "
@@ -73,8 +75,7 @@ async def find_completed_turn(conv_id: int, client_message_id: str) -> dict[str,
 async def get_turn_assistant_texts(conv_id: int, turn_id: int) -> list[str]:
     """取某回合 user 行(turn_id)之后、下一条 user 行之前的所有 assistant content（原样）。"""
     rows = await db.fetch_all(
-        "SELECT id, role, content FROM messages WHERE conversation_id=:cid AND id>:tid "
-        "ORDER BY id",
+        "SELECT id, role, content FROM messages WHERE conversation_id=:cid AND id>:tid ORDER BY id",
         {"cid": conv_id, "tid": turn_id},
     )
     out: list[str] = []

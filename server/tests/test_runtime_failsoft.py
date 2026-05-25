@@ -24,7 +24,7 @@ async def test_run_turn_failsoft_on_llm_exception(seeded_db, monkeypatch):
 
     assert any(e.get("type") == "error" for e in evs)  # 兜底文案而非裸抛
     rows = await c.list_messages(1)
-    turn = [r for r in rows if r["role"] == "user" and r["client_message_id"] == "cm-fail"][0]
+    turn = next(r for r in rows if r["role"] == "user" and r["client_message_id"] == "cm-fail")
     assert turn["status"] == "failed"
     assert turn["error_code"] == "INTERNAL_ERROR"
 
