@@ -60,8 +60,16 @@ export async function releaseConversation(token: string, id: number): Promise<vo
   await postStaff(token, `/staff/api/v1/conversations/${id}/release`);
 }
 
-export async function sendStaffMessage(token: string, id: number, content: string): Promise<void> {
-  await postStaff(token, `/staff/api/v1/conversations/${id}/messages`, { content });
+export async function sendStaffMessage(
+  token: string,
+  id: number,
+  content: string,
+  attachmentIds: number[] = [],
+): Promise<void> {
+  await postStaff(token, `/staff/api/v1/conversations/${id}/messages`, {
+    content,
+    attachment_ids: attachmentIds,
+  });
 }
 
 export async function enableAiDraft(token: string, id: number): Promise<void> {

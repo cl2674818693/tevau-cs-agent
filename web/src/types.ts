@@ -18,8 +18,10 @@ export type ChatEvent = {
       sender_staff_id?: string;
       display_name?: string;
       content: string;
+      attachments?: Attachment[];
     }
-  | { type: "assistant_message"; content: string }
+  | { type: "assistant_message"; content: string; attachments?: Attachment[] }
+  | { type: "user_message"; content: string; attachments?: Attachment[] }
   | { type: "error"; code: string; message: string; retry_after_ms?: number }
   | { type: "warning"; pct?: number; text?: string }
 );
@@ -35,11 +37,13 @@ export type ConversationInit = {
   limits: { daily_token_used_pct: number; max_turns: number };
 };
 
+export type Attachment = { id: number; mime: string };
+
 export type Message =
   | { role: "system"; content: string }
-  | { role: "user"; content: string }
-  | { role: "assistant"; content: string; tool_calls?: ToolCallShown[] }
-  | { role: "human_agent"; content: string; display_name?: string };
+  | { role: "user"; content: string; attachments?: Attachment[] }
+  | { role: "assistant"; content: string; tool_calls?: ToolCallShown[]; attachments?: Attachment[] }
+  | { role: "human_agent"; content: string; display_name?: string; attachments?: Attachment[] };
 
 export type ConversationMode = "ai" | "human_pending" | "human_takeover" | "ai_draft";
 

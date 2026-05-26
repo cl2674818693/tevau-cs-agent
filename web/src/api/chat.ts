@@ -63,12 +63,15 @@ export async function* streamChat(args: {
   lastEventId?: string;
   signal?: AbortSignal;
   clientMessageId?: string;
+  attachmentIds?: number[];
 }): AsyncGenerator<ChatEvent> {
   let url = `/api/v1/chat?conversation_id=${args.conversationId}&message=${encodeURIComponent(
     args.message,
   )}`;
   // 幂等键：重发/重连时同 id 命中后端会重放历史回复，不重复跑 LLM
   if (args.clientMessageId) url += `&client_message_id=${encodeURIComponent(args.clientMessageId)}`;
+  // 图片附件：先上传拿到的 id，逗号分隔随消息带上，后端绑定到本轮 user 行
+  if (args.attachmentIds?.length) url += `&attachment_ids=${args.attachmentIds.join(",")}`;
   const headers: Record<string, string> = {};
   if (args.lastEventId) headers["Last-Event-ID"] = args.lastEventId;
   const resp = await authedFetch(url, { headers, signal: args.signal });
