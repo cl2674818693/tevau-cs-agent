@@ -8,10 +8,12 @@ export function MessageList({
   messages,
   userType = "b",
   onFeedback,
+  urlFor,
 }: {
   messages: Message[];
   userType?: "c" | "b";
   onFeedback?: (messageIndex: number, rating: "up" | "down") => void;
+  urlFor?: (attachmentId: number) => string;
 }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
@@ -34,6 +36,7 @@ export function MessageList({
           key={i}
           m={m}
           userType={userType}
+          urlFor={urlFor}
           onFeedback={
             m.role === "assistant" && onFeedback ? (rating) => onFeedback(i, rating) : undefined
           }

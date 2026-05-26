@@ -72,7 +72,7 @@ mccabe = { max-complexity = 10 }
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI 依赖注入惯用法：Depends/Query/Header 作为参数默认值不算 B008
-extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Path"]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Path", "fastapi.File"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S105", "S106", "S107"]

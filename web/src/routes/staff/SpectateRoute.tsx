@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { staffAttachmentUrl } from "../../api/attachments";
 import { streamSpectateEvents, type StaffStreamEvent } from "../../api/staff";
+import { ImageThumb } from "../../components/ImageThumb";
 import { Alert } from "../../components/ui/alert";
 import { EmptyState } from "../../components/ui/empty-state";
 import { PageContainer } from "../../components/ui/page";
@@ -80,6 +82,13 @@ export function SpectateRoute() {
               className={`text-body2 ${alert ? "text-status-error" : "text-ink-primary"}`}
             >
               {label(ev)}
+              {ev.attachments?.length ? (
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {ev.attachments.map((a) => (
+                    <ImageThumb key={a.id} src={staffAttachmentUrl(convId, a.id)} />
+                  ))}
+                </div>
+              ) : null}
             </li>
           );
         })}

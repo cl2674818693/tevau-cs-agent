@@ -78,21 +78,25 @@ describe("PromptsRoute", () => {
 
   it("loads versions and saves rollout", async () => {
     localStorage.setItem("staff_jwt", fakeJwt("admin"));
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            versions: ["v1.0.0", "v1.1.0"],
-            default: "v1.1.0",
-            rollout: { "v1.1.0": 100 },
-          }),
-          { status: 200 },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ ok: true, rollout: { "v1.1.0": 100 } }), { status: 200 }),
+    // 按 URL 分发，避免依赖调用顺序（PromptsRoute 挂载时还会拉 ab-stats）
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/prompts/ab-stats")) {
+        return new Response(JSON.stringify({ versions: [] }), { status: 200 });
+      }
+      if (url.includes("/prompts/rollout")) {
+        return new Response(JSON.stringify({ ok: true, rollout: { "v1.1.0": 100 } }), {
+          status: 200,
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          versions: ["v1.0.0", "v1.1.0"],
+          default: "v1.1.0",
+          rollout: { "v1.1.0": 100 },
+        }),
+        { status: 200 },
       );
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     renderRoute();

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { staffAttachmentUrl } from "../../api/attachments";
 import {
   getStaffConversation,
   releaseConversation,
@@ -9,6 +10,7 @@ import {
   type StaffStreamEvent,
 } from "../../api/staff";
 import { AiDraftPanel } from "../../components/AiDraftPanel";
+import { ImageThumb } from "../../components/ImageThumb";
 import { AiToolsPanel } from "../../components/AiToolsPanel";
 import { TakeoverFooter } from "../../components/TakeoverFooter";
 import { Alert } from "../../components/ui/alert";
@@ -17,20 +19,21 @@ import { PageContainer, PageHeader } from "../../components/ui/page";
 import { useAiDraft } from "../../hooks/useAiDraft";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-/** 订阅会话事件总线，返回累积的事件列表 + 追加器。 */
-function useStaffStream(
-  token: string | null,
-  convId: number,
-): [StaffStreamEvent[], (e: StaffStreamEvent) => void] {
+/**
+ * 订阅会话事件总线，返回累积的事件列表。
+ * stopped 必须是 effect 闭包内的局部变量，不能用 useRef：StrictMode 下 effect 会
+ * mount→unmount→mount，两次 mount 共享同一个 ref，第二次 mount 会把 stopped 重置成
+ * false，导致第一个订阅的 for-await 永不 break → 双订阅 → 每个事件被 push 两次。
+ */
+function useStaffStream(token: string | null, convId: number): StaffStreamEvent[] {
   const [events, setEvents] = useState<StaffStreamEvent[]>([]);
-  const stopped = useRef(false);
   useEffect(() => {
     if (!token) return;
-    stopped.current = false;
+    let stopped = false;
     (async () => {
       try {
         for await (const ev of streamStaffEvents(token, convId)) {
-          if (stopped.current) break;
+          if (stopped) break;
           setEvents((prev) => [...prev, ev]);
         }
       } catch {
@@ -38,10 +41,10 @@ function useStaffStream(
       }
     })();
     return () => {
-      stopped.current = true;
+      stopped = true;
     };
   }, [token, convId]);
-  return [events, (e) => setEvents((prev) => [...prev, e])];
+  return events;
 }
 
 /** 按会话真实状态初始化接管态：本客服已接管 → 直接渲染回复区，刷新后不丢。 */
@@ -67,13 +70,20 @@ function useInitialTaken(
   }, [token, staffId, convId, setTaken]);
 }
 
-function EventLog({ events }: { events: StaffStreamEvent[] }) {
+function EventLog({ events, convId }: { events: StaffStreamEvent[]; convId: number }) {
   return (
     <ul className="mb-3 flex flex-1 flex-col gap-1 overflow-y-auto">
       {events.map((ev, i) => (
         <li key={i} className="text-body2 text-ink-primary">
           <span className="mr-1 text-footnote text-ink-secondary">[{ev.type}]</span>
           {ev.content ?? ev.to ?? ""}
+          {ev.attachments?.length ? (
+            <div className="mt-1 flex flex-wrap gap-2">
+              {ev.attachments.map((a) => (
+                <ImageThumb key={a.id} src={staffAttachmentUrl(convId, a.id)} />
+              ))}
+            </div>
+          ) : null}
         </li>
       ))}
     </ul>
@@ -85,7 +95,7 @@ export function ConversationDetailRoute() {
   const convId = Number(id);
   const { token, role, staffId } = useStaffSession();
   const canUseTools = role === "senior" || role === "engineer";
-  const [events, pushEvent] = useStaffStream(token, convId);
+  const events = useStaffStream(token, convId);
   const [taken, setTaken] = useState(false);
   const [notice, setNotice] = useState("");
   const { draftMode, aiDraft, toggleDraftMode, approve, reject } = useAiDraft(
@@ -152,12 +162,11 @@ export function ConversationDetailRoute() {
           <AiToolsPanel token={token} convId={convId} />
         </div>
       )}
-      <EventLog events={events} />
+      <EventLog events={events} convId={convId} />
       {taken && token && (
         <TakeoverFooter
           token={token}
           convId={convId}
-          onLocalEvent={pushEvent}
           onNotice={setNotice}
           onReleased={() => setTaken(false)}
         />

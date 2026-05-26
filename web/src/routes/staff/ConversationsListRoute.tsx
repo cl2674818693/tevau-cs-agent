@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import { listStaffConversations, type StaffConversation } from "../../api/staff";
+import { listStaffConversations } from "../../api/staff";
+import type { StaffConversation } from "../../api/staff";
 import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -9,6 +10,8 @@ import { Card } from "../../components/ui/card";
 import { EmptyState } from "../../components/ui/empty-state";
 import { FilterTabs } from "../../components/ui/filter-tabs";
 import { PageContainer, PageHeader } from "../../components/ui/page";
+import { LoadingState } from "../../components/ui/spinner";
+import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 const FILTER_OPTIONS: { value: string; label: string }[] = [
@@ -35,28 +38,26 @@ export function ConversationsListRoute() {
   const { token, role } = useStaffSession();
   const canSpectate = role === "senior" || role === "engineer";
   const [status, setStatus] = useState<string>("human_pending");
-  const [items, setItems] = useState<StaffConversation[]>([]);
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    if (!token) return;
-    // “有风险信号”：服务端不另设 status，按全部范围 + risk_only 过滤
-    const riskOnly = status === "risk";
-    const apiStatus = riskOnly ? "all" : status;
-    listStaffConversations(token, apiStatus, riskOnly)
-      .then(setItems)
-      .catch(() => setErr("加载失败，请重新登录"));
-  }, [token, status]);
+  // “有风险信号”：服务端不另设 status，按全部范围 + risk_only 过滤
+  const riskOnly = status === "risk";
+  const apiStatus = riskOnly ? "all" : status;
+  const { data, loading, error } = useAsyncData(
+    () => (token ? listStaffConversations(token, apiStatus, riskOnly) : null),
+    [token, apiStatus, riskOnly],
+    "加载失败，请重新登录",
+  );
+  const items = data ?? [];
 
   return (
     <PageContainer>
       <PageHeader title="客服工作台" />
       <FilterTabs className="mb-3" value={status} onChange={setStatus} options={FILTER_OPTIONS} />
-      {err && (
+      {error && (
         <Alert variant="error" className="mb-3">
-          {err}
+          {error}
         </Alert>
       )}
+      {loading && <LoadingState />}
       <ul className="flex flex-col gap-2">
         {items.map((c) => (
           <li key={c.id} className="flex items-center gap-2">
@@ -85,7 +86,7 @@ export function ConversationsListRoute() {
             )}
           </li>
         ))}
-        {items.length === 0 && !err && <EmptyState>暂无会话</EmptyState>}
+        {items.length === 0 && !loading && !error && <EmptyState>暂无会话</EmptyState>}
       </ul>
     </PageContainer>
   );

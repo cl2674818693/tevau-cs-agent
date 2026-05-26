@@ -111,7 +111,9 @@ async def start_redis_bridge() -> None:
         _bridge_task = asyncio.create_task(_redis_bridge())
 
 
-async def _human_message_event(staff_sub: str, content: str) -> dict[str, Any]:
+async def _human_message_event(
+    staff_sub: str, content: str, attachments: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     """构造 human_message 事件，带 display_name（用户侧客服署名）；查不到时回退 staff_id。"""
     staff = await get_staff(staff_sub)
     display_name = staff["display_name"] if staff else staff_sub
@@ -120,12 +122,22 @@ async def _human_message_event(staff_sub: str, content: str) -> dict[str, Any]:
         "content": content,
         "sender_staff_id": staff_sub,
         "display_name": display_name,
+        "attachments": [{"id": a["id"], "mime": a["mime"]} for a in (attachments or [])],
     }
 
 
-def publish_user_message(conv_id: int, content: str) -> None:
+def publish_user_message(
+    conv_id: int, content: str, attachments: list[dict[str, Any]] | None = None
+) -> None:
     """human_takeover/pending 时，chat 端点把用户消息推到订阅该会话的客服侧。"""
-    _publish(conv_id, {"type": "user_message", "content": content})
+    _publish(
+        conv_id,
+        {
+            "type": "user_message",
+            "content": content,
+            "attachments": [{"id": a["id"], "mime": a["mime"]} for a in (attachments or [])],
+        },
+    )
 
 
 def publish_ai_draft(conv_id: int, draft: str) -> None:
@@ -243,7 +255,8 @@ async def transfer_to(
 
 
 class StaffMsgIn(BaseModel):
-    content: str
+    content: str = ""
+    attachment_ids: list[int] = []
 
 
 @router.post("/staff/api/v1/conversations/{conv_id}/messages")
@@ -253,8 +266,17 @@ async def send_message(
     mode, sid = await conv_dao.get_mode(conv_id)
     if mode != "human_takeover" or sid != staff["sub"]:
         raise HTTPException(403, "not your conversation")
-    await conv_dao.append_human_message(conv_id, staff["sub"], body.content)
-    _publish(conv_id, await _human_message_event(staff["sub"], body.content))
+    if not body.content.strip() and not body.attachment_ids:
+        raise HTTPException(422, "empty message")
+    mid = await conv_dao.append_human_message(conv_id, staff["sub"], body.content)
+    from ai_engine.persistence import attachments as att_dao
+
+    bound = (
+        await att_dao.bind_attachments(mid, conv_id, staff["sub"], body.attachment_ids)
+        if body.attachment_ids
+        else []
+    )
+    _publish(conv_id, await _human_message_event(staff["sub"], body.content, bound))
     return {"ok": True}
 
 

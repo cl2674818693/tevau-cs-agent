@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   cancelStream,
+  fetchHistory,
   initConversation,
   requestHuman,
   streamChat,
@@ -10,6 +11,11 @@ import {
 import { AuthExpiredError, resolveIdentity, userType } from "../api/identity";
 import i18n from "../i18n";
 import { backoffDelay } from "../lib/backoff";
+import {
+  loadResumeContext,
+  persistConversation,
+  touchFallback,
+} from "../lib/chatSession";
 import type { ConversationInit, ConversationMode, Message } from "../types";
 import {
   type ChatActions,
@@ -84,30 +90,51 @@ function useAuthExpiredHandler(setConnection: (c: Connection) => void): () => Pr
   }, [setConnection]);
 }
 
-/** 会话初始化（身份解析 + initConversation），含 loading/error/重试。 */
+/** 会话初始化（身份解析 + 续接判定 + initConversation + 历史回灌），含 loading/error/重试。 */
 function useChatInit(
   setMessages: (fn: (p: Message[]) => Message[]) => void,
   setLimitPct: (n: number) => void,
+  setMode: (m: ConversationMode) => void,
+  setStaffName: (n: string | undefined) => void,
 ) {
   const [init, setInit] = useState<ConversationInit | null>(null);
   const [status, setStatus] = useState<InitStatus>("loading");
+  const fallbackRef = useRef(false); // 是否走时间窗降级（旧版 APP），决定要不要刷新时间戳
   const loadInit = useCallback(async () => {
     setStatus("loading");
     try {
       await resolveIdentity();
-      const info = await initConversation();
+      const { sessionId, resume } = await loadResumeContext();
+      fallbackRef.current = sessionId === null;
+      const info = await initConversation(resume);
       setInit(info);
       setLimitPct(info.limits?.daily_token_used_pct ?? 0);
-      setMessages(() => [{ role: "system", content: info.greeting }]);
+      setMode(info.mode ?? "ai");
+      setStaffName(info.staff_name ?? undefined); // 续接人工会话恢复客服署名
+      // 续接成功（后端返回的是同一个会话）才回灌历史；新建则只有 greeting。
+      const resumed = resume != null && info.conversation_id === resume;
+      const history = resumed && info.history_url ? await fetchHistory(info.history_url) : [];
+      setMessages(() => [{ role: "system", content: info.greeting }, ...history]);
+      persistConversation(sessionId, info.conversation_id);
       setStatus("ready");
     } catch (e) {
       console.error("init failed", e);
       setStatus("error");
     }
-  }, [setMessages, setLimitPct]);
+  }, [setMessages, setLimitPct, setMode, setStaffName]);
   useEffect(() => {
     void loadInit();
   }, [loadInit]);
+  // 降级路径：切后台时刷新时间戳，使时间窗衡量空闲时长而非会话年龄。
+  useEffect(() => {
+    if (init == null) return;
+    const onHide = () => {
+      if (fallbackRef.current && document.visibilityState === "hidden")
+        touchFallback(init.conversation_id);
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, [init]);
   return { init, status, retryInit: loadInit };
 }
 
@@ -123,7 +150,7 @@ function useChatSend(
   const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, attachmentIds?: number[]) => {
       if (!init || rateLimited) return;
       // 幂等键：本次发送固定一个 id，重连/重发复用以避免后端重复处理。
       // 在 setSending 前算好（纯计算），避免中途抛错导致 sending 卡死。
@@ -132,7 +159,12 @@ function useChatSend(
         globalThis.crypto?.randomUUID?.() ??
         `m-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       setSending(true);
-      actions.setMessages((prev) => [...prev, { role: "user", content: text }]);
+      // 本地追加 user 行（沿用既有非乐观以外的本地回显约定），附件用 id 拼看图 URL 渲染
+      const atts = (attachmentIds ?? []).map((id) => ({ id, mime: "image/*" }));
+      actions.setMessages((prev) => [
+        ...prev,
+        { role: "user", content: text, attachments: atts },
+      ]);
       const controller = new AbortController();
       abortRef.current = controller;
       try {
@@ -142,6 +174,7 @@ function useChatSend(
           lastEventId: lastEventIdRef.current,
           signal: controller.signal,
           clientMessageId,
+          attachmentIds,
         })) {
           if (ev._eventId) lastEventIdRef.current = ev._eventId;
           await handleStreamEvent(ev, actions);
@@ -176,7 +209,7 @@ export function useChat() {
   const [connection, setConnection] = useOnlineStatus();
   const [limitPct, setLimitPct] = useState(0);
   const [rateLimited, setRateLimited] = useState(false);
-  const { init, status, retryInit } = useChatInit(setMessages, setLimitPct);
+  const { init, status, retryInit } = useChatInit(setMessages, setLimitPct, setMode, setStaffName);
 
   useStaffMessageStream(init?.conversation_id, setMode, setStaffName, setMessages);
 
@@ -198,7 +231,8 @@ export function useChat() {
     }
     await requestHuman(init.conversation_id);
     setMode("human_pending");
-    setMessages((prev) => [...prev, { role: "system", content: "已为您请求人工，请稍候…" }]);
+    // 「已为您请求人工」提示由后端 request_human 事件经常驻流统一驱动（见 chatEvents），
+    // 此处不再本地追加，避免与 SSE 回推重复显示两条。
   }, [init]);
 
   return {

@@ -1,3 +1,4 @@
+import { attachmentUrl, uploadAttachment } from "../api/attachments";
 import { sendFeedback, sendTicketUserEvent } from "../api/chat";
 import { userType } from "../api/identity";
 import type { ConversationInit } from "../types";
@@ -39,17 +40,26 @@ function ChatBody({
   mode,
   userType,
   onFeedback,
+  urlFor,
 }: {
   messages: Message[];
   mode: string;
   userType: "c" | "b";
   onFeedback?: (i: number, rating: "up" | "down") => void;
+  urlFor?: (attachmentId: number) => string;
 }) {
   if (messages.length <= 1 && mode === "ai") {
     const greeting = messages[0]?.role === "system" ? messages[0].content : "";
     return <EmptyState greeting={greeting} />;
   }
-  return <MessageList messages={messages} userType={userType} onFeedback={onFeedback} />;
+  return (
+    <MessageList
+      messages={messages}
+      userType={userType}
+      onFeedback={onFeedback}
+      urlFor={urlFor}
+    />
+  );
 }
 
 function TicketCardSlot({
@@ -113,6 +123,7 @@ export function ChatWindow() {
         mode={mode}
         userType={isC ? "c" : "b"}
         onFeedback={feedbackHandler(init)}
+        urlFor={init ? (id) => attachmentUrl(init.conversation_id, id) : undefined}
       />
 
       <TicketCardSlot ticket={latestTicket} mode={mode} />
@@ -123,6 +134,7 @@ export function ChatWindow() {
         onSend={send}
         disabled={sending || chat.rateLimited}
         placeholder={inputPlaceholder(chat.rateLimited, mode)}
+        upload={init ? (f) => uploadAttachment(init.conversation_id, f) : undefined}
       />
     </div>
   );

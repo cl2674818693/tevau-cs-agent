@@ -2,6 +2,11 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
+/** 横向滚动容器：窄屏(H5)宽表左右滑动，不撑破布局。包住 <Table> 使用。 */
+export const TableScroll = ({ className, ...p }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div className={cn("-mx-page overflow-x-auto px-page", className)} {...p} />
+);
+
 export const Table = ({ className, ...p }: React.TableHTMLAttributes<HTMLTableElement>) => (
   <table className={cn("w-full text-body3", className)} {...p} />
 );

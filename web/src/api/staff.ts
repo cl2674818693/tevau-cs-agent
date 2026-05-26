@@ -69,8 +69,16 @@ export async function releaseConversation(token: string, id: number): Promise<vo
   await postStaff(token, `/staff/api/v1/conversations/${id}/release`);
 }
 
-export async function sendStaffMessage(token: string, id: number, content: string): Promise<void> {
-  await postStaff(token, `/staff/api/v1/conversations/${id}/messages`, { content });
+export async function sendStaffMessage(
+  token: string,
+  id: number,
+  content: string,
+  attachmentIds: number[] = [],
+): Promise<void> {
+  await postStaff(token, `/staff/api/v1/conversations/${id}/messages`, {
+    content,
+    attachment_ids: attachmentIds,
+  });
 }
 
 export async function enableAiDraft(token: string, id: number): Promise<void> {
@@ -210,7 +218,7 @@ export async function getToolHealth(
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`tool-health failed ${r.status}`);
-  return (await r.json()).tools as ToolHealth[];
+  return ((await r.json()).tools ?? []) as ToolHealth[];
 }
 
 export type GapKind = "out_of_scope" | "failed" | "thumbs_down" | "human_handoff";
@@ -233,7 +241,7 @@ export async function getGapConversations(
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`gap-conversations failed ${r.status}`);
-  return (await r.json()).conversations as GapConversation[];
+  return ((await r.json()).conversations ?? []) as GapConversation[];
 }
 
 export type StaffMessage = {
@@ -244,6 +252,7 @@ export type StaffMessage = {
   error_code: string | null;
   topic_verdict: string | null;
   created_at: string;
+  attachments?: { id: number; mime: string }[];
 };
 
 export async function getConversationMessages(token: string, id: number): Promise<StaffMessage[]> {
@@ -372,6 +381,7 @@ export type StaffStreamEvent = {
   empty?: boolean; // tool_result：是否查空
   to_staff_id?: string; // transferred
   by_staff_id?: string; // mode_change
+  attachments?: { id: number; mime: string }[]; // user_message / human_message 带图
 };
 
 /** 取单个会话当前状态（mode/assigned_staff_id），用于详情页初始化接管态。 */

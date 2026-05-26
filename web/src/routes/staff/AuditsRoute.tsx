@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { getRecentAudits, type ToolAudit } from "../../api/staff";
+import { getRecentAudits } from "../../api/staff";
+import type { ToolAudit } from "../../api/staff";
+import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
+import { EmptyState } from "../../components/ui/empty-state";
+import { PageContainer, PageHeader } from "../../components/ui/page";
+import { LoadingState } from "../../components/ui/spinner";
+import { Table, TableScroll, TBody, Td, Th, THead, Tr } from "../../components/ui/table";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 const TOOL_OPTIONS = [
@@ -32,6 +39,7 @@ export function AuditsRoute() {
   const [conversationId, setConversationId] = useState("");
   const [rows, setRows] = useState<ToolAudit[]>([]);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
 
   const filter = useCallback(
@@ -50,12 +58,15 @@ export function AuditsRoute() {
       nav("/staff/login");
       return;
     }
+    setLoading(true);
+    setErr("");
     getRecentAudits(token, filter())
       .then((data) => {
         setRows(data);
         setHasMore(data.length >= 100);
       })
-      .catch(() => setErr("加载失败"));
+      .catch(() => setErr("加载失败"))
+      .finally(() => setLoading(false));
   }, [token, filter, nav]);
 
   const loadMore = () => {
@@ -70,14 +81,9 @@ export function AuditsRoute() {
   };
 
   return (
-    <div className="mx-auto max-w-[860px] px-page py-block-lg">
-      <div className="flex items-center mb-3">
-        <h2 className="text-sh2 text-ink-primary flex-1">全局工具审计</h2>
-        <Link to="/staff/conversations" className="text-body3 text-ink-secondary">
-          返回工作台
-        </Link>
-      </div>
-      <div className="flex flex-wrap items-center gap-3 text-body3 text-ink-secondary mb-3">
+    <PageContainer width="wide">
+      <PageHeader title="全局工具审计" />
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-body3 text-ink-secondary">
         <select
           value={toolName}
           onChange={(e) => setToolName(e.target.value)}
@@ -115,55 +121,63 @@ export function AuditsRoute() {
           只看空结果
         </label>
       </div>
-      {err && <div className="text-body3 text-status-error mb-2">{err}</div>}
-      <table className="w-full text-body3">
-        <thead>
-          <tr className="text-ink-secondary text-left">
-            <th className="py-1">时间</th>
-            <th>会话</th>
-            <th>工具</th>
-            <th>身份</th>
-            <th>返回</th>
-            <th>耗时</th>
-            <th>状态</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((a) => (
-            <tr key={a.id} className="border-t border-line text-ink-primary align-top">
-              <td className="py-1 whitespace-nowrap">{a.created_at}</td>
-              <td>
-                <Link to={`/staff/conversations/${a.conversation_id}/logs`} className="text-brand">
-                  #{a.conversation_id}
-                </Link>
-              </td>
-              <td>{a.tool_name}</td>
-              <td className="text-ink-secondary whitespace-nowrap">
-                {a.user_type ?? "-"}
-                {a.subject_id ? `:${a.subject_id}` : ""}
-              </td>
-              <td className={isEmpty(a) ? "text-status-error" : undefined}>
-                {a.result_count ?? 0} 条
-              </td>
-              <td>{a.duration_ms}ms</td>
-              <td>
-                {a.rejected ? (
-                  <span className="text-status-error">被拒：{a.reject_reason ?? "-"}</span>
-                ) : (
-                  <span className="text-ink-secondary">ok</span>
-                )}
-              </td>
-            </tr>
-          ))}
-          {rows.length === 0 && !err && (
-            <tr>
-              <td colSpan={7} className="py-2 text-ink-secondary">
-                暂无记录
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      {err && (
+        <Alert variant="error" className="mb-2">
+          {err}
+        </Alert>
+      )}
+      {loading ? (
+        <LoadingState />
+      ) : rows.length === 0 ? (
+        <EmptyState>暂无记录</EmptyState>
+      ) : (
+        <TableScroll>
+          <Table className="min-w-[720px]">
+            <THead>
+              <tr>
+                <Th>时间</Th>
+                <Th>会话</Th>
+                <Th>工具</Th>
+                <Th>身份</Th>
+                <Th>返回</Th>
+                <Th>耗时</Th>
+                <Th>状态</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {rows.map((a) => (
+                <Tr key={a.id} className="align-top">
+                  <Td className="whitespace-nowrap">{a.created_at}</Td>
+                  <Td>
+                    <Link
+                      to={`/staff/conversations/${a.conversation_id}/logs`}
+                      className="text-brand"
+                    >
+                      #{a.conversation_id}
+                    </Link>
+                  </Td>
+                  <Td className="whitespace-nowrap">{a.tool_name}</Td>
+                  <Td className="whitespace-nowrap text-ink-secondary">
+                    {a.user_type ?? "-"}
+                    {a.subject_id ? `:${a.subject_id}` : ""}
+                  </Td>
+                  <Td className={isEmpty(a) ? "text-status-error" : undefined}>
+                    {a.result_count ?? 0} 条
+                  </Td>
+                  <Td className="whitespace-nowrap">{a.duration_ms}ms</Td>
+                  <Td>
+                    {a.rejected ? (
+                      <Badge variant="error">被拒：{a.reject_reason ?? "-"}</Badge>
+                    ) : (
+                      <Badge variant="success">ok</Badge>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+        </TableScroll>
+      )}
       {hasMore && rows.length > 0 && (
         <button
           type="button"
@@ -173,6 +187,6 @@ export function AuditsRoute() {
           加载更多
         </button>
       )}
-    </div>
+    </PageContainer>
   );
 }

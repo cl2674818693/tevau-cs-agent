@@ -41,25 +41,27 @@ describe("StaffLayout", () => {
     expect(screen.queryByText("列表内容")).toBeNull();
   });
 
-  it("有 token 时渲染侧栏与内容；非 admin 不显示 Prompt 灰度", () => {
+  // 响应式：导航项同时存在于桌面侧栏与移动端底部 Tab（CSS 断点切换显示），
+  // 故 jsdom 中每个导航标签出现 >1 次，用 getAllByText 断言存在。
+  it("有 token 时渲染导航与内容；非 admin 不显示 Prompt 灰度", () => {
     localStorage.setItem("staff_jwt", fakeJwt("agent"));
     renderShell();
     expect(screen.getByText("列表内容")).toBeTruthy();
-    expect(screen.getByText("工单")).toBeTruthy();
-    expect(screen.getByText("KPI")).toBeTruthy();
+    expect(screen.getAllByText("工单").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("KPI").length).toBeGreaterThan(0);
     expect(screen.queryByText("Prompt 灰度")).toBeNull();
   });
 
   it("admin 显示 Prompt 灰度入口", () => {
     localStorage.setItem("staff_jwt", fakeJwt("admin"));
     renderShell();
-    expect(screen.getByText("Prompt 灰度")).toBeTruthy();
+    expect(screen.getAllByText("Prompt 灰度").length).toBeGreaterThan(0);
   });
 
   it("点击退出清除 token", () => {
     localStorage.setItem("staff_jwt", fakeJwt("agent"));
     renderShell();
-    fireEvent.click(screen.getByText("退出"));
+    fireEvent.click(screen.getAllByText("退出")[0]);
     expect(localStorage.getItem("staff_jwt")).toBeNull();
   });
 });

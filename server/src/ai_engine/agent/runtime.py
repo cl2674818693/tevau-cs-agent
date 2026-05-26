@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -40,11 +41,13 @@ from ai_engine.persistence.conversations import (
     append_user_turn,
     finalize_turn,
     list_messages,
+    message_content_text,
     set_inferred_locale,
     set_turn_verdict,
 )
 from ai_engine.prompts.loader import build_system_blocks, read_prompt
 from ai_engine.prompts.registry import model_for, pick_version
+from ai_engine.storage.object_store import get_object_store
 
 logger = logging.getLogger(__name__)
 
@@ -139,26 +142,44 @@ async def _maybe_compact(
     return new_id, event, seed
 
 
-def _history_text(role: str, content: str) -> str:
-    if role == "human_agent":
-        return content
-    # assistant 入库的是 json.dumps([{"type":"text","text":...}])，还原为纯文本
-    try:
-        blocks = json.loads(content)
-    except (json.JSONDecodeError, TypeError):
-        return content
-    if isinstance(blocks, list):
-        return "".join(
-            b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text"
+# 还原逻辑已下沉 persistence.message_content_text（与历史接口共用），此处保留别名兼容现有调用。
+_history_text = message_content_text
+
+
+async def _build_user_content(text: str, attachments: list[dict[str, Any]]) -> Any:
+    """有附件时返回 [image..., text] 内容块（图片读对象存储转 base64）；无附件返回纯文本 str。"""
+    if not attachments:
+        return text
+    blocks: list[dict[str, Any]] = []
+    store = get_object_store()
+    for a in attachments:
+        raw = await store.get(a["object_key"])
+        blocks.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": a["mime"],
+                    "data": base64.b64encode(raw).decode(),
+                },
+            }
         )
-    return content
+    if text:
+        blocks.append({"type": "text", "text": text})
+    return blocks
 
 
 def _coalesce(msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """合并相邻同 role 消息（Anthropic messages 需 user/assistant 交替）。"""
+    """合并相邻同 role 消息（Anthropic messages 需 user/assistant 交替）。
+    仅当两侧都是纯文本 str 才拼接；含图片块(list)的消息保持独立。"""
     out: list[dict[str, Any]] = []
     for m in msgs:
-        if out and out[-1]["role"] == m["role"]:
+        if (
+            out
+            and out[-1]["role"] == m["role"]
+            and isinstance(out[-1]["content"], str)
+            and isinstance(m["content"], str)
+        ):
             out[-1]["content"] += "\n" + m["content"]
         else:
             out.append(dict(m))
@@ -166,13 +187,22 @@ def _coalesce(msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 async def _load_history(conv_id: int) -> list[dict[str, Any]]:
-    """把已落库的会话历史还原成 Anthropic messages（多轮上下文）。"""
+    """把已落库的会话历史还原成 Anthropic messages（多轮上下文）。
+    带附件的 user 行重新读对象存储转 base64 注入（每轮重发，token 成本见 spec §12）。"""
+    from ai_engine.persistence import attachments as att_dao
+
+    att_map = await att_dao.list_for_conversation(conv_id)  # message_id -> [{id, mime}]
     msgs: list[dict[str, Any]] = []
     for m in await list_messages(conv_id):
         role = str(m["role"])
         content = str(m["content"])
         if role == "user":
-            msgs.append({"role": "user", "content": content})
+            atts = (
+                await att_dao.list_message_attachments(int(m["id"]))
+                if int(m["id"]) in att_map
+                else []
+            )
+            msgs.append({"role": "user", "content": await _build_user_content(content, atts)})
         elif role in ("assistant", "human_agent"):
             text = _history_text(role, content)
             if text:
@@ -207,6 +237,7 @@ async def run_turn(
     user_message: str,
     model: str | None = None,
     client_message_id: str | None = None,
+    attachment_ids: list[int] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     # spec §8 prompt 版本化：按 subject_id 哈希分桶选版本；该版本贯穿本轮
     prompt_version = pick_version(subject_id)
@@ -222,16 +253,27 @@ async def run_turn(
         # 未压缩：回放该会话已有历史，让模型看到多轮上下文
         messages = await _load_history(conversation_id)
 
-    messages.append({"role": "user", "content": user_message})
     # 回合开始：user 行入库置 processing，承载状态机/幂等键/verdict
     turn_id = await append_user_turn(conversation_id, user_message, client_message_id)
+    # 绑定本轮上传的图片附件（归属校验 + 防重复绑定在 DAO 内），并按 base64 块注入 LLM
+    bound_atts: list[dict[str, Any]] = []
+    if attachment_ids:
+        from ai_engine.persistence import attachments as att_dao
+
+        bound_atts = await att_dao.bind_attachments(
+            turn_id, conversation_id, subject_id, attachment_ids
+        )
+    messages.append(
+        {"role": "user", "content": await _build_user_content(user_message, bound_atts)}
+    )
     # spec §6.2：按用户消息语言更新会话推断语言（None 时不覆盖，保留上轮判定）
     locale = _detect_locale(user_message)
     if locale:
         await set_inferred_locale(conversation_id, locale)
 
     # spec §6.4 第二层：haiku 前置话题分类（按需开启）。判定一律落库 + 计数。
-    if settings.topic_classifier_enabled:
+    # 纯图片消息（文本为空）无可分类文本，跳过分类视为放行，交给主模型 vision 判断。
+    if settings.topic_classifier_enabled and user_message.strip():
         verdict = await topic_classifier.classify(user_message)
         await set_turn_verdict(turn_id, verdict)
         metrics.topic_verdict_total.labels(verdict=verdict).inc()

@@ -40,7 +40,8 @@ export async function getPromptAbStats(
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`ab-stats failed ${r.status}`);
-  return r.json();
+  const j = await r.json();
+  return { ...j, versions: j.versions ?? [] };
 }
 
 /** 保存灰度比例并触发后端热加载。返回 ok 与新 rollout，或抛错带后端校验信息。 */

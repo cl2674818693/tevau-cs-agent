@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { PageContainer, PageHeader } from "../../components/ui/page";
+import { LoadingState } from "../../components/ui/spinner";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 function RolloutRow({
@@ -55,6 +56,7 @@ export function PromptsRoute() {
   const [rollout, setRolloutState] = useState<Record<string, number>>({});
   const [notice, setNotice] = useState("");
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
 
   // AB 表现
   const [window, setWindow] = useState<WindowOption>("7d");
@@ -65,14 +67,17 @@ export function PromptsRoute() {
   useEffect(() => {
     if (!token || role !== "admin") {
       setErr("需要 admin 权限");
+      setLoading(false);
       return;
     }
+    setLoading(true);
     getPromptVersions(token)
       .then((d) => {
         setVersions(d.versions);
         setRolloutState(d.rollout);
       })
-      .catch(() => setErr("加载失败"));
+      .catch(() => setErr("加载失败"))
+      .finally(() => setLoading(false));
   }, [token, role]);
 
   useEffect(() => {
@@ -113,27 +118,32 @@ export function PromptsRoute() {
           {notice}
         </Alert>
       )}
-      <Card>
-        <div className="flex flex-col gap-2 px-page py-block-sm">
-          {versions.map((v) => (
-            <RolloutRow
-              key={v}
-              version={v}
-              value={rollout[v] ?? 0}
-              onChange={(n) => setRolloutState((prev) => ({ ...prev, [v]: n }))}
-            />
-          ))}
-        </div>
-      </Card>
-      <div className="mt-2 text-footnote text-ink-secondary">
-        合计 {total}%（≤100，余量回落 default）
-      </div>
-      <Button size="md" className="mt-3" onClick={save} disabled={total > 100}>
-        保存
-      </Button>
+      {loading ? (
+        <LoadingState />
+      ) : (
+        !err && (
+          <>
+            <Card>
+              <div className="flex flex-col gap-2 px-page py-block-sm">
+                {versions.map((v) => (
+                  <RolloutRow
+                    key={v}
+                    version={v}
+                    value={rollout[v] ?? 0}
+                    onChange={(n) => setRolloutState((prev) => ({ ...prev, [v]: n }))}
+                  />
+                ))}
+              </div>
+            </Card>
+            <div className="mt-2 text-footnote text-ink-secondary">
+              合计 {total}%（≤100，余量回落 default）
+            </div>
+            <Button size="md" className="mt-3" onClick={save} disabled={total > 100}>
+              保存
+            </Button>
 
-      {/* 各版本表现对比 */}
-      <div className="mt-6">
+            {/* 各版本表现对比 */}
+            <div className="mt-6">
         <div className="flex items-center justify-between mb-2">
           <span className="text-body2 font-medium text-ink-primary">各版本表现</span>
           <div className="flex gap-1">
@@ -235,10 +245,13 @@ export function PromptsRoute() {
             </table>
           </div>
         </Card>
-        <p className="mt-1 text-footnote text-ink-tertiary">
-          差评率分母 = 该版本 assistant 消息数
-        </p>
-      </div>
+              <p className="mt-1 text-footnote text-ink-tertiary">
+                差评率分母 = 该版本 assistant 消息数
+              </p>
+            </div>
+          </>
+        )
+      )}
     </PageContainer>
   );
 }

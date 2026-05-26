@@ -38,5 +38,10 @@ describe("useChat 用户侧常驻消息流", () => {
     const asst = result.current.messages.find((m) => m.role === "assistant");
     expect(human?.content).toBe("客服已为您处理");
     expect(asst?.content).toBe("审核通过的草稿答复");
+    // 接管时给用户明确的「客服已接入」提示，避免停留在「请求人工，请稍候」
+    const intro = result.current.messages.filter(
+      (m) => m.role === "system" && m.content.includes("客服已接入"),
+    );
+    expect(intro).toHaveLength(1);
   });
 });
