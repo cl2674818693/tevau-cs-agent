@@ -49,21 +49,44 @@ async def list_audits(conversation_id: int) -> list[dict[str, object]]:
     )
 
 
-# 全局近期工具调用审计：全部 / 仅被拒。limit 由调用方钳制，谓词用恒定绑定避免动态拼 SQL。
-_RECENT_ALL = (
-    "SELECT id, conversation_id, tool_name, params_json, result_size, duration_ms, "
-    "rejected, reject_reason, result_count, is_empty, subject_id, user_type, created_at "
-    "FROM tool_audits ORDER BY id DESC LIMIT :lim"
-)
-_RECENT_REJECTED = (
-    "SELECT id, conversation_id, tool_name, params_json, result_size, duration_ms, "
-    "rejected, reject_reason, result_count, is_empty, subject_id, user_type, created_at "
-    "FROM tool_audits WHERE rejected=1 "
-    "ORDER BY id DESC LIMIT :lim"
-)
+async def recent_audits(
+    limit: int,
+    rejected_only: bool = False,
+    tool_name: str | None = None,
+    empty_only: bool = False,
+    conversation_id: int | None = None,
+    before_id: int | None = None,
+) -> list[dict[str, object]]:
+    """跨会话近期工具调用审计流（最新在前）。
 
+    支持可选筛选：
+    - rejected_only: 只看被拒调用
+    - tool_name: 按工具名过滤
+    - empty_only: 只看空结果调用
+    - conversation_id: 按会话过滤
+    - before_id: 游标分页（id < before_id）
 
-async def recent_audits(limit: int, rejected_only: bool) -> list[dict[str, object]]:
-    """跨会话近期工具调用审计流（最新在前）。rejected_only=True 只看被拒调用。"""
-    sql = _RECENT_REJECTED if rejected_only else _RECENT_ALL
-    return await db.fetch_all(sql, {"lim": limit})
+    WHERE 片段全为固定字符串，值全走绑定参数，不拼用户输入。
+    """
+    cols = (
+        "id, conversation_id, tool_name, params_json, result_size, duration_ms, "
+        "rejected, reject_reason, created_at, result_count, is_empty, subject_id, user_type"
+    )
+    where: list[str] = []
+    binds: dict[str, object] = {"lim": limit}
+    if rejected_only:
+        where.append("rejected=1")
+    if empty_only:
+        where.append("is_empty=1")
+    if tool_name is not None:
+        where.append("tool_name=:tn")
+        binds["tn"] = tool_name
+    if conversation_id is not None:
+        where.append("conversation_id=:cid")
+        binds["cid"] = conversation_id
+    if before_id is not None:
+        where.append("id < :bid")
+        binds["bid"] = before_id
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    sql = f"SELECT {cols} FROM tool_audits{clause} ORDER BY id DESC LIMIT :lim"
+    return await db.fetch_all(sql, binds)

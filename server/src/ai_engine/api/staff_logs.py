@@ -47,8 +47,24 @@ async def conversation_feedback(
 @router.get("/staff/api/v1/audits/recent")
 async def recent_tool_audits(
     rejected: bool = Query(default=False),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=100, ge=1, le=200),
+    tool_name: str | None = Query(default=None),
+    empty_only: bool = Query(default=False),
+    conversation_id: int | None = Query(default=None),
+    before_id: int | None = Query(default=None),
     staff: dict[str, Any] = Depends(require_staff),
 ) -> dict[str, Any]:
-    """跨会话近期工具调用审计流（最新在前）；rejected=true 只看被拒调用。"""
-    return {"audits": await audit_dao.recent_audits(limit, rejected)}
+    """跨会话近期工具调用审计流（最新在前）。
+
+    可选筛选：rejected / tool_name / empty_only / conversation_id；游标分页：before_id。
+    """
+    return {
+        "audits": await audit_dao.recent_audits(
+            limit=limit,
+            rejected_only=rejected,
+            tool_name=tool_name,
+            empty_only=empty_only,
+            conversation_id=conversation_id,
+            before_id=before_id,
+        )
+    }
