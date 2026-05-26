@@ -87,6 +87,10 @@ tool_audits = Table(
     Column("duration_ms", Integer, nullable=False),
     Column("rejected", Integer, nullable=False, server_default="0"),
     Column("reject_reason", Text),
+    Column("result_count", Integer),
+    Column("is_empty", Integer),
+    Column("subject_id", String(128)),
+    Column("user_type", String(8)),
     Column("created_at", String(32), nullable=False),
 )
 Index("idx_audit_conv", tool_audits.c.conversation_id)
