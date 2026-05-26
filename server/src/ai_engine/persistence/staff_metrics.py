@@ -67,7 +67,14 @@ def _aggregate(actions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 
     def slot(staff: str) -> dict[str, Any]:
         return agg.setdefault(
-            staff, {"takeovers": 0, "releases": 0, "resolved": 0, "_handle_seconds": []}
+            staff,
+            {
+                "takeovers": 0,
+                "releases": 0,
+                "resolved": 0,
+                "transfers": 0,
+                "_handle_seconds": [],
+            },
         )
 
     for a in actions:
@@ -81,6 +88,8 @@ def _aggregate(actions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
                 s["releases"] += 1
             elif action == "resolved":
                 s["resolved"] += 1
+            elif action == "transfer_out":
+                s["transfers"] += 1
             start = open_takes.pop((staff, conv), None)
             if start:
                 s["_handle_seconds"].append((_parse(at) - _parse(start)).total_seconds())
@@ -91,15 +100,29 @@ def _finalize(agg: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     out = []
     for staff, s in agg.items():
         takeovers = s["takeovers"]
+        releases = s["releases"]
+        resolved = s["resolved"]
+        transfers = s["transfers"]
         handle = s["_handle_seconds"]
+        # 口径修正（Task 5.1）：release_ratio / resolved_ratio 的分母原先用 takeovers，
+        # 但 transfer_out 收尾的接管既不计 releases 也不计 resolved，会稀释分母、低估比率。
+        # 新口径：分母只取"自行收尾"的接管（resolved + release，即排除 transfer_out），
+        # 使分子分母口径一致；transfer_out 单列 transfer_ratio（占全部接管比例）。
+        resolution_base = releases + resolved
         out.append(
             {
                 "staff_id": staff,
                 "takeovers": takeovers,
-                "releases": s["releases"],
-                "resolved": s["resolved"],
-                "release_ratio": round(s["releases"] / takeovers, 3) if takeovers else 0.0,
-                "resolved_ratio": round(s["resolved"] / takeovers, 3) if takeovers else 0.0,
+                "releases": releases,
+                "resolved": resolved,
+                "transfers": transfers,
+                "release_ratio": (
+                    round(releases / resolution_base, 3) if resolution_base else 0.0
+                ),
+                "resolved_ratio": (
+                    round(resolved / resolution_base, 3) if resolution_base else 0.0
+                ),
+                "transfer_ratio": round(transfers / takeovers, 3) if takeovers else 0.0,
                 "avg_handle_seconds": round(sum(handle) / len(handle), 1) if handle else 0.0,
             }
         )
@@ -108,3 +131,67 @@ def _finalize(agg: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
 
 async def compute_kpi(date_from: str | None, date_to: str | None) -> list[dict[str, Any]]:
     return _finalize(_aggregate(await _load_actions(date_from, date_to)))
+
+
+# 全局 AI 质量指标（Task 5.1）。各表用自身 created_at 做窗口（定宽字符串字典序==时间序，
+# 与项目其他查询一致）。conversations 无独立时间列时复用 created_at。全字面量 SQL。
+_Q_TOTAL_CONV = (
+    "SELECT COUNT(*) AS n FROM conversations "
+    "WHERE (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+)
+_Q_HANDOFF = (
+    "SELECT COUNT(*) AS n FROM conversations "
+    "WHERE mode IN ('human_pending','human_takeover') "
+    "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+)
+_Q_FEEDBACK = (
+    "SELECT "
+    "SUM(CASE WHEN rating='up' THEN 1 ELSE 0 END) AS up, "
+    "SUM(CASE WHEN rating='down' THEN 1 ELSE 0 END) AS down "
+    "FROM message_feedback "
+    "WHERE (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+)
+_Q_TOOL = (
+    "SELECT COUNT(*) AS calls, "
+    "SUM(CASE WHEN is_empty=1 THEN 1 ELSE 0 END) AS empty "
+    "FROM tool_audits "
+    "WHERE (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+)
+
+
+async def ai_quality(date_from: str | None, date_to: str | None) -> dict[str, Any]:
+    """全局 AI 质量指标：转人工率 / 差评率 / 工具空结果率 + 超范围/失败回合数。
+
+    所有比率防除零（分母 0 时返回 0.0）。out_of_scope / failed_turns 复用
+    insights.knowledge_gaps 的口径，避免重复造轮子。
+    """
+    from ai_engine.persistence import insights
+
+    params = {"df": date_from, "dt": date_to}
+    total_row = await db.fetch_one(_Q_TOTAL_CONV, params)
+    handoff_row = await db.fetch_one(_Q_HANDOFF, params)
+    fb_row = await db.fetch_one(_Q_FEEDBACK, params)
+    tool_row = await db.fetch_one(_Q_TOOL, params)
+    gaps = await insights.knowledge_gaps(date_from, date_to)
+
+    total = int(total_row["n"]) if total_row else 0
+    handoff = int(handoff_row["n"]) if handoff_row else 0
+    upvote = int(fb_row["up"]) if fb_row and fb_row["up"] is not None else 0
+    downvote = int(fb_row["down"]) if fb_row and fb_row["down"] is not None else 0
+    tool_calls = int(tool_row["calls"]) if tool_row and tool_row["calls"] is not None else 0
+    tool_empty = int(tool_row["empty"]) if tool_row and tool_row["empty"] is not None else 0
+    fb_total = upvote + downvote
+
+    return {
+        "total_conversations": total,
+        "handoff": handoff,
+        "handoff_rate": (handoff / total) if total else 0.0,
+        "upvote": upvote,
+        "downvote": downvote,
+        "downvote_rate": (downvote / fb_total) if fb_total else 0.0,
+        "tool_calls": tool_calls,
+        "tool_empty": tool_empty,
+        "tool_empty_rate": (tool_empty / tool_calls) if tool_calls else 0.0,
+        "out_of_scope": gaps["out_of_scope"],
+        "failed_turns": gaps["failed_turns"],
+    }
