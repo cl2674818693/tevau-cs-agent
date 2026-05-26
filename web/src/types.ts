@@ -33,6 +33,7 @@ export type ConversationInit = {
   display_name: string;
   greeting: string;
   mode: ConversationMode; // 续接已转人工会话时据此初始化 UI（新会话为 "ai"）
+  staff_name?: string | null; // 续接 human_takeover 会话时的客服署名
   history_url: string | null;
   limits: { daily_token_used_pct: number; max_turns: number };
 };

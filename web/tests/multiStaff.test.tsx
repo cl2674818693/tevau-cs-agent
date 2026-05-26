@@ -101,7 +101,7 @@ describe("TakeoverFooter", () => {
       vi.fn(async () => new Response("{}", { status: 200 })),
     );
     const onNotice = vi.fn();
-    render(<TakeoverFooter token="t" convId={5} onLocalEvent={vi.fn()} onNotice={onNotice} />);
+    render(<TakeoverFooter token="t" convId={5} onNotice={onNotice} />);
     fireEvent.change(screen.getByPlaceholderText("转派给 staff_id…"), {
       target: { value: "EN1" },
     });
@@ -115,7 +115,7 @@ describe("TakeoverFooter", () => {
       vi.fn(async () => new Response("{}", { status: 200 })),
     );
     const onNotice = vi.fn();
-    render(<TakeoverFooter token="t" convId={5} onLocalEvent={vi.fn()} onNotice={onNotice} />);
+    render(<TakeoverFooter token="t" convId={5} onNotice={onNotice} />);
     fireEvent.click(screen.getByText("标记已解决"));
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith("已标记解决并释放回 AI"));
   });

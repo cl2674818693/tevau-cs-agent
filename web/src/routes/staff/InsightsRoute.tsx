@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-
 import { getKnowledgeGaps, type KnowledgeGaps } from "../../api/staff";
+import { Alert } from "../../components/ui/alert";
+import { Card } from "../../components/ui/card";
+import { PageContainer, PageHeader } from "../../components/ui/page";
+import { LoadingState } from "../../components/ui/spinner";
+import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 const CARDS: { key: keyof KnowledgeGaps; label: string; hint: string }[] = [
@@ -12,41 +14,35 @@ const CARDS: { key: keyof KnowledgeGaps; label: string; hint: string }[] = [
 
 export function InsightsRoute() {
   const { token } = useStaffSession();
-  const nav = useNavigate();
-  const [gaps, setGaps] = useState<KnowledgeGaps | null>(null);
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    if (!token) {
-      nav("/staff/login");
-      return;
-    }
-    getKnowledgeGaps(token)
-      .then(setGaps)
-      .catch(() => setErr("加载失败"));
-  }, [token, nav]);
+  const { data: gaps, loading, error } = useAsyncData(
+    () => (token ? getKnowledgeGaps(token) : null),
+    [token],
+  );
 
   return (
-    <div className="mx-auto max-w-[720px] px-page py-block-lg">
-      <div className="flex items-center mb-3">
-        <h2 className="text-sh2 text-ink-primary flex-1">知识缺口报表</h2>
-        <Link to="/staff/conversations" className="text-body3 text-ink-secondary">
-          返回工作台
-        </Link>
-      </div>
-      {err && <div className="text-body3 text-status-error mb-2">{err}</div>}
-      <div className="grid grid-cols-3 gap-3">
-        {CARDS.map((c) => (
-          <div key={c.key} className="rounded border border-line bg-surface-card px-3 py-4">
-            <div className="text-sh1 text-ink-primary">{gaps ? gaps[c.key] : "-"}</div>
-            <div className="text-body2 text-ink-primary mt-1">{c.label}</div>
-            <div className="text-footnote text-ink-secondary mt-1">{c.hint}</div>
-          </div>
-        ))}
-      </div>
-      <p className="text-footnote text-ink-secondary mt-4">
-        口径：全部历史。明细可在「全局工具审计」或具体会话的留痕页查看。
+    <PageContainer>
+      <PageHeader title="知识缺口报表" />
+      {error && (
+        <Alert variant="error" className="mb-3">
+          {error}
+        </Alert>
+      )}
+      {loading ? (
+        <LoadingState />
+      ) : (
+        <div className="grid grid-cols-3 gap-3">
+          {CARDS.map((c) => (
+            <Card key={c.key} className="px-3 py-4">
+              <div className="text-sh1 text-ink-primary">{gaps ? gaps[c.key] : "-"}</div>
+              <div className="mt-1 text-body2 text-ink-primary">{c.label}</div>
+              <div className="mt-1 text-footnote text-ink-secondary">{c.hint}</div>
+            </Card>
+          ))}
+        </div>
+      )}
+      <p className="mt-4 text-footnote text-ink-secondary">
+        口径：全部历史。明细可在「工具审计」或具体会话的留痕页查看。
       </p>
-    </div>
+    </PageContainer>
   );
 }

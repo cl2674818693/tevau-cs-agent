@@ -1,7 +1,27 @@
+import json
 from typing import Any
 
 from ai_engine.persistence import db
 from ai_engine.persistence.schema import now_str
+
+
+def message_content_text(role: str, content: str) -> str:
+    """把一条已落库消息的 content 还原成纯文本。
+
+    assistant 入库的是 json.dumps([{"type":"text","text":...}])（见 agent.runtime），
+    需拆出 text 块拼接；human_agent / user 原样返回。runtime 与历史接口共用，避免多处重复。
+    """
+    if role != "assistant":
+        return content
+    try:
+        blocks = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return content
+    if isinstance(blocks, list):
+        return "".join(
+            b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text"
+        )
+    return content
 
 
 async def create_conversation(user_type: str, subject_id: str) -> int:
@@ -136,6 +156,17 @@ async def list_messages(conv_id: int) -> list[dict[str, object]]:
         "WHERE conversation_id=:id ORDER BY id",
         {"id": conv_id},
     )
+
+
+async def list_recent_messages(conv_id: int, limit: int) -> list[dict[str, object]]:
+    """取最近 limit 条消息（按 id 升序返回）。历史回放用，避免长会话全量返回。"""
+    rows = await db.fetch_all(
+        "SELECT id, role, content, sender_staff_id, status, error_code, "
+        "client_message_id, topic_verdict, created_at FROM messages "
+        "WHERE conversation_id=:id ORDER BY id DESC LIMIT :n",
+        {"id": conv_id, "n": limit},
+    )
+    return list(reversed(rows))
 
 
 _VALID_MODES = {"ai", "human_pending", "human_takeover", "ai_draft"}

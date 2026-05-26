@@ -25,10 +25,11 @@ export async function initConversation(resume?: number): Promise<ConversationIni
   return resp.json();
 }
 
-/** 拉取会话历史消息（切后台被杀重载后恢复对话用）。失败返回空数组，不阻塞首屏。 */
-export async function fetchHistory(conversationId: number): Promise<Message[]> {
+/** 拉取会话历史消息（切后台被杀重载后恢复对话用）。url 取自 init 的 history_url。
+ *  失败返回空数组，不阻塞首屏。 */
+export async function fetchHistory(historyUrl: string): Promise<Message[]> {
   try {
-    const resp = await authedFetch(`/api/v1/conversations/${conversationId}/messages`);
+    const resp = await authedFetch(historyUrl);
     if (!resp.ok) return [];
     const data = (await resp.json()) as { messages?: Message[] };
     return data.messages ?? [];

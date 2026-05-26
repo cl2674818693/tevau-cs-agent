@@ -169,6 +169,13 @@ describe("ConversationDetailRoute", () => {
     const input = screen.getByPlaceholderText("回复用户…");
     fireEvent.change(input, { target: { value: "您好" } });
     fireEvent.click(screen.getByText("发送"));
-    await waitFor(() => expect(screen.getByText(/您好/)).toBeTruthy());
+    // 不再本地乐观回显（避免与 SSE 回推重复）：验证发送 API 被调用 + 输入框清空，
+    // 消息显示交由会话事件流（/stream）统一驱动。
+    await waitFor(() =>
+      expect(
+        f.mock.calls.some(([u]) => typeof u === "string" && u.endsWith("/conversations/5/messages")),
+      ).toBe(true),
+    );
+    expect((input as HTMLInputElement).value).toBe("");
   });
 });

@@ -41,6 +41,7 @@ from ai_engine.persistence.conversations import (
     append_user_turn,
     finalize_turn,
     list_messages,
+    message_content_text,
     set_inferred_locale,
     set_turn_verdict,
 )
@@ -141,19 +142,8 @@ async def _maybe_compact(
     return new_id, event, seed
 
 
-def _history_text(role: str, content: str) -> str:
-    if role == "human_agent":
-        return content
-    # assistant 入库的是 json.dumps([{"type":"text","text":...}])，还原为纯文本
-    try:
-        blocks = json.loads(content)
-    except (json.JSONDecodeError, TypeError):
-        return content
-    if isinstance(blocks, list):
-        return "".join(
-            b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text"
-        )
-    return content
+# 还原逻辑已下沉 persistence.message_content_text（与历史接口共用），此处保留别名兼容现有调用。
+_history_text = message_content_text
 
 
 async def _build_user_content(text: str, attachments: list[dict[str, Any]]) -> Any:

@@ -83,10 +83,83 @@ async def test_history_returns_user_facing_messages(seeded_db):
     assert resp.status_code == 200
     msgs = resp.json()["messages"]
     assert msgs == [
-        {"role": "user", "content": "我的卡为什么被锁"},
-        {"role": "assistant", "content": "因为风控规则"},  # json blob 已还原
-        {"role": "human_agent", "content": "我已帮你解锁"},
+        {"role": "user", "content": "我的卡为什么被锁", "attachments": []},
+        {"role": "assistant", "content": "因为风控规则", "attachments": []},  # json blob 已还原
+        {"role": "human_agent", "content": "我已帮你解锁", "attachments": []},
     ]
+
+
+async def test_history_includes_attachments(seeded_db):
+    """图片消息：历史回放带 attachments（对齐前端 Attachment {id, mime}）。"""
+    from ai_engine.persistence.attachments import bind_attachments, create_attachment
+    from ai_engine.persistence.conversations import (
+        append_user_turn,
+        create_conversation,
+        finalize_turn,
+    )
+
+    cid = await create_conversation("b", _BU)
+    aid = await create_attachment(cid, "b", _BU, "key/1.png", "image/png", 100, "sha")
+    mid = await append_user_turn(cid, "看这张图", None)
+    await finalize_turn(mid, "done")
+    await bind_attachments(mid, cid, _BU, [aid])
+
+    from ai_engine import main as main_mod
+
+    transport = ASGITransport(app=main_mod.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            f"/api/v1/conversations/{cid}/messages", headers={"X-BU-ID": _BU}
+        )
+    assert resp.status_code == 200
+    msgs = resp.json()["messages"]
+    assert msgs == [
+        {"role": "user", "content": "看这张图", "attachments": [{"id": aid, "mime": "image/png"}]}
+    ]
+
+
+async def test_history_caps_recent_messages(seeded_db):
+    """超过上限只返回最近 N 条。"""
+    from ai_engine.api import conversations as conv_api
+    from ai_engine.persistence.conversations import append_message, create_conversation
+
+    cid = await create_conversation("b", _BU)
+    total = conv_api._HISTORY_MAX_MESSAGES + 5
+    for i in range(total):
+        await append_message(cid, "assistant", json.dumps([{"type": "text", "text": f"m{i}"}]))
+
+    from ai_engine import main as main_mod
+
+    transport = ASGITransport(app=main_mod.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            f"/api/v1/conversations/{cid}/messages", headers={"X-BU-ID": _BU}
+        )
+    msgs = resp.json()["messages"]
+    assert len(msgs) == conv_api._HISTORY_MAX_MESSAGES
+    assert msgs[-1]["content"] == f"m{total - 1}"  # 保留的是最近的
+    assert msgs[0]["content"] == f"m{total - conv_api._HISTORY_MAX_MESSAGES}"
+
+
+async def test_resume_restores_staff_name(seeded_db):
+    """续接 human_takeover 会话 → init 返回客服署名。"""
+    from ai_engine.persistence.conversations import create_conversation, set_mode
+    from ai_engine.persistence.staff import create_staff
+
+    await create_staff("S1", "客服小王", "agent", "pw")
+    cid = await create_conversation("b", _BU)
+    await set_mode(cid, "human_takeover", assigned_staff_id="S1")
+
+    from ai_engine import main as main_mod
+
+    transport = ASGITransport(app=main_mod.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/v1/conversations", json={"resume": cid}, headers={"X-BU-ID": _BU}
+        )
+    body = resp.json()
+    assert body["mode"] == "human_takeover"
+    assert body["staff_name"] == "客服小王"
 
 
 async def test_history_forbidden_for_other_identity(seeded_db):

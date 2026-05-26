@@ -95,6 +95,7 @@ function useChatInit(
   setMessages: (fn: (p: Message[]) => Message[]) => void,
   setLimitPct: (n: number) => void,
   setMode: (m: ConversationMode) => void,
+  setStaffName: (n: string | undefined) => void,
 ) {
   const [init, setInit] = useState<ConversationInit | null>(null);
   const [status, setStatus] = useState<InitStatus>("loading");
@@ -109,9 +110,10 @@ function useChatInit(
       setInit(info);
       setLimitPct(info.limits?.daily_token_used_pct ?? 0);
       setMode(info.mode ?? "ai");
+      setStaffName(info.staff_name ?? undefined); // 续接人工会话恢复客服署名
       // 续接成功（后端返回的是同一个会话）才回灌历史；新建则只有 greeting。
       const resumed = resume != null && info.conversation_id === resume;
-      const history = resumed ? await fetchHistory(info.conversation_id) : [];
+      const history = resumed && info.history_url ? await fetchHistory(info.history_url) : [];
       setMessages(() => [{ role: "system", content: info.greeting }, ...history]);
       persistConversation(sessionId, info.conversation_id);
       setStatus("ready");
@@ -119,7 +121,7 @@ function useChatInit(
       console.error("init failed", e);
       setStatus("error");
     }
-  }, [setMessages, setLimitPct, setMode]);
+  }, [setMessages, setLimitPct, setMode, setStaffName]);
   useEffect(() => {
     void loadInit();
   }, [loadInit]);
@@ -207,7 +209,7 @@ export function useChat() {
   const [connection, setConnection] = useOnlineStatus();
   const [limitPct, setLimitPct] = useState(0);
   const [rateLimited, setRateLimited] = useState(false);
-  const { init, status, retryInit } = useChatInit(setMessages, setLimitPct, setMode);
+  const { init, status, retryInit } = useChatInit(setMessages, setLimitPct, setMode, setStaffName);
 
   useStaffMessageStream(init?.conversation_id, setMode, setStaffName, setMessages);
 

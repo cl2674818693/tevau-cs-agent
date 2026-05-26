@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { PageContainer, PageHeader } from "../../components/ui/page";
+import { LoadingState } from "../../components/ui/spinner";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 function RolloutRow({
@@ -40,18 +41,22 @@ export function PromptsRoute() {
   const [rollout, setRolloutState] = useState<Record<string, number>>({});
   const [notice, setNotice] = useState("");
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!token || role !== "admin") {
       setErr("需要 admin 权限");
+      setLoading(false);
       return;
     }
+    setLoading(true);
     getPromptVersions(token)
       .then((d) => {
         setVersions(d.versions);
         setRolloutState(d.rollout);
       })
-      .catch(() => setErr("加载失败"));
+      .catch(() => setErr("加载失败"))
+      .finally(() => setLoading(false));
   }, [token, role]);
 
   const total = Object.values(rollout).reduce((a, b) => a + (b || 0), 0);
@@ -82,24 +87,32 @@ export function PromptsRoute() {
           {notice}
         </Alert>
       )}
-      <Card>
-        <div className="flex flex-col gap-2 px-page py-block-sm">
-          {versions.map((v) => (
-            <RolloutRow
-              key={v}
-              version={v}
-              value={rollout[v] ?? 0}
-              onChange={(n) => setRolloutState((prev) => ({ ...prev, [v]: n }))}
-            />
-          ))}
-        </div>
-      </Card>
-      <div className="mt-2 text-footnote text-ink-secondary">
-        合计 {total}%（≤100，余量回落 default）
-      </div>
-      <Button size="md" className="mt-3" onClick={save} disabled={total > 100}>
-        保存
-      </Button>
+      {loading ? (
+        <LoadingState />
+      ) : (
+        !err && (
+          <>
+            <Card>
+              <div className="flex flex-col gap-2 px-page py-block-sm">
+                {versions.map((v) => (
+                  <RolloutRow
+                    key={v}
+                    version={v}
+                    value={rollout[v] ?? 0}
+                    onChange={(n) => setRolloutState((prev) => ({ ...prev, [v]: n }))}
+                  />
+                ))}
+              </div>
+            </Card>
+            <div className="mt-2 text-footnote text-ink-secondary">
+              合计 {total}%（≤100，余量回落 default）
+            </div>
+            <Button size="md" className="mt-3" onClick={save} disabled={total > 100}>
+              保存
+            </Button>
+          </>
+        )
+      )}
     </PageContainer>
   );
 }

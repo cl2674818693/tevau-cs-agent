@@ -24,9 +24,10 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* 安全区内边距，叠加一个可见基础值（无刘海环境 env() 为 0，避免内容贴边） */
+/* 顶部固定间距：APP 嵌入时已有原生导航栏占位，不能再叠加 safe-area-inset-top，
+   否则状态栏/刘海高度会在 header 顶部撑出双倍空白（浏览器 env()=0 看不出来）。 */
 .safe-top {
-  padding-top: max(env(safe-area-inset-top), 14px);
+  padding-top: 14px;
 }
 .safe-bottom {
   padding-bottom: max(env(safe-area-inset-bottom), 14px);
