@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     chat_rate_limit_per_min: int = 30  # 单 subject 每分钟消息上限（spec §6.4 兜底层）
     # 限流共享存储；配置后多副本全局精确计数，未配则回退进程内（单副本/测试）
     redis_url: str | None = None
+    # 图片附件对象存储（S3 兼容：dev=MinIO，生产=OSS S3兼容端点/S3）。多实例需共享存储，故不用本地卷。
+    object_store_endpoint: str = "http://localhost:9000"
+    object_store_bucket: str = "cs-attachments"
+    object_store_access_key: str = ""
+    object_store_secret_key: str = ""
+    object_store_region: str = "us-east-1"  # MinIO 任意值即可
+    attachment_max_bytes: int = 5 * 1024 * 1024  # 单图 5MB
+    attachment_max_per_message: int = 4
+    attachment_url_ttl_seconds: int = 300  # 预签名 URL 时效
     topic_classifier_enabled: bool = False  # spec §6.4 第二层 haiku 前置分类（MVP-2 起，按需开启）
     max_tool_depth: int = 12
     max_tool_result_bytes: int = 262_144
