@@ -28,11 +28,20 @@ async def set_inferred_locale(conv_id: int, locale: str) -> None:
     )
 
 
-async def append_message(conv_id: int, role: str, content: str) -> int:
+async def append_message(
+    conv_id: int, role: str, content: str, prompt_version: str | None = None
+) -> int:
+    """写一条消息行。prompt_version 仅 assistant 行透传（灰度 A/B），其余角色保持 None。"""
     return await db.insert_returning_id(
-        "INSERT INTO messages(conversation_id, role, content, created_at) "
-        "VALUES (:cid, :role, :content, :now) RETURNING id",
-        {"cid": conv_id, "role": role, "content": content, "now": now_str()},
+        "INSERT INTO messages(conversation_id, role, content, prompt_version, created_at) "
+        "VALUES (:cid, :role, :content, :pv, :now) RETURNING id",
+        {
+            "cid": conv_id,
+            "role": role,
+            "content": content,
+            "pv": prompt_version,
+            "now": now_str(),
+        },
     )
 
 
@@ -117,7 +126,7 @@ async def sum_content_chars(conv_id: int) -> int:
 async def list_messages(conv_id: int) -> list[dict[str, object]]:
     return await db.fetch_all(
         "SELECT id, role, content, sender_staff_id, status, error_code, "
-        "client_message_id, topic_verdict, created_at FROM messages "
+        "client_message_id, topic_verdict, prompt_version, created_at FROM messages "
         "WHERE conversation_id=:id ORDER BY id",
         {"id": conv_id},
     )

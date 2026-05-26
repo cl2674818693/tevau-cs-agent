@@ -237,7 +237,12 @@ async def run_turn(
         metrics.topic_verdict_total.labels(verdict=verdict).inc()
         if verdict == "no":
             refusal = topic_classifier.refusal_text(user_type)
-            await append_message(conversation_id, role="assistant", content=refusal)
+            await append_message(
+                conversation_id,
+                role="assistant",
+                content=refusal,
+                prompt_version=prompt_version,
+            )
             await finalize_turn(turn_id, "done")
             yield {"type": "text", "text": refusal}
             return
@@ -368,7 +373,7 @@ async def _agent_loop(
             return
 
         assistant_blocks, tool_calls_in_round, texts = _collect_blocks(resp)
-        await _persist_assistant(conversation_id, messages, assistant_blocks)
+        await _persist_assistant(conversation_id, messages, assistant_blocks, prompt_version)
 
         if _is_tool_round(resp, tool_calls_in_round):
             async for ev in _emit_tool_round(
@@ -418,7 +423,10 @@ async def collect_full_response(
 
 
 async def _persist_assistant(
-    conversation_id: int, messages: list[dict[str, Any]], assistant_blocks: list[dict[str, Any]]
+    conversation_id: int,
+    messages: list[dict[str, Any]],
+    assistant_blocks: list[dict[str, Any]],
+    prompt_version: str | None = None,
 ) -> None:
     if not assistant_blocks:
         return
@@ -429,6 +437,7 @@ async def _persist_assistant(
         content=json.dumps(
             [b for b in assistant_blocks if b["type"] == "text"], ensure_ascii=False
         ),
+        prompt_version=prompt_version,
     )
 
 

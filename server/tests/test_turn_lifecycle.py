@@ -26,3 +26,13 @@ async def test_turn_verdict_and_assistant_texts(seeded_db):
     assert txts == ["答复A", "答复B"]
     rows = await c.list_messages(1)
     assert any(r["id"] == tid and r["topic_verdict"] == "no" for r in rows)
+
+
+async def test_assistant_message_persists_prompt_version(seeded_db):
+    """灰度 A/B 闭环：写 assistant 消息时落 prompt_version，便于按版本对比效果。"""
+    from ai_engine.persistence import conversations as c
+
+    mid = await c.append_message(1, "assistant", "答复", prompt_version="v1.1.0")
+    rows = await c.list_messages(1)
+    row = next(r for r in rows if r["id"] == mid)
+    assert row["prompt_version"] == "v1.1.0"
