@@ -115,6 +115,51 @@ _GAP_QUERIES: dict[str, str] = {
 }
 
 
+# ── Task 6.2：按 prompt_version 的 A/B 效果对比 ─────────────────────────────
+# 关联口径：message_feedback.message_id = messages.id，直接 JOIN 取版本。
+# 只统计 role='assistant' AND prompt_version IS NOT NULL 的行，NULL 行不归入任何桶。
+# failed_rate / downvote_rate 在 Python 侧计算（防除零）。
+_Q_AB_STATS = (
+    "SELECT m.prompt_version AS version, "
+    "COUNT(*) AS assistant_turns, "
+    "SUM(CASE WHEN m.status='failed' THEN 1 ELSE 0 END) AS failed, "
+    "COUNT(f.id) AS downvote "
+    "FROM messages m "
+    "LEFT JOIN message_feedback f ON f.message_id = m.id AND f.rating='down' "
+    "WHERE m.role='assistant' AND m.prompt_version IS NOT NULL "
+    "AND (:df IS NULL OR m.created_at >= :df) AND (:dt IS NULL OR m.created_at <= :dt) "
+    "GROUP BY m.prompt_version ORDER BY m.prompt_version"
+)
+
+
+async def prompt_ab_stats(
+    date_from: str | None, date_to: str | None
+) -> list[dict[str, Any]]:
+    """按 prompt_version 分组的 A/B 效果对比。
+
+    返回：[{version, assistant_turns, failed, failed_rate, downvote, downvote_rate}]
+    只含 prompt_version IS NOT NULL 的 assistant 消息行。
+    downvote 通过 message_feedback.message_id JOIN messages 取版本（精确到消息）。
+    """
+    rows = await db.fetch_all(_Q_AB_STATS, {"df": date_from, "dt": date_to})
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        turns = int(r["assistant_turns"]) if r["assistant_turns"] is not None else 0
+        failed = int(r["failed"]) if r["failed"] is not None else 0
+        downvote = int(r["downvote"]) if r["downvote"] is not None else 0
+        out.append(
+            {
+                "version": r["version"],
+                "assistant_turns": turns,
+                "failed": failed,
+                "failed_rate": (failed / turns) if turns else 0.0,
+                "downvote": downvote,
+                "downvote_rate": (downvote / turns) if turns else 0.0,
+            }
+        )
+    return out
+
+
 async def gap_conversations(
     kind: str,
     date_from: str | None,
