@@ -180,14 +180,53 @@ async def get_mode(conv_id: int) -> tuple[str, str | None]:
     return row["mode"], row["assigned_staff_id"]
 
 
-async def list_for_staff(filter_status: str = "all") -> list[dict[str, object]]:
-    """客服工作台列表。filter_status ∈ {human_pending, human_takeover, all}"""
+# 每会话风险信号子查询（EXISTS 避免 JOIN 行膨胀；SQLite/Postgres 均兼容）。
+# 字段全为固定字符串、绑定参数仅会话维度，不拼用户输入。
+_RISK_SELECT = (
+    "EXISTS(SELECT 1 FROM messages m WHERE m.conversation_id=c.id "
+    "AND m.status='failed') AS has_failed, "
+    "EXISTS(SELECT 1 FROM messages m WHERE m.conversation_id=c.id "
+    "AND m.topic_verdict='no') AS has_out_of_scope, "
+    "EXISTS(SELECT 1 FROM message_feedback f WHERE f.conversation_id=c.id "
+    "AND f.rating='down') AS has_downvote, "
+    "EXISTS(SELECT 1 FROM tool_audits t WHERE t.conversation_id=c.id "
+    "AND t.is_empty=1) AS has_empty_tool"
+)
+# risk_only=True 的 WHERE：任一风险信号为真（含 needs_review）。不受 mode 限制，
+# 因此 mode='ai' 但答错的会话也能被选出。
+_RISK_WHERE = (
+    "(c.needs_review=1 "
+    "OR EXISTS(SELECT 1 FROM messages m WHERE m.conversation_id=c.id AND m.status='failed') "
+    "OR EXISTS(SELECT 1 FROM messages m WHERE m.conversation_id=c.id AND m.topic_verdict='no') "
+    "OR EXISTS(SELECT 1 FROM message_feedback f WHERE f.conversation_id=c.id "
+    "AND f.rating='down') "
+    "OR EXISTS(SELECT 1 FROM tool_audits t WHERE t.conversation_id=c.id AND t.is_empty=1))"
+)
+
+
+async def list_for_staff(
+    filter_status: str = "all", risk_only: bool = False
+) -> list[dict[str, object]]:
+    """客服工作台列表。
+
+    - filter_status ∈ {human_pending, human_takeover, all}：默认 mode 过滤（risk_only=False）。
+    - risk_only=True：忽略 mode，按"任一风险信号为真"筛选（含 mode='ai' 的答错会话）。
+
+    无论何种过滤，每行都附带风险标记字段：has_failed / has_out_of_scope /
+    has_downvote / has_empty_tool（needs_review 为表自身列，随 c.* 返回）。
+    """
+    cols = f"c.*, {_RISK_SELECT}"
+    if risk_only:
+        return await db.fetch_all(
+            f"SELECT {cols} FROM conversations c WHERE {_RISK_WHERE} "
+            "ORDER BY c.id DESC LIMIT 100"
+        )
     if filter_status == "all":
         return await db.fetch_all(
-            "SELECT * FROM conversations WHERE mode != 'ai' ORDER BY id DESC LIMIT 100"
+            f"SELECT {cols} FROM conversations c WHERE c.mode != 'ai' ORDER BY c.id DESC LIMIT 100"
         )
     return await db.fetch_all(
-        "SELECT * FROM conversations WHERE mode=:m ORDER BY id DESC LIMIT 100",
+        f"SELECT {cols} FROM conversations c WHERE c.mode=:m ORDER BY c.id DESC LIMIT 100",
         {"m": filter_status},
     )
 

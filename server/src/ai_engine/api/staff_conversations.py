@@ -142,9 +142,10 @@ def publish_conversation_event(conv_id: int, event: dict[str, Any]) -> None:
 @router.get("/staff/api/v1/conversations")
 async def list_conversations(
     status: str = Query("human_pending"),
+    risk_only: bool = Query(False),
     staff: dict[str, Any] = Depends(require_staff),
 ) -> list[dict[str, object]]:
-    return await conv_dao.list_for_staff(status)
+    return await conv_dao.list_for_staff(status, risk_only=risk_only)
 
 
 @router.get("/staff/api/v1/conversations/{conv_id}")
