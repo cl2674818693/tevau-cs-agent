@@ -92,6 +92,18 @@ export function ConversationLogsRoute() {
           >
             <span className="text-ink-primary">{a.tool_name}</span>
             <span className="ml-2 text-ink-secondary">{a.duration_ms}ms</span>
+            <span
+              className={
+                a.is_empty === 1 || a.is_empty === true
+                  ? "ml-2 text-status-error"
+                  : "ml-2 text-ink-secondary"
+              }
+            >
+              返回 {a.result_count ?? 0} 条
+            </span>
+            {a.subject_id ? (
+              <span className="ml-2 text-ink-secondary">身份 {a.subject_id}</span>
+            ) : null}
             {a.rejected ? (
               <span className="ml-2 text-status-error">被拒：{a.reject_reason ?? "-"}</span>
             ) : null}

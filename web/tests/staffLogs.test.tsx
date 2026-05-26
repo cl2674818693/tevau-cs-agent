@@ -45,7 +45,7 @@ describe("api/staff 留痕 fetchers", () => {
   it("getRecentAudits sets rejected query param", async () => {
     const f = vi.fn(async (_url: string, _opts?: RequestInit) => json({ audits: [] }));
     vi.stubGlobal("fetch", f);
-    await getRecentAudits("t", true);
+    await getRecentAudits("t", { rejectedOnly: true });
     expect(f.mock.calls[0][0]).toContain("rejected=true");
   });
 });

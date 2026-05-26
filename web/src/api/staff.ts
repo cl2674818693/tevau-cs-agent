@@ -185,6 +185,10 @@ export type ToolAudit = {
   rejected: number;
   reject_reason: string | null;
   created_at: string;
+  result_count?: number;
+  is_empty?: number | boolean;
+  subject_id?: string;
+  user_type?: string;
 };
 
 export async function getConversationAudits(token: string, id: number): Promise<ToolAudit[]> {
@@ -214,13 +218,26 @@ export async function getConversationFeedback(
   return (await r.json()).feedback as MessageFeedback[];
 }
 
+export type RecentAuditsFilter = {
+  rejectedOnly?: boolean;
+  toolName?: string;
+  emptyOnly?: boolean;
+  conversationId?: string;
+  beforeId?: number;
+  limit?: number;
+};
+
 export async function getRecentAudits(
   token: string,
-  rejectedOnly: boolean,
-  limit = 100,
+  filter: RecentAuditsFilter = {},
 ): Promise<ToolAudit[]> {
+  const { rejectedOnly, toolName, emptyOnly, conversationId, beforeId, limit = 100 } = filter;
   const qs = new URLSearchParams({ limit: String(limit) });
   if (rejectedOnly) qs.set("rejected", "true");
+  if (toolName) qs.set("tool_name", toolName);
+  if (emptyOnly) qs.set("empty_only", "true");
+  if (conversationId) qs.set("conversation_id", conversationId);
+  if (beforeId != null) qs.set("before_id", String(beforeId));
   const r = await fetch(`/staff/api/v1/audits/recent?${qs.toString()}`, {
     headers: authHeaders(token),
   });
