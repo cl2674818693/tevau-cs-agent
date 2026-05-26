@@ -91,6 +91,23 @@ tool_audits = Table(
 )
 Index("idx_audit_conv", tool_audits.c.conversation_id)
 
+attachments = Table(
+    "attachments",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("conversation_id", Integer, ForeignKey("conversations.id"), nullable=False),
+    Column("message_id", Integer, ForeignKey("messages.id")),  # 上传时 NULL，发送绑定后写入
+    Column("uploader_type", String(8), nullable=False),  # c / b / staff
+    Column("uploader_id", String(128), nullable=False),
+    Column("object_key", Text, nullable=False),
+    Column("mime", String(64), nullable=False),
+    Column("byte_size", Integer, nullable=False),
+    Column("sha256", String(64), nullable=False),
+    Column("created_at", String(32), nullable=False),
+)
+Index("idx_att_conv", attachments.c.conversation_id)
+Index("idx_att_msg", attachments.c.message_id)
+
 tickets = Table(
     "tickets",
     metadata,
