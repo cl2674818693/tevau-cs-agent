@@ -6,7 +6,7 @@ from typing import Any
 from ai_engine.agent import topic_classifier
 from ai_engine.agent.conversation_compactor import compact_conversation
 from ai_engine.agent.cost_guard import CostGuard
-from ai_engine.agent.tool_router import dispatch
+from ai_engine.agent.tool_router import _result_count, dispatch
 from ai_engine.agent.tools import (  # noqa: F401  import 即注册工具
     base,  # 触发工具注册
     create_ticket,
@@ -524,5 +524,15 @@ async def _run_tools(
                 "is_error": not r["ok"],
             }
         )
-        events.append({"type": "tool_result", "id": tc["id"], "name": tc["name"], "ok": r["ok"]})
+        result_count = _result_count(r.get("data")) if r["ok"] else 0
+        events.append(
+            {
+                "type": "tool_result",
+                "id": tc["id"],
+                "name": tc["name"],
+                "ok": r["ok"],
+                "result_count": result_count,
+                "empty": result_count == 0,
+            }
+        )
     return blocks, events

@@ -13,7 +13,11 @@ const LABELERS: Record<string, (ev: StaffStreamEvent) => string> = {
   user_message: (ev) => `用户：${ev.content ?? ""}`,
   human_message: (ev) => `客服：${ev.content ?? ""}`,
   tool_use: (ev) => `调用工具：${ev.name ?? ""}${ev.input ? ` ${JSON.stringify(ev.input)}` : ""}`,
-  tool_result: (ev) => `工具返回：${ev.name ?? ""}`,
+  tool_result: (ev) => {
+    if (ev.ok === false) return `工具返回：${ev.name ?? ""}（失败）`;
+    const count = ev.result_count ?? 0;
+    return `工具返回：${ev.name ?? ""}（${count} 条${ev.empty ? "，空" : ""}）`;
+  },
   mode_change: (ev) => `模式切换 → ${ev.to ?? ""}`,
 };
 
@@ -34,19 +38,20 @@ export function SpectateRoute() {
       nav("/staff/login");
       return;
     }
-    let stopped = false;
+    const ac = new AbortController();
+    setEvents([]);
+    setErr("");
     (async () => {
       try {
-        for await (const ev of streamSpectateEvents(token, convId)) {
-          if (stopped) break;
+        for await (const ev of streamSpectateEvents(token, convId, ac.signal)) {
           setEvents((prev) => [...prev, ev]);
         }
       } catch {
-        setErr("无法旁观（需 senior/engineer 权限）");
+        if (!ac.signal.aborted) setErr("无法旁观（需 senior/engineer 权限）");
       }
     })();
     return () => {
-      stopped = true;
+      ac.abort();
     };
   }, [token, convId, nav]);
 
@@ -67,11 +72,17 @@ export function SpectateRoute() {
         </Alert>
       )}
       <ul className="flex flex-1 flex-col gap-1 overflow-y-auto">
-        {events.map((ev, i) => (
-          <li key={i} className="text-body2 text-ink-primary">
-            {label(ev)}
-          </li>
-        ))}
+        {events.map((ev, i) => {
+          const alert = ev.type === "tool_result" && (ev.empty || ev.ok === false);
+          return (
+            <li
+              key={i}
+              className={`text-body2 ${alert ? "text-status-error" : "text-ink-primary"}`}
+            >
+              {label(ev)}
+            </li>
+          );
+        })}
         {events.length === 0 && !err && <EmptyState>等待会话活动…</EmptyState>}
       </ul>
     </PageContainer>

@@ -331,6 +331,9 @@ export type StaffStreamEvent = {
   draft?: string;
   name?: string; // tool_use：工具名
   input?: Record<string, unknown>; // tool_use：入参
+  ok?: boolean; // tool_result：调用是否成功
+  result_count?: number; // tool_result：返回条数
+  empty?: boolean; // tool_result：是否查空
   to_staff_id?: string; // transferred
   by_staff_id?: string; // mode_change
 };
@@ -343,17 +346,29 @@ export async function getStaffConversation(token: string, id: number): Promise<S
 }
 
 /** 订阅会话事件总线（user_message / human_message / mode_change）。带 Bearer，故用 fetch-stream。 */
-export function streamStaffEvents(token: string, id: number): AsyncGenerator<StaffStreamEvent> {
-  return streamSse(`/staff/api/v1/conversations/${id}/stream`, token);
+export function streamStaffEvents(
+  token: string,
+  id: number,
+  signal?: AbortSignal,
+): AsyncGenerator<StaffStreamEvent> {
+  return streamSse(`/staff/api/v1/conversations/${id}/stream`, token, signal);
 }
 
 /** 旁观订阅（senior/engineer）：只读看 AI 处理过程，不接管。 */
-export function streamSpectateEvents(token: string, id: number): AsyncGenerator<StaffStreamEvent> {
-  return streamSse(`/staff/api/v1/conversations/${id}/spectate-stream`, token);
+export function streamSpectateEvents(
+  token: string,
+  id: number,
+  signal?: AbortSignal,
+): AsyncGenerator<StaffStreamEvent> {
+  return streamSse(`/staff/api/v1/conversations/${id}/spectate-stream`, token, signal);
 }
 
-async function* streamSse(url: string, token: string): AsyncGenerator<StaffStreamEvent> {
-  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+async function* streamSse(
+  url: string,
+  token: string,
+  signal?: AbortSignal,
+): AsyncGenerator<StaffStreamEvent> {
+  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal });
   if (!resp.ok || !resp.body) throw new Error(`stream failed ${resp.status}`);
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();

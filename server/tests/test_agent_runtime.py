@@ -66,3 +66,37 @@ async def test_runtime_runs_tool_then_replies(seeded_db, monkeypatch, fake_strea
     assert "tool_call" in kinds
     assert "text" in kinds
     assert "结论" in "".join(c.get("text", "") for c in chunks if c["type"] == "text")
+
+
+async def test_run_tools_events_carry_result_count_and_empty(monkeypatch):
+    """旁观需要看到工具返回条数/空标记，否则'查空'在旁观里看不出。"""
+    from ai_engine.agent import runtime
+    from ai_engine.agent.cost_guard import CostGuard
+
+    async def fake_dispatch(*, tool_name, params, user_type, subject_id, conversation_id):
+        if tool_name == "has_rows":
+            return {"ok": True, "data": {"rows": [{"a": 1}, {"a": 2}, {"a": 3}]}}
+        if tool_name == "empty_rows":
+            return {"ok": True, "data": {"rows": []}}
+        return {"ok": False, "error": "boom"}
+
+    monkeypatch.setattr(runtime, "dispatch", fake_dispatch)
+
+    guard = CostGuard(max_depth=10, max_result_bytes=100000)
+    tool_calls = [
+        {"id": "a", "name": "has_rows", "input": {}},
+        {"id": "b", "name": "empty_rows", "input": {}},
+        {"id": "c", "name": "fail", "input": {}},
+    ]
+    _blocks, events = await runtime._run_tools(
+        tool_calls, guard, user_type="b", subject_id="BU1", conversation_id=1
+    )
+
+    by_id = {e["id"]: e for e in events}
+    assert by_id["a"]["result_count"] == 3
+    assert by_id["a"]["empty"] is False
+    assert by_id["b"]["result_count"] == 0
+    assert by_id["b"]["empty"] is True
+    assert by_id["c"]["ok"] is False
+    assert by_id["c"]["result_count"] == 0
+    assert by_id["c"]["empty"] is True
