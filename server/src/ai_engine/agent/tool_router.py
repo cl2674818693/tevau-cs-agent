@@ -3,12 +3,32 @@ import time
 from typing import Any
 
 from ai_engine.agent.tools import base
-from ai_engine.auth.bu_session import USER_TYPE_GUEST
+from ai_engine.auth.bu_session import USER_TYPE_C, USER_TYPE_GUEST
 from ai_engine.observability import metrics
 from ai_engine.persistence.audit import log_tool_call
+from ai_engine.persistence.business_db import get_db
 
 NEEDS_CONVERSATION_ID = {"create_ticket"}
 NEEDS_USER_TYPE = {"create_ticket"}
+
+# C 端会话身份是 gateway 的 userCode（如 U43825474），但业务库各表按数字 user_id 隔离。
+# 注入工具前必须把 userCode 翻成数字 id，否则 WHERE user_id='U...' 永远查空（KYC/流水全查不到）。
+_c_user_id_cache: dict[str, str] = {}
+
+
+async def _c_user_id(user_code: str) -> str | None:
+    """C 端 userCode → 业务库数字 user_id（t_tevaupay_user.id）；缓存避免每次打库。"""
+    cached = _c_user_id_cache.get(user_code)
+    if cached is not None:
+        return cached
+    row = await get_db("unlimitpay").fetch_one(
+        "SELECT id FROM t_tevaupay_user WHERE user_code=%s", (user_code,)
+    )
+    if not row or row.get("id") is None:
+        return None
+    uid = str(row["id"])
+    _c_user_id_cache[user_code] = uid
+    return uid
 
 # 游客（未登录）拒绝个人数据工具时给 AI 的回执，引导其提示用户登录
 _GUEST_BLOCKED = (
@@ -43,7 +63,20 @@ async def dispatch(
     safe_params = dict(params)
     safe_params.pop("unmask", None)
     if tool.requires_subject_id:
-        safe_params[tool.subject_field] = subject_id
+        inject_value: str | None = subject_id
+        if user_type == USER_TYPE_C:
+            # C 端：userCode → 数字 user_id；映射不到则明确报错，不静默查空误导用户
+            inject_value = await _c_user_id(subject_id)
+            if inject_value is None:
+                await log_tool_call(
+                    conversation_id, tool_name, params, 0, 0, True, "c user_code unmapped"
+                )
+                metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
+                return {
+                    "ok": False,
+                    "error": f"无法将当前用户身份({subject_id})映射到业务用户ID，请转人工核实身份",
+                }
+        safe_params[tool.subject_field] = inject_value
     # 个别工具需要 conversation_id（如 create_ticket）；统一注入
     if tool_name in NEEDS_CONVERSATION_ID:
         safe_params["conversation_id"] = conversation_id
