@@ -131,16 +131,39 @@ export type StaffKpi = {
   release_ratio: number;
   resolved_ratio: number;
   avg_handle_seconds: number;
+  transfers?: number;
+  transfer_ratio?: number;
 };
 
-export async function getKpi(token: string, from?: string, to?: string): Promise<StaffKpi[]> {
+export type AiQuality = {
+  total_conversations: number;
+  handoff: number;
+  handoff_rate: number;
+  upvote: number;
+  downvote: number;
+  downvote_rate: number;
+  tool_calls: number;
+  tool_empty: number;
+  tool_empty_rate: number;
+  out_of_scope: number;
+  failed_turns: number;
+};
+
+export type KpiResult = {
+  from: string | null;
+  to: string | null;
+  staff: StaffKpi[];
+  ai_quality: AiQuality;
+};
+
+export async function getKpi(token: string, opts?: { from?: string; to?: string }): Promise<KpiResult> {
   const qs = new URLSearchParams();
-  if (from) qs.set("from", from);
-  if (to) qs.set("to", to);
+  if (opts?.from) qs.set("from", opts.from);
+  if (opts?.to) qs.set("to", opts.to);
   const r = await fetch(`/staff/api/v1/kpi?${qs.toString()}`, { headers: authHeaders(token) });
   if (!r.ok) throw new Error(`kpi failed ${r.status}`);
   const body = await r.json();
-  return body.staff as StaffKpi[];
+  return body as KpiResult;
 }
 
 // ---- 留痕查看（只读）----

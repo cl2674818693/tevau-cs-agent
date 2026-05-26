@@ -51,8 +51,8 @@ describe("staff api transfer/resolve/kpi", () => {
           }),
       ),
     );
-    const rows = await getKpi("t");
-    expect(rows[0].staff_id).toBe("AG1");
+    const res = await getKpi("t");
+    expect(res.staff[0].staff_id).toBe("AG1");
   });
 });
 
