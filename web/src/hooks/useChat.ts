@@ -125,12 +125,16 @@ function useChatSend(
   const send = useCallback(
     async (text: string) => {
       if (!init || rateLimited) return;
+      // 幂等键：本次发送固定一个 id，重连/重发复用以避免后端重复处理。
+      // 在 setSending 前算好（纯计算），避免中途抛错导致 sending 卡死。
+      // HTTP（非安全上下文，如 APP webview 直连内网 IP）不暴露 crypto.randomUUID，故带回退。
+      const clientMessageId =
+        globalThis.crypto?.randomUUID?.() ??
+        `m-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       setSending(true);
       actions.setMessages((prev) => [...prev, { role: "user", content: text }]);
       const controller = new AbortController();
       abortRef.current = controller;
-      // 幂等键：本次发送固定一个 id，重连/重发复用以避免后端重复处理
-      const clientMessageId = crypto.randomUUID();
       try {
         for await (const ev of streamChat({
           conversationId: init.conversation_id,
