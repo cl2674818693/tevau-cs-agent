@@ -12,8 +12,17 @@ export function applyEvent(prev: Message[], ev: ChatEvent): Message[] {
   if (ev.type === "message_start")
     return [...prev, { role: "assistant", content: "", tool_calls: [] }];
   if (ev.type === "human_message")
-    return [...prev, { role: "human_agent", content: ev.content, display_name: ev.display_name }];
-  if (ev.type === "assistant_message") return [...prev, { role: "assistant", content: ev.content }];
+    return [
+      ...prev,
+      {
+        role: "human_agent",
+        content: ev.content,
+        display_name: ev.display_name,
+        attachments: ev.attachments,
+      },
+    ];
+  if (ev.type === "assistant_message")
+    return [...prev, { role: "assistant", content: ev.content, attachments: ev.attachments }];
   if (ev.type === "content_block_delta") {
     const text = ev.delta?.text ?? "";
     return _patchLastAssistant(prev, (a) => ({ ...a, content: a.content + text }));
@@ -84,8 +93,12 @@ export type StaffStreamActions = {
 
 /** 把一条用户侧常驻流事件应用到状态（客服→用户方向）。 */
 export function applyUserStreamEvent(ev: ChatEvent, a: StaffStreamActions): void {
-  if (ev.type === "mode_change") a.setMode(ev.to as ConversationMode);
-  else if (ev.type === "human_message") {
+  if (ev.type === "mode_change") {
+    a.setMode(ev.to as ConversationMode);
+    // 客服接管后给用户一条明确提示，否则消息流停留在「请求人工，请稍候」，感知不到已接入
+    if (ev.to === "human_takeover")
+      a.setMessages((p) => [...p, { role: "system", content: "客服已接入，将为您服务。" }]);
+  } else if (ev.type === "human_message") {
     a.setStaffName(ev.display_name ?? ev.sender_staff_id);
     a.setMessages((p) => applyEvent(p, ev));
   } else if (ev.type === "assistant_message") a.setMessages((p) => applyEvent(p, ev));

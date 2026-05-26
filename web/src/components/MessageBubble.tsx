@@ -4,9 +4,28 @@ import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import type { Message } from "../types";
+import type { Attachment, Message } from "../types";
+import { ImageThumb } from "./ImageThumb";
 import { ToolCallChip } from "./ToolCallChip";
 import { Avatar, AvatarFallback } from "./ui/avatar";
+
+/** 消息附件图片网格；urlFor 缺省时不渲染（无法拼出看图 URL）。 */
+function Attachments({
+  attachments,
+  urlFor,
+}: {
+  attachments?: Attachment[];
+  urlFor?: (attachmentId: number) => string;
+}) {
+  if (!attachments?.length || !urlFor) return null;
+  return (
+    <div className="flex flex-wrap gap-2 mt-1">
+      {attachments.map((a) => (
+        <ImageThumb key={a.id} src={urlFor(a.id)} />
+      ))}
+    </div>
+  );
+}
 
 /** AI 回复下方的 👍/👎 反馈条。点过一次即锁定并显示致谢。 */
 function FeedbackBar({ onFeedback }: { onFeedback: (rating: "up" | "down") => void }) {
@@ -35,17 +54,25 @@ export function MessageBubble({
   m,
   userType = "b",
   onFeedback,
+  urlFor,
 }: {
   m: Message;
   userType?: "c" | "b";
   onFeedback?: (rating: "up" | "down") => void;
+  /** 把 attachment id 拼成看图 URL；用户侧用 attachmentUrl，客服侧用 staffAttachmentUrl。 */
+  urlFor?: (attachmentId: number) => string;
 }) {
   const { t } = useTranslation();
   if (m.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-lg rounded-tr-sm bg-brand text-ink-onbrand px-4 py-2.5 text-body1 font-medium whitespace-pre-wrap">
-          {m.content}
+        <div className="max-w-[80%] flex flex-col items-end gap-1">
+          <Attachments attachments={m.attachments} urlFor={urlFor} />
+          {m.content && (
+            <div className="rounded-lg rounded-tr-sm bg-brand text-ink-onbrand px-4 py-2.5 text-body1 font-medium whitespace-pre-wrap">
+              {m.content}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -75,9 +102,12 @@ export function MessageBubble({
             <BadgeCheck className="h-3 w-3 text-status-warning" />
             <span className="text-footnote text-ink-secondary">· {t("chat.agentVerified")}</span>
           </div>
-          <div className="bg-soft-warning border border-status-warning/30 rounded-lg rounded-tl-sm px-4 py-2.5 text-body1 text-ink whitespace-pre-wrap">
-            {m.content}
-          </div>
+          {m.content && (
+            <div className="bg-soft-warning border border-status-warning/30 rounded-lg rounded-tl-sm px-4 py-2.5 text-body1 text-ink whitespace-pre-wrap">
+              {m.content}
+            </div>
+          )}
+          <Attachments attachments={m.attachments} urlFor={urlFor} />
         </div>
       </div>
     );
@@ -112,6 +142,7 @@ export function MessageBubble({
             <span className="text-ink-secondary text-body2">{t("chat.thinking")}</span>
           )}
         </div>
+        <Attachments attachments={m.attachments} urlFor={urlFor} />
         {m.content && onFeedback && <FeedbackBar onFeedback={onFeedback} />}
       </div>
     </div>
