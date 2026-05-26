@@ -63,6 +63,17 @@ export const bridge = {
     if (t) return t;
     return urlParams().get("token"); // dev / 旧 APP 兜底
   },
+  /**
+   * 本次聊天页的会话标识（APP 端 getChatSession，见 js_bridge.dart）。
+   * 语义：webview 被系统回收后重载返回同一个 id；用户主动退出页面后重进是新 id。
+   * H5 据此区分「切后台被杀→恢复对话」与「主动退出→新对话」。
+   * 旧版 APP 无此 handler 时返回 null，调用方降级到时间窗。
+   */
+  async getChatSession(): Promise<string | null> {
+    const d = await call<{ sessionId?: string | null } | string | null>("getChatSession");
+    if (typeof d === "string") return d || null;
+    return d?.sessionId ?? null;
+  },
   async getEnv(): Promise<EnvInfo> {
     const env = await call<EnvInfo>("getEnv");
     if (env) return env;

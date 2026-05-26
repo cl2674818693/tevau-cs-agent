@@ -30,6 +30,7 @@ export type ConversationInit = {
   user_type: "c" | "b" | "g";
   display_name: string;
   greeting: string;
+  mode: ConversationMode; // 续接已转人工会话时据此初始化 UI（新会话为 "ai"）
   history_url: string | null;
   limits: { daily_token_used_pct: number; max_turns: number };
 };

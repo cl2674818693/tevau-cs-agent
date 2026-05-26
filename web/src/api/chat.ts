@@ -1,4 +1,4 @@
-import type { ChatEvent, ConversationInit } from "../types";
+import type { ChatEvent, ConversationInit, Message } from "../types";
 import { authHeaders } from "./identity";
 
 /** 统一 fetch：注入鉴权头（C=Bearer / B=X-BU-ID）+ 带 cookie（B 端 session）。 */
@@ -12,16 +12,29 @@ async function authedFetch(input: string, init: RequestInit = {}): Promise<Respo
 }
 
 /**
- * 会话初始化（spec §6.2）。首屏调一次，拿 user_type / display_name / greeting / limits。
+ * 会话初始化（spec §6.2）。首屏调一次，拿 user_type / display_name / greeting / mode / limits。
+ * resume 传入会话 id：后端属主+未归档校验通过则续接(返回同一 id)，否则新建(返回新 id)。
  */
-export async function initConversation(): Promise<ConversationInit> {
+export async function initConversation(resume?: number): Promise<ConversationInit> {
   const resp = await authedFetch("/api/v1/conversations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify(resume != null ? { resume } : {}),
   });
   if (!resp.ok) throw new Error(`init http ${resp.status}`);
   return resp.json();
+}
+
+/** 拉取会话历史消息（切后台被杀重载后恢复对话用）。失败返回空数组，不阻塞首屏。 */
+export async function fetchHistory(conversationId: number): Promise<Message[]> {
+  try {
+    const resp = await authedFetch(`/api/v1/conversations/${conversationId}/messages`);
+    if (!resp.ok) return [];
+    const data = (await resp.json()) as { messages?: Message[] };
+    return data.messages ?? [];
+  } catch {
+    return [];
+  }
 }
 
 /** 解析一个 SSE frame → ChatEvent；ping / 解析失败返回 null。 */

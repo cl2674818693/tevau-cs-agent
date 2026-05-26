@@ -12,6 +12,21 @@ async def create_conversation(user_type: str, subject_id: str) -> int:
     )
 
 
+async def get_resumable(
+    conv_id: int, user_type: str, subject_id: str
+) -> dict[str, object] | None:
+    """恢复会话用：仅当该会话属于当前身份(user_type+subject_id)且未归档时返回 id/mode/指派客服。
+
+    属主校验防止伪造别人的 conversation_id；archived 会话(spec §8 总结归档后)不再续接，
+    让前端自然开新对话。
+    """
+    return await db.fetch_one(
+        "SELECT id, mode, assigned_staff_id FROM conversations "
+        "WHERE id=:id AND user_type=:ut AND subject_id=:sid AND COALESCE(archived,0)=0",
+        {"id": conv_id, "ut": user_type, "sid": subject_id},
+    )
+
+
 async def get_conversation(conv_id: int) -> dict[str, object] | None:
     return await db.fetch_one(
         "SELECT id, user_type, subject_id, inferred_locale, created_at "
