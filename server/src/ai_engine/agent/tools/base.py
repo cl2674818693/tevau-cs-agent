@@ -33,3 +33,15 @@ def all_definitions() -> list[dict[str, Any]]:
         {"name": t.name, "description": t.description, "input_schema": t.input_schema}
         for t in REGISTRY.values()
     ]
+
+
+def label(mapping: dict, value):
+    """枚举翻译：未命中的非空值显式标注为 未知(原值)，不静默吐裸数字。"""
+    if value is None:
+        return None
+    return mapping.get(value, f"未知({value})")
+
+
+def scope_note(source: str, covered: str, not_covered: str) -> str:
+    """查空时给 AI 的边界说明，避免把'本表无'当成'用户无'。"""
+    return f"本次仅查询了{source}（覆盖：{covered}）。未覆盖：{not_covered}。查不到不代表用户没有相关记录。"
