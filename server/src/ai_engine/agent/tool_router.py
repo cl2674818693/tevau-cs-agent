@@ -64,7 +64,9 @@ async def dispatch(
     safe_params.pop("unmask", None)
     if tool.requires_subject_id:
         inject_value: str | None = subject_id
-        if user_type == USER_TYPE_C:
+        # C 端会话身份是 gateway 的 userCode（字母前缀，如 U43825474），业务库按数字 user_id
+        # 隔离，需翻译；若 subject_id 已是纯数字（即已是 user_id）则直接用，不打业务库。
+        if user_type == USER_TYPE_C and not subject_id.isdigit():
             # C 端：userCode → 数字 user_id；映射不到则明确报错，不静默查空误导用户
             inject_value = await _c_user_id(subject_id)
             if inject_value is None:

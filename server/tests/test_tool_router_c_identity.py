@@ -73,6 +73,27 @@ async def test_c_unmapped_user_code_errors_not_empty(temp_db_url, monkeypatch):
     assert result["ok"] is False  # 明确报错，不静默查空
 
 
+async def test_c_numeric_subject_skips_translation(temp_db_url, monkeypatch):
+    # subject_id 已是纯数字(即已是 user_id)时不打业务库，直接用（覆盖 staff 代查/legacy 数字身份）
+    from ai_engine.agent import tool_router
+    from ai_engine.persistence.db import init_db
+
+    await init_db()
+    received = await _register_fake("query_c_numeric")
+
+    def boom(name):
+        raise AssertionError("纯数字 subject_id 不应触发业务库翻译")
+
+    monkeypatch.setattr(tool_router, "get_db", boom)
+
+    result = await tool_router.dispatch(
+        tool_name="query_c_numeric", params={}, user_type="c",
+        subject_id="838", conversation_id=1,
+    )
+    assert result["ok"] is True
+    assert received["user_id"] == "838"
+
+
 async def test_b_subject_not_translated(temp_db_url, monkeypatch):
     # B 端 subject_id 是 tenant_id，直接用，不走 userCode→id 翻译
     from ai_engine.agent import tool_router
