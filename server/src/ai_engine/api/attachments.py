@@ -1,11 +1,14 @@
 import hashlib
 import uuid
+from typing import Any
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
 
+from ai_engine.auth.staff_session import require_staff
 from ai_engine.config import settings
 from ai_engine.persistence import attachments as att_dao
+from ai_engine.persistence import conversations as conv_dao
 from ai_engine.storage.object_store import get_object_store
 
 router = APIRouter()
@@ -80,9 +83,9 @@ async def upload_attachment(
     try:
         aid = await _store_upload(conv_id, user_type, subject_id, file)
     except AttachmentTooLarge:
-        raise HTTPException(413, "image too large")
+        raise HTTPException(413, "image too large") from None
     except AttachmentBadType:
-        raise HTTPException(415, "unsupported image type")
+        raise HTTPException(415, "unsupported image type") from None
     return {"attachment_id": aid}
 
 
@@ -91,6 +94,39 @@ async def view_attachment(conv_id: int, aid: int, request: Request) -> RedirectR
     from ai_engine.api.chat import _authorize_conversation
 
     await _authorize_conversation(request, conv_id)
+    row = await att_dao.get_attachment(aid)
+    if not row or row["conversation_id"] != conv_id:
+        raise HTTPException(404, "not found")
+    url = await get_object_store().presigned_get(
+        row["object_key"], settings.attachment_url_ttl_seconds
+    )
+    return RedirectResponse(url)
+
+
+async def _assert_staff_conv(conv_id: int, staff_sub: str) -> None:
+    mode, sid = await conv_dao.get_mode(conv_id)
+    if mode != "human_takeover" or sid != staff_sub:
+        raise HTTPException(403, "not your conversation")
+
+
+@router.post("/staff/api/v1/conversations/{conv_id}/attachments")
+async def staff_upload_attachment(
+    conv_id: int, file: UploadFile = File(...), staff: dict[str, Any] = Depends(require_staff)
+) -> dict[str, int]:
+    await _assert_staff_conv(conv_id, staff["sub"])
+    try:
+        aid = await _store_upload(conv_id, "staff", staff["sub"], file)
+    except AttachmentTooLarge:
+        raise HTTPException(413, "image too large") from None
+    except AttachmentBadType:
+        raise HTTPException(415, "unsupported image type") from None
+    return {"attachment_id": aid}
+
+
+@router.get("/staff/api/v1/conversations/{conv_id}/attachments/{aid}")
+async def staff_view_attachment(
+    conv_id: int, aid: int, staff: dict[str, Any] = Depends(require_staff)
+) -> RedirectResponse:
     row = await att_dao.get_attachment(aid)
     if not row or row["conversation_id"] != conv_id:
         raise HTTPException(404, "not found")
