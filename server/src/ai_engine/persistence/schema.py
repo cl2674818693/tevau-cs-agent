@@ -41,6 +41,8 @@ conversations = Table(
     Column("assigned_staff_id", String(64)),
     Column("assigned_at", String(32)),
     Column("archived", Integer, nullable=False, server_default="0"),
+    # 👎 反馈触发：运营据此筛出待复核会话。
+    Column("needs_review", Integer, nullable=False, server_default="0"),
     Column("created_at", String(32), nullable=False),
     CheckConstraint("user_type IN ('c','b','g')", name="ck_conversations_user_type"),
 )

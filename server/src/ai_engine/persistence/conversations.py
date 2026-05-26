@@ -107,6 +107,13 @@ async def archive_conversation(conv_id: int) -> None:
     await db.execute("UPDATE conversations SET archived=1 WHERE id=:id", {"id": conv_id})
 
 
+async def mark_needs_review(conv_id: int) -> None:
+    """👎 反馈触发：标记会话待运营复核，供工作台筛选。"""
+    await db.execute(
+        "UPDATE conversations SET needs_review=1 WHERE id=:id", {"id": conv_id}
+    )
+
+
 async def count_user_turns(conv_id: int) -> int:
     row = await db.fetch_one(
         "SELECT COUNT(*) AS n FROM messages WHERE conversation_id=:id AND role='user'",
