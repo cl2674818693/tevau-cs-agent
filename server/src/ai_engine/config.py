@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     chat_rate_limit_per_min: int = 30  # 单 subject 每分钟消息上限（spec §6.4 兜底层）
     # 限流共享存储；配置后多副本全局精确计数，未配则回退进程内（单副本/测试）
     redis_url: str | None = None
-    # 图片附件对象存储（S3 兼容：dev=MinIO，生产=OSS S3兼容端点/S3）。多实例需共享存储，故不用本地卷。
+    # 图片附件对象存储（S3 兼容：dev=MinIO，生产=OSS/S3）。多实例需共享存储，故不用本地卷。
     object_store_endpoint: str = "http://localhost:9000"
     object_store_bucket: str = "cs-attachments"
     object_store_access_key: str = ""

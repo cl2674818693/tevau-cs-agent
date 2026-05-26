@@ -12,6 +12,20 @@ import { AttachButton } from "./AttachButton";
 
 const MAX_IMAGES = 4;
 
+/** 粘贴板里的图片走上传，返回新增的 attachment id 列表（不含已有 ids）。 */
+async function uploadPastedImages(
+  files: FileList,
+  upload: (file: File) => Promise<number>,
+  room: number,
+): Promise<number[]> {
+  const imgs = Array.from(files)
+    .filter((f) => f.type.startsWith("image/"))
+    .slice(0, room);
+  const out: number[] = [];
+  for (const f of imgs) out.push(await upload(f));
+  return out;
+}
+
 export function InputBox({
   onSend,
   disabled,
@@ -54,16 +68,10 @@ export function InputBox({
   }
 
   async function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
-    if (!upload) return;
-    const imgs = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
-    if (imgs.length === 0) return;
+    if (!upload || e.clipboardData.files.length === 0) return;
     e.preventDefault();
-    let next = ids;
-    for (const f of imgs.slice(0, MAX_IMAGES - ids.length)) {
-      const id = await upload(f);
-      next = [...next, id];
-      setIds(next);
-    }
+    const added = await uploadPastedImages(e.clipboardData.files, upload, MAX_IMAGES - ids.length);
+    if (added.length) setIds([...ids, ...added]);
   }
 
   const canSend = !disabled && (v.trim().length > 0 || ids.length > 0);

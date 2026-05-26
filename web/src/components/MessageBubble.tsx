@@ -49,7 +49,55 @@ function FeedbackBar({ onFeedback }: { onFeedback: (rating: "up" | "down") => vo
   );
 }
 
-// eslint-disable-next-line max-lines-per-function -- 合并后保留两端 user/system/human_agent/assistant 分支
+type UrlFor = ((attachmentId: number) => string) | undefined;
+
+/** 用户气泡：右对齐，图片在上、文字气泡在下（纯图片时不渲染空气泡）。 */
+function UserBubble({ content, attachments, urlFor }: { content: string; attachments?: Attachment[]; urlFor: UrlFor }) {
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[80%] flex flex-col items-end gap-1">
+        <Attachments attachments={attachments} urlFor={urlFor} />
+        {content && (
+          <div className="rounded-lg rounded-tr-sm bg-brand text-ink-onbrand px-4 py-2.5 text-body1 font-medium whitespace-pre-wrap">
+            {content}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type HumanAgentMsg = Extract<Message, { role: "human_agent" }>;
+
+/** 客服气泡：署名 + 已验证标识，文字气泡 + 附件。 */
+function HumanAgentBubble({ m, urlFor }: { m: HumanAgentMsg; urlFor: UrlFor }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex gap-3 items-start">
+      <Avatar className="rounded-sm h-7 w-7">
+        <AvatarFallback className="rounded-sm bg-soft-warning text-status-warning font-bold">
+          {t("chat.agentAvatar")}
+        </AvatarFallback>
+      </Avatar>
+      <div className="flex-1 max-w-[85%]">
+        <div className="flex items-center gap-1.5 mb-1 px-1">
+          <span className="text-footnote font-bold text-status-warning">
+            {t("chat.agentLabel")} {m.display_name ?? ""}
+          </span>
+          <BadgeCheck className="h-3 w-3 text-status-warning" />
+          <span className="text-footnote text-ink-secondary">· {t("chat.agentVerified")}</span>
+        </div>
+        {m.content && (
+          <div className="bg-soft-warning border border-status-warning/30 rounded-lg rounded-tl-sm px-4 py-2.5 text-body1 text-ink whitespace-pre-wrap">
+            {m.content}
+          </div>
+        )}
+        <Attachments attachments={m.attachments} urlFor={urlFor} />
+      </div>
+    </div>
+  );
+}
+
 export function MessageBubble({
   m,
   userType = "b",
@@ -64,18 +112,7 @@ export function MessageBubble({
 }) {
   const { t } = useTranslation();
   if (m.role === "user") {
-    return (
-      <div className="flex justify-end">
-        <div className="max-w-[80%] flex flex-col items-end gap-1">
-          <Attachments attachments={m.attachments} urlFor={urlFor} />
-          {m.content && (
-            <div className="rounded-lg rounded-tr-sm bg-brand text-ink-onbrand px-4 py-2.5 text-body1 font-medium whitespace-pre-wrap">
-              {m.content}
-            </div>
-          )}
-        </div>
-      </div>
-    );
+    return <UserBubble content={m.content} attachments={m.attachments} urlFor={urlFor} />;
   }
   if (m.role === "system") {
     return (
@@ -87,30 +124,7 @@ export function MessageBubble({
     );
   }
   if (m.role === "human_agent") {
-    return (
-      <div className="flex gap-3 items-start">
-        <Avatar className="rounded-sm h-7 w-7">
-          <AvatarFallback className="rounded-sm bg-soft-warning text-status-warning font-bold">
-            {t("chat.agentAvatar")}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 max-w-[85%]">
-          <div className="flex items-center gap-1.5 mb-1 px-1">
-            <span className="text-footnote font-bold text-status-warning">
-              {t("chat.agentLabel")} {m.display_name ?? ""}
-            </span>
-            <BadgeCheck className="h-3 w-3 text-status-warning" />
-            <span className="text-footnote text-ink-secondary">· {t("chat.agentVerified")}</span>
-          </div>
-          {m.content && (
-            <div className="bg-soft-warning border border-status-warning/30 rounded-lg rounded-tl-sm px-4 py-2.5 text-body1 text-ink whitespace-pre-wrap">
-              {m.content}
-            </div>
-          )}
-          <Attachments attachments={m.attachments} urlFor={urlFor} />
-        </div>
-      </div>
-    );
+    return <HumanAgentBubble m={m} urlFor={urlFor} />;
   }
   // assistant
   return (
