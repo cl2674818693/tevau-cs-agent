@@ -1,14 +1,11 @@
 """MVP-2 端到端验收（spec §10），覆盖剧本 1-5。
 
-剧本 1 用自签 RS256 keypair 验证 C 端 JWT 流程（生产换 APP 真实公钥，仅配置变更）。
+剧本 1 用桩函数模拟 C 端 Sa-Token 经 gateway 换取 userCode 的流程。
 """
 
 from unittest.mock import AsyncMock, MagicMock
 
-import jwt
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import ASGITransport, AsyncClient
 
 
@@ -50,26 +47,19 @@ def _clear_rate():
     _RATE_BUCKET.clear()
 
 
-async def test_c_end_jwt_chat_uses_c_user_type(temp_db_url, monkeypatch, fake_stream):
-    """剧本 1：C 端 APP JWT（Bearer）→ 会话识别为 user_type=c。"""
-    priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    pub_pem = (
-        priv.public_key()
-        .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-        .decode()
-    )
-    priv_pem = priv.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        serialization.NoEncryption(),
-    ).decode()
-    monkeypatch.setenv("APP_JWT_PUBLIC_KEY", pub_pem)
+async def test_c_end_chat_uses_c_user_type(temp_db_url, monkeypatch, fake_stream):
+    """剧本 1：C 端 APP Sa-Token（Bearer）经 gateway 换出 userCode → 会话识别为 user_type=c。"""
     from ai_engine.config import settings
 
     settings.reload()
+    from ai_engine.auth import bu_session
     from ai_engine.integrations import anthropic_client as ac
     from ai_engine.persistence.db import init_db
 
+    async def fake_resolve_c_user(token):
+        return "U777" if token == "df90-token" else None
+
+    monkeypatch.setattr(bu_session, "resolve_c_user", fake_resolve_c_user)
     await init_db()
     monkeypatch.setattr(
         ac,
@@ -80,8 +70,7 @@ async def test_c_end_jwt_chat_uses_c_user_type(temp_db_url, monkeypatch, fake_st
             )
         ),
     )
-    token = jwt.encode({"typ": "c", "sub": "U777", "exp": 9999999999}, priv_pem, algorithm="RS256")
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": "Bearer df90-token"}
 
     async with _client() as client:
         init = await client.post("/api/v1/conversations", json={}, headers=headers)

@@ -44,8 +44,12 @@ class Settings(BaseSettings):
     cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
     unlimitpay_db_url: str | None = None  # 业务只读库（MVP-2 必填；MVP-1 测试时 None）
     nexus_db_url: str | None = None
-    app_jwt_public_key: str = ""  # C 端 APP JWT 验签公钥（APP 后端签发，本服务只验签）
-    app_jwt_algorithm: str = "RS256"
+    # C 端身份：APP 经 JS Bridge 注入 Sa-Token（不透明 UUID，非 JWT），本服务拿它调下面的
+    # gateway getCurrentUserInfo 换用户身份（userCode）。原 RS256 JWT 验签方案已作废。
+    c_app_api_base: str = "https://test2.tevaupay.com/gateway"  # C 端 OpenAPI 网关；按环境配
+    c_app_api_version: str = "2.0.002"  # 部分网关校验 version header
+    c_identity_cache_ttl: int = 300  # token→userCode 缓存秒数，避免每请求一次远程校验
+    c_identity_timeout_seconds: float = 5.0
     daily_token_limit: int = 500_000  # 单 BU/单 user 单日 token 硬阈值（spec §8 成本治理）
     chat_rate_limit_per_min: int = 30  # 单 subject 每分钟消息上限（spec §6.4 兜底层）
     # 限流共享存储；配置后多副本全局精确计数，未配则回退进程内（单副本/测试）

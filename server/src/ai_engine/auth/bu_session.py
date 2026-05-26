@@ -3,7 +3,7 @@ import time
 import jwt
 from fastapi import HTTPException, Request
 
-from ai_engine.auth.c_jwt import verify_app_jwt
+from ai_engine.auth.c_session import resolve_c_user
 from ai_engine.config import settings
 
 # 会话身份类型（集中定义，避免散落字面量）
@@ -61,20 +61,19 @@ async def require_bu(request: Request) -> str:
 
 
 async def resolve_identity(request: Request) -> tuple[str, str]:
-    """解析会话身份 → (user_type, subject_id)。优先级：C 端 Bearer JWT → B 端 cookie → 游客。
+    """解析会话身份 → (user_type, subject_id)。优先级：C 端 Bearer Sa-Token → B 端 cookie → 游客。
 
-    spec §4.1：C 端 APP 经 JS Bridge 注入 JWT（Bearer）；B 端主账户 ID 登录后 session cookie。
+    spec §4.1：C 端 APP 经 JS Bridge 注入 Sa-Token（Bearer）；B 端主账户 ID 登录后 session cookie。
     spec §7.6：反向 webhook 也用此身份解析（不硬性要求 Bearer）。
     未登录（无法解析出任何身份）时降级为游客（user_type=g）：仅通用问答，个人数据工具拒绝并引导登录。
     游客限流按前端持久化的 X-Guest-ID 隔离，缺失则归到 "anon"（弱隔离）。
     """
     auth = request.headers.get("authorization", "")
     if auth.startswith("Bearer "):
-        try:
-            claims = verify_app_jwt(auth[7:])
-            return USER_TYPE_C, str(claims["sub"])
-        except ValueError:
-            pass  # 落到 B 端 / 游客
+        # C 端：拿 Sa-Token 调 gateway getCurrentUserInfo 换 userCode；失败落到 B 端 / 游客
+        user_code = await resolve_c_user(auth[7:])
+        if user_code:
+            return USER_TYPE_C, user_code
     tenant_id = _tenant_from_request(request)
     if tenant_id:
         return USER_TYPE_B, tenant_id
