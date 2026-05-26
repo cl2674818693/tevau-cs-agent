@@ -15,7 +15,9 @@ from ai_engine.api.staff_conversations import (
     publish_user_message,
 )
 from ai_engine.auth.bu_session import USER_TYPE_GUEST, resolve_identity
+from ai_engine.config import settings
 from ai_engine.governance import rate_limit, token_budget
+from ai_engine.persistence import attachments as att_dao
 from ai_engine.persistence import conversations as conv_dao
 
 logger = logging.getLogger(__name__)
@@ -94,6 +96,14 @@ async def _duplicate_turn_id(conversation_id: int, client_message_id: str | None
     return int(prev["id"]) if prev else None
 
 
+def _parse_attachment_ids(raw: str | None) -> list[int]:
+    """逗号分隔的 attachment_ids → int 列表，按上限截断，忽略非数字。"""
+    if not raw:
+        return []
+    ids = [int(x) for x in raw.split(",") if x.strip().isdigit()]
+    return ids[: settings.attachment_max_per_message]
+
+
 async def _stream_ai_turn(
     conversation_id: int,
     user_type: str,
@@ -101,6 +111,7 @@ async def _stream_ai_turn(
     message: str,
     client_message_id: str | None,
     cancel_evt: asyncio.Event,
+    attachment_ids: list[int],
 ) -> AsyncIterator[dict[str, str]]:
     """正常 AI 回合：message_start → run_turn 事件映射 → message_stop。"""
     yield se.sse_payload(se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)})
@@ -111,6 +122,7 @@ async def _stream_ai_turn(
         subject_id=subject_id,
         user_message=message,
         client_message_id=client_message_id,
+        attachment_ids=attachment_ids,
     ):
         if cancel_evt.is_set():
             yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "cancelled"})
@@ -128,10 +140,12 @@ async def chat(
     conversation_id: int = Query(...),
     message: str = Query(...),
     client_message_id: str | None = Query(default=None),
+    attachment_ids: str | None = Query(default=None),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> EventSourceResponse:
     """SSE 主链路（两端：C 端 Bearer JWT / B 端 cookie）。client_message_id 用于幂等重放。"""
     user_type, subject_id = await _authorize_conversation(request, conversation_id)
+    att_ids = _parse_attachment_ids(attachment_ids)
     cancel_evt = asyncio.Event()
     _cancel_signals[conversation_id] = cancel_evt
 
@@ -168,8 +182,13 @@ async def chat(
             # spec §13：客服已接管 / 待接管时不调 AI，用户消息只入库 + 推给客服侧
             mode, _ = await conv_dao.get_mode(conversation_id)
             if mode in ("human_takeover", "human_pending"):
-                await conv_dao.append_message(conversation_id, role="user", content=message)
-                publish_user_message(conversation_id, message)
+                mid = await conv_dao.append_message(conversation_id, role="user", content=message)
+                bound = (
+                    await att_dao.bind_attachments(mid, conversation_id, subject_id, att_ids)
+                    if att_ids
+                    else []
+                )
+                publish_user_message(conversation_id, message, bound)
                 yield se.sse_payload(se.EVENT_MODE_CHANGE, {"to": mode})
                 yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "handed_to_human"})
                 return
@@ -198,7 +217,13 @@ async def chat(
                 return
 
             async for frame in _stream_ai_turn(
-                conversation_id, user_type, subject_id, message, client_message_id, cancel_evt
+                conversation_id,
+                user_type,
+                subject_id,
+                message,
+                client_message_id,
+                cancel_evt,
+                att_ids,
             ):
                 yield frame
         except Exception:  # 顶层兜底：记日志，对外只回固定文案，不外泄内部错误细节

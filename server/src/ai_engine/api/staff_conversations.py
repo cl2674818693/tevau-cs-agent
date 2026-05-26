@@ -123,9 +123,18 @@ async def _human_message_event(staff_sub: str, content: str) -> dict[str, Any]:
     }
 
 
-def publish_user_message(conv_id: int, content: str) -> None:
+def publish_user_message(
+    conv_id: int, content: str, attachments: list[dict[str, Any]] | None = None
+) -> None:
     """human_takeover/pending 时，chat 端点把用户消息推到订阅该会话的客服侧。"""
-    _publish(conv_id, {"type": "user_message", "content": content})
+    _publish(
+        conv_id,
+        {
+            "type": "user_message",
+            "content": content,
+            "attachments": [{"id": a["id"], "mime": a["mime"]} for a in (attachments or [])],
+        },
+    )
 
 
 def publish_ai_draft(conv_id: int, draft: str) -> None:

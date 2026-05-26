@@ -207,6 +207,7 @@ async def run_turn(
     user_message: str,
     model: str | None = None,
     client_message_id: str | None = None,
+    attachment_ids: list[int] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     # spec §8 prompt 版本化：按 subject_id 哈希分桶选版本；该版本贯穿本轮
     prompt_version = pick_version(subject_id)
@@ -222,9 +223,14 @@ async def run_turn(
         # 未压缩：回放该会话已有历史，让模型看到多轮上下文
         messages = await _load_history(conversation_id)
 
-    messages.append({"role": "user", "content": user_message})
     # 回合开始：user 行入库置 processing，承载状态机/幂等键/verdict
     turn_id = await append_user_turn(conversation_id, user_message, client_message_id)
+    # 绑定本轮上传的图片附件（归属校验 + 防重复绑定在 DAO 内）；注入 LLM 见 Task7
+    if attachment_ids:
+        from ai_engine.persistence import attachments as att_dao
+
+        await att_dao.bind_attachments(turn_id, conversation_id, subject_id, attachment_ids)
+    messages.append({"role": "user", "content": user_message})
     # spec §6.2：按用户消息语言更新会话推断语言（None 时不覆盖，保留上轮判定）
     locale = _detect_locale(user_message)
     if locale:
