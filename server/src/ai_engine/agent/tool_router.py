@@ -11,6 +11,22 @@ from ai_engine.persistence.business_db import get_db
 NEEDS_CONVERSATION_ID = {"create_ticket"}
 NEEDS_USER_TYPE = {"create_ticket"}
 
+
+def _result_count(data: object) -> int:
+    """从工具返回推断有效结果条数：优先 *count* 整数键之和；否则 list 值长度之和；
+    否则按非空记录算(排除 note/unmasked/pii_note 等元字段)，非空记 1。"""
+    if not isinstance(data, dict):
+        return 1 if data else 0
+    count_vals = [v for k, v in data.items() if k.endswith("count") and isinstance(v, int)]
+    if count_vals:
+        return sum(count_vals)
+    lists = [v for v in data.values() if isinstance(v, list)]
+    if lists:
+        return sum(len(v) for v in lists)
+    records = [v for k, v in data.items()
+               if k not in ("note", "unmasked", "pii_note") and v not in (None, {}, [], "")]
+    return 1 if records else 0
+
 # C 端会话身份是 gateway 的 userCode（如 U43825474），但业务库各表按数字 user_id 隔离。
 # 注入工具前必须把 userCode 翻成数字 id，否则 WHERE user_id='U...' 永远查空（KYC/流水全查不到）。
 _c_user_id_cache: dict[str, str] = {}
@@ -48,13 +64,19 @@ async def dispatch(
 ) -> dict[str, Any]:
     tool = base.get(tool_name)
     if tool is None:
-        await log_tool_call(conversation_id, tool_name, params, 0, 0, True, "unknown tool")
+        await log_tool_call(
+            conversation_id, tool_name, params, 0, 0, True, "unknown tool",
+            result_count=0, is_empty=True, subject_id=subject_id, user_type=user_type,
+        )
         metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
         return {"ok": False, "error": f"unknown tool: {tool_name}"}
 
     # 游客降级：未登录用户禁用一切需要身份隔离的工具（含 create_ticket），返回引导登录回执。
     if user_type == USER_TYPE_GUEST and tool.requires_subject_id:
-        await log_tool_call(conversation_id, tool_name, params, 0, 0, True, "guest not allowed")
+        await log_tool_call(
+            conversation_id, tool_name, params, 0, 0, True, "guest not allowed",
+            result_count=0, is_empty=True, subject_id=subject_id, user_type=user_type,
+        )
         metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
         return {"ok": False, "error": _GUEST_BLOCKED}
 
@@ -71,7 +93,8 @@ async def dispatch(
             inject_value = await _c_user_id(subject_id)
             if inject_value is None:
                 await log_tool_call(
-                    conversation_id, tool_name, params, 0, 0, True, "c user_code unmapped"
+                    conversation_id, tool_name, params, 0, 0, True, "c user_code unmapped",
+                    result_count=0, is_empty=True, subject_id=subject_id, user_type=user_type,
                 )
                 metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
                 return {
@@ -94,6 +117,7 @@ async def dispatch(
         data = await tool.handler(**safe_params)
         duration_ms = int((time.perf_counter() - started) * 1000)
         payload = json.dumps(data, ensure_ascii=False)
+        rc = _result_count(data)
         await log_tool_call(
             conversation_id,
             tool_name,
@@ -102,18 +126,26 @@ async def dispatch(
             duration_ms,
             False,
             None,
+            result_count=rc,
+            is_empty=(rc == 0),
+            subject_id=subject_id,
+            user_type=user_type,
         )
         _observe(tool_name, duration_ms, ok=True)
         return {"ok": True, "data": data}
     except ValueError as e:
         duration_ms = int((time.perf_counter() - started) * 1000)
-        await log_tool_call(conversation_id, tool_name, safe_params, 0, duration_ms, True, str(e))
+        await log_tool_call(
+            conversation_id, tool_name, safe_params, 0, duration_ms, True, str(e),
+            result_count=0, is_empty=True, subject_id=subject_id, user_type=user_type,
+        )
         _observe(tool_name, duration_ms, ok=False)
         return {"ok": False, "error": f"invalid args: {e}"}
     except Exception as e:
         duration_ms = int((time.perf_counter() - started) * 1000)
         await log_tool_call(
-            conversation_id, tool_name, safe_params, 0, duration_ms, True, f"internal: {e}"
+            conversation_id, tool_name, safe_params, 0, duration_ms, True, f"internal: {e}",
+            result_count=0, is_empty=True, subject_id=subject_id, user_type=user_type,
         )
         _observe(tool_name, duration_ms, ok=False)
         return {"ok": False, "error": "internal error"}
