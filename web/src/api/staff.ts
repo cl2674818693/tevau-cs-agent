@@ -5,6 +5,12 @@ export type StaffConversation = {
   mode: string;
   assigned_staff_id: string | null;
   created_at: string;
+  // 风险标记（后端可能返回 boolean 或 0/1，渲染时用 !!x 判断）
+  has_failed?: boolean | number;
+  has_out_of_scope?: boolean | number;
+  has_downvote?: boolean | number;
+  has_empty_tool?: boolean | number;
+  needs_review?: boolean | number;
 };
 
 export type StaffInfo = { staff_id: string; display_name: string; role: string };
@@ -29,8 +35,11 @@ export async function staffLogin(
 export async function listStaffConversations(
   token: string,
   status: string,
+  riskOnly?: boolean,
 ): Promise<StaffConversation[]> {
-  const r = await fetch(`/staff/api/v1/conversations?status=${encodeURIComponent(status)}`, {
+  const qs = new URLSearchParams({ status });
+  if (riskOnly) qs.set("risk_only", "true");
+  const r = await fetch(`/staff/api/v1/conversations?${qs.toString()}`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`list failed ${r.status}`);
