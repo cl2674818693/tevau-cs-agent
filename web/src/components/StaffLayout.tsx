@@ -5,7 +5,8 @@ import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 
 const NAV_ITEMS: { to: string; label: string; adminOnly?: boolean }[] = [
-  { to: "/staff/conversations", label: "工单" },
+  { to: "/staff/conversations", label: "工作台" },
+  { to: "/staff/tickets", label: "工单" },
   { to: "/staff/kpi", label: "KPI" },
   { to: "/staff/insights", label: "知识缺口" },
   { to: "/staff/audits", label: "工具审计" },

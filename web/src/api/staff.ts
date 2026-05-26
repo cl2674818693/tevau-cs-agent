@@ -324,6 +324,42 @@ export async function getRecentAudits(
   return (await r.json()).audits as ToolAudit[];
 }
 
+// ---- 运营只读工单列表（外部事项中心是状态真源，本地仅只读镜像）----
+
+export type Ticket = {
+  external_id: string;
+  category: string | null;
+  severity: string | null;
+  conversation_id: number;
+  created_at: string;
+  closed: boolean;
+};
+
+export type ListTicketsFilter = {
+  open?: boolean;
+  severity?: string;
+  category?: string;
+  beforeId?: string;
+  limit?: number;
+};
+
+export async function listTickets(
+  token: string,
+  filter: ListTicketsFilter = {},
+): Promise<Ticket[]> {
+  const { open, severity, category, beforeId, limit = 50 } = filter;
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (open) qs.set("open", "true");
+  if (severity) qs.set("severity", severity);
+  if (category) qs.set("category", category);
+  if (beforeId) qs.set("before_id", beforeId);
+  const r = await fetch(`/staff/api/v1/tickets?${qs.toString()}`, {
+    headers: authHeaders(token),
+  });
+  if (!r.ok) throw new Error(`list tickets failed ${r.status}`);
+  return (await r.json()).tickets as Ticket[];
+}
+
 export type StaffStreamEvent = {
   type: string;
   content?: string;

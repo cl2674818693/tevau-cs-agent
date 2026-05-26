@@ -72,6 +72,77 @@ async def update_ticket_severity(external_id: str, severity: str) -> None:
     )
 
 
+async def list_tickets(
+    open_only: bool = False,
+    severity: str | None = None,
+    category: str | None = None,
+    limit: int = 50,
+    before_id: str | None = None,
+) -> list[dict[str, object]]:
+    """运营只读工单列表（最新在前）。外部事项中心是状态真源，本地仅做只读镜像。
+
+    - open_only: 只看未关闭（沿用 NOT EXISTS(event='closed') 现算逻辑）
+    - severity: 按 current_severity 镜像列过滤
+    - category: 按 payload_json.category 过滤（在 Python 侧筛，避免 JSON 方言差异）
+    - before_id: 游标分页，返回 created_at 早于该游标（external_id）的工单
+
+    返回每条含：external_id / category / severity / conversation_id / created_at / closed。
+    WHERE 片段全为固定字符串，值全走绑定参数，不拼用户输入。
+    """
+    where = [
+        "NOT EXISTS (SELECT 1 FROM ticket_events e "
+        "WHERE e.external_id = t.external_id AND e.event = 'closed')"
+    ] if open_only else []
+    binds: dict[str, object] = {"lim": limit}
+    if severity is not None:
+        where.append("t.current_severity = :sev")
+        binds["sev"] = severity
+    if before_id is not None:
+        # 游标：取该 external_id 的 created_at 之前的工单（created_at 单调递增的字符串时间戳）
+        cur = await db.fetch_one(
+            "SELECT created_at FROM tickets WHERE external_id = :bid", {"bid": before_id}
+        )
+        if cur is not None:
+            where.append("t.created_at < :cur_at")
+            binds["cur_at"] = cur["created_at"]
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    sql = (
+        "SELECT t.external_id, t.conversation_id, t.payload_json, t.current_severity, "
+        f"t.created_at FROM tickets t{clause} "
+        "ORDER BY t.created_at DESC, t.external_id DESC LIMIT :lim"
+    )
+    rows = await db.fetch_all(sql, binds)
+    # closed 态现算：本次查询的 external_id 是否有 closed 事件
+    closed_set: set[str] = set()
+    if rows:
+        ext_ids = [str(r["external_id"]) for r in rows]
+        placeholders = ",".join(f":e{i}" for i in range(len(ext_ids)))
+        ev_rows = await db.fetch_all(
+            f"SELECT DISTINCT external_id FROM ticket_events "
+            f"WHERE event = 'closed' AND external_id IN ({placeholders})",
+            {f"e{i}": eid for i, eid in enumerate(ext_ids)},
+        )
+        closed_set = {str(r["external_id"]) for r in ev_rows}
+    out: list[dict[str, object]] = []
+    for row in rows:
+        payload = json.loads(str(row["payload_json"]))
+        cat = payload.get("category")
+        if category is not None and cat != category:
+            continue
+        ext = str(row["external_id"])
+        out.append(
+            {
+                "external_id": ext,
+                "category": cat,
+                "severity": row["current_severity"],
+                "conversation_id": row["conversation_id"],
+                "created_at": row["created_at"],
+                "closed": ext in closed_set,
+            }
+        )
+    return out
+
+
 async def get_ticket(external_id: str) -> dict[str, object] | None:
     row = await db.fetch_one(
         """SELECT external_id, conversation_id, payload_json, current_severity, created_at

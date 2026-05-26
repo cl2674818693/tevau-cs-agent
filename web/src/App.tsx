@@ -13,6 +13,7 @@ import { InsightsRoute } from "./routes/staff/InsightsRoute";
 import { KpiRoute } from "./routes/staff/KpiRoute";
 import { SpectateRoute } from "./routes/staff/SpectateRoute";
 import { StaffLoginRoute } from "./routes/staff/StaffLoginRoute";
+import { TicketsRoute } from "./routes/staff/TicketsRoute";
 import "./styles/globals.css";
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="/staff/kpi" element={<KpiRoute />} />
             <Route path="/staff/insights" element={<InsightsRoute />} />
             <Route path="/staff/audits" element={<AuditsRoute />} />
+            <Route path="/staff/tickets" element={<TicketsRoute />} />
             <Route path="/admin/prompts" element={<PromptsRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
