@@ -8,7 +8,7 @@ def test_default_version_and_files_exist():
     assert v == "v1.0.0"  # 稳定基线
     # 两个版本所有 key 文件都能读
     for version in ("v1.0.0", "v1.1.0"):
-        for key in ("role", "topic_scope", "classification", "tools_usage", "self_check"):
+        for key in ("role", "topic_scope_c", "topic_scope_b", "classification", "tools_usage", "self_check"):
             assert registry.file_path(version, key).exists()
 
 

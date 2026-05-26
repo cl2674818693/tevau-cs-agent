@@ -36,7 +36,8 @@ def build_system_blocks(
         return read_prompt(key, version=v)
 
     role = rd("role")
-    topic_scope = rd("topic_scope")  # spec §6.4 话题边界第一层（MVP-1 唯一防御）
+    # spec §6.4 话题边界第一层；按受众分版：B 端含 Open API 口径，C 端/游客不暴露 Open API
+    topic_scope = rd("topic_scope_b") if user_type == "b" else rd("topic_scope_c")
     classification = rd("classification")
     tools_usage = rd("tools_usage")
     # MVP-2：按 user_type 切换回复风格（C 端 / 游客语言化，B 端技术化）

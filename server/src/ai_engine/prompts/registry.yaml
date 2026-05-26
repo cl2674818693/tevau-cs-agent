@@ -5,7 +5,8 @@ versions:
     model: claude-sonnet-4-6
     files:
       role: v1.0.0/role.md
-      topic_scope: v1.0.0/topic_scope.md
+      topic_scope_c: v1.0.0/topic_scope.c.md
+      topic_scope_b: v1.0.0/topic_scope.b.md
       classification: v1.0.0/classification.md
       tools_usage: v1.0.0/tools_usage.md
       reply_style_b: v1.0.0/reply_style.b.md
@@ -15,7 +16,8 @@ versions:
     model: claude-sonnet-4-6
     files:
       role: v1.1.0/role.md
-      topic_scope: v1.1.0/topic_scope.md
+      topic_scope_c: v1.1.0/topic_scope.c.md
+      topic_scope_b: v1.1.0/topic_scope.b.md
       classification: v1.1.0/classification.md
       tools_usage: v1.1.0/tools_usage.md
       reply_style_b: v1.1.0/reply_style.b.md
