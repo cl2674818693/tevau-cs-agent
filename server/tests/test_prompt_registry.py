@@ -1,3 +1,7 @@
+import shutil
+
+import pytest
+
 from ai_engine.prompts import registry
 from ai_engine.prompts.loader import build_system_blocks, read_prompt
 
@@ -73,3 +77,80 @@ def test_versions_have_real_diff():
     assert base != exp
     assert "复述" not in base
     assert "复述" in exp
+
+
+# ── Task 6.1 新增测试 ────────────────────────────────────────────────────────
+
+def test_validate_version_files_passes_for_existing_version():
+    """validate_version_files 对完整版本无异常。"""
+    registry.reload_registry()
+    # 不 raise 即通过
+    registry.validate_version_files("v1.0.0")
+    registry.validate_version_files("v1.1.0")
+
+
+def test_validate_version_files_raises_for_missing_file(tmp_path, monkeypatch):
+    """validate_version_files 对缺文件的版本 raise ValueError。"""
+    # 把 prompts 目录复制到 tmp，删掉一个文件，让 registry 指向 tmp
+    import os
+
+    src = "src/ai_engine/prompts"
+    dst = tmp_path / "prompts"
+    shutil.copytree(src, dst)
+    # 删掉 v1.0.0/role.md
+    os.remove(dst / "v1.0.0" / "role.md")
+
+    monkeypatch.setenv("PROMPTS_DIR", str(dst))
+    from ai_engine.config import settings
+    settings.reload()
+    registry.reload_registry()
+
+    with pytest.raises(ValueError, match="role"):
+        registry.validate_version_files("v1.0.0")
+
+    # 恢复
+    monkeypatch.undo()
+    settings.reload()
+    registry.reload_registry()
+
+
+def test_update_rollout_rejects_version_with_missing_files(tmp_path, monkeypatch):
+    """update_rollout 指向缺文件的版本时 raise ValueError，阻止写入。"""
+    import os
+
+    src = "src/ai_engine/prompts"
+    dst = tmp_path / "prompts"
+    shutil.copytree(src, dst)
+    os.remove(dst / "v1.1.0" / "role.md")
+
+    monkeypatch.setenv("PROMPTS_DIR", str(dst))
+    from ai_engine.config import settings
+    settings.reload()
+    registry.reload_registry()
+
+    with pytest.raises(ValueError):
+        registry.update_rollout({"v1.1.0": 10, "v1.0.0": 90})
+
+    monkeypatch.undo()
+    settings.reload()
+    registry.reload_registry()
+
+
+def test_update_rollout_succeeds_when_all_files_present(tmp_path, monkeypatch):
+    """update_rollout 对所有文件齐全的版本正常写入。"""
+    src = "src/ai_engine/prompts"
+    dst = tmp_path / "prompts"
+    shutil.copytree(src, dst)
+
+    monkeypatch.setenv("PROMPTS_DIR", str(dst))
+    from ai_engine.config import settings
+    settings.reload()
+    registry.reload_registry()
+
+    # 应不 raise
+    registry.update_rollout({"v1.1.0": 30, "v1.0.0": 70})
+    assert registry.get_rollout() == {"v1.1.0": 30, "v1.0.0": 70}
+
+    monkeypatch.undo()
+    settings.reload()
+    registry.reload_registry()

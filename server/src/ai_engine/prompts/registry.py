@@ -67,6 +67,20 @@ def get_rollout() -> dict[str, int]:
     return {k: int(v) for k, v in load_registry().get("rollout", {}).items()}
 
 
+def validate_version_files(version: str) -> None:
+    """验证 version 声明的所有 prompt key 文件都存在，否则 raise ValueError。"""
+    cfg = load_registry()
+    files: dict[str, str] = cfg["versions"][version].get("files", {})
+    missing = [
+        key for key, rel in files.items()
+        if not (Path(settings.prompts_dir) / rel).exists()
+    ]
+    if missing:
+        raise ValueError(
+            f"version {version!r} missing prompt files for keys: {sorted(missing)}"
+        )
+
+
 def update_rollout(rollout: dict[str, int]) -> None:
     """改灰度比例并写回 registry.yaml + 热加载。键必须是已声明版本，值之和 ≤ 100。"""
     cfg = load_registry()
@@ -76,6 +90,9 @@ def update_rollout(rollout: dict[str, int]) -> None:
         raise ValueError(f"unknown versions: {sorted(unknown)}")
     if any(v < 0 for v in rollout.values()) or sum(rollout.values()) > 100:
         raise ValueError("rollout percentages must be >=0 and sum <= 100")
+    # 校验所有涉及版本的文件均存在
+    for version in rollout:
+        validate_version_files(version)
     cfg = dict(cfg)
     cfg["rollout"] = {k: int(v) for k, v in rollout.items()}
     _registry_path().write_text(

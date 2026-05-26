@@ -174,3 +174,14 @@ message_feedback = Table(
     CheckConstraint("rating IN ('up','down')", name="ck_feedback_rating"),
 )
 Index("idx_feedback_conv", message_feedback.c.conversation_id)
+
+# 灰度变更审计留痕（Task 6.1）：记录谁在何时把 rollout 从 X 改到 Y。
+prompt_changes = Table(
+    "prompt_changes",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("actor", String(128), nullable=False),
+    Column("old_json", Text, nullable=False),
+    Column("new_json", Text, nullable=False),
+    Column("created_at", String(32), nullable=False),
+)
