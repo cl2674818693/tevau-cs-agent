@@ -149,21 +149,68 @@ export type KnowledgeGaps = {
   out_of_scope: number;
   failed_turns: number;
   thumbs_down: number;
+  human_handoff: number;
 };
+
+export type InsightsRange = { from?: string; to?: string };
 
 export async function getKnowledgeGaps(
   token: string,
-  from?: string,
-  to?: string,
+  range: InsightsRange = {},
 ): Promise<KnowledgeGaps> {
   const qs = new URLSearchParams();
-  if (from) qs.set("from", from);
-  if (to) qs.set("to", to);
+  if (range.from) qs.set("from", range.from);
+  if (range.to) qs.set("to", range.to);
   const r = await fetch(`/staff/api/v1/insights/knowledge-gaps?${qs.toString()}`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`insights failed ${r.status}`);
   return r.json();
+}
+
+export type ToolHealth = {
+  tool_name: string;
+  calls: number;
+  empty: number;
+  rejected: number;
+  empty_rate: number;
+};
+
+export async function getToolHealth(
+  token: string,
+  range: InsightsRange = {},
+): Promise<ToolHealth[]> {
+  const qs = new URLSearchParams();
+  if (range.from) qs.set("from", range.from);
+  if (range.to) qs.set("to", range.to);
+  const r = await fetch(`/staff/api/v1/insights/tool-health?${qs.toString()}`, {
+    headers: authHeaders(token),
+  });
+  if (!r.ok) throw new Error(`tool-health failed ${r.status}`);
+  return (await r.json()).tools as ToolHealth[];
+}
+
+export type GapKind = "out_of_scope" | "failed" | "thumbs_down" | "human_handoff";
+
+export type GapConversation = {
+  conversation_id: number;
+  last_at: string;
+};
+
+export async function getGapConversations(
+  token: string,
+  kind: GapKind,
+  range: InsightsRange & { limit?: number } = {},
+): Promise<GapConversation[]> {
+  const qs = new URLSearchParams({ kind });
+  if (range.from) qs.set("from", range.from);
+  if (range.to) qs.set("to", range.to);
+  if (range.limit != null) qs.set("limit", String(range.limit));
+  const r = await fetch(`/staff/api/v1/insights/gap-conversations?${qs.toString()}`, {
+    headers: authHeaders(token),
+  });
+  if (!r.ok) throw new Error(`gap-conversations failed ${r.status}`);
+  return (await r.json()).conversations as GapConversation[];
 }
 
 export type StaffMessage = {
