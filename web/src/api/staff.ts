@@ -173,6 +173,7 @@ export type StaffMessage = {
   error_code: string | null;
   topic_verdict: string | null;
   created_at: string;
+  attachments?: { id: number; mime: string }[];
 };
 
 export async function getConversationMessages(token: string, id: number): Promise<StaffMessage[]> {
@@ -245,6 +246,7 @@ export type StaffStreamEvent = {
   input?: Record<string, unknown>; // tool_use：入参
   to_staff_id?: string; // transferred
   by_staff_id?: string; // mode_change
+  attachments?: { id: number; mime: string }[]; // user_message / human_message 带图
 };
 
 /** 取单个会话当前状态（mode/assigned_staff_id），用于详情页初始化接管态。 */

@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 
 from ai_engine.auth.staff_session import require_staff
+from ai_engine.persistence import attachments as att_dao
 from ai_engine.persistence import audit as audit_dao
 from ai_engine.persistence import conversations as conv_dao
 from ai_engine.persistence import feedback as fb_dao
@@ -24,8 +25,12 @@ router = APIRouter()
 async def conversation_messages(
     conv_id: int, staff: dict[str, Any] = Depends(require_staff)
 ) -> dict[str, Any]:
-    """会话完整消息历史（含 status/topic_verdict/error_code），用于留痕回看。"""
-    return {"conversation_id": conv_id, "messages": await conv_dao.list_messages(conv_id)}
+    """会话完整消息历史（含 status/topic_verdict/error_code + 图片附件），用于留痕回看。"""
+    messages = await conv_dao.list_messages(conv_id)
+    att_map = await att_dao.list_for_conversation(conv_id)  # message_id -> [{id, mime}]
+    for m in messages:
+        m["attachments"] = att_map.get(int(m["id"]), [])
+    return {"conversation_id": conv_id, "messages": messages}
 
 
 @router.get("/staff/api/v1/conversations/{conv_id}/tool-audits")

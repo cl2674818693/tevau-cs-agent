@@ -115,7 +115,16 @@ async def _stream_ai_turn(
 ) -> AsyncIterator[dict[str, str]]:
     """正常 AI 回合：message_start → run_turn 事件映射 → message_stop。"""
     yield se.sse_payload(se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)})
-    publish_conversation_event(conversation_id, {"type": "user_message", "content": message})
+    # 旁观客服可见用户发的图：把本轮附件 id/mime 一并推到旁观总线（绑定在 run_turn 内完成）
+    spectator_atts = []
+    for aid in attachment_ids:
+        row = await att_dao.get_attachment(aid)
+        if row and row["conversation_id"] == conversation_id:
+            spectator_atts.append({"id": row["id"], "mime": row["mime"]})
+    publish_conversation_event(
+        conversation_id,
+        {"type": "user_message", "content": message, "attachments": spectator_atts},
+    )
     async for ev in runtime.run_turn(
         conversation_id=conversation_id,
         user_type=user_type,
