@@ -1,6 +1,6 @@
 from typing import Any
 
-from ai_engine.agent.tools.base import Tool, register
+from ai_engine.agent.tools.base import Tool, label, register
 from ai_engine.integrations.redact import mask_email, mask_phone
 from ai_engine.persistence.business_db import get_db
 
@@ -13,7 +13,7 @@ WHERE id=%s AND del=0
 """
 
 _USER_STATUS: dict[Any, str] = {0: "正常", 1: "冻结", 2: "注销"}
-_KYC_STATUS: dict[Any, str] = {0: "审核中", 1: "认证通过", 2: "未通过", 5: "未认证"}
+_KYC_STATUS: dict[Any, str] = {0: "未认证", 1: "已认证", 2: "认证失败", 3: "审核中"}
 _OPEN_CARD: dict[Any, str] = {0: "未开卡", 1: "已开卡"}
 
 
@@ -34,9 +34,9 @@ async def run(user_id: str, unmask: bool = False) -> dict[str, Any]:
             "nick_name": row.get("nick_name"),
             "email": email if unmask else mask_email(email),
             "phone": phone if unmask else mask_phone(phone),
-            "user_status": _USER_STATUS.get(row.get("user_status"), row.get("user_status")),
-            "kyc_status": _KYC_STATUS.get(row.get("kyc_status"), row.get("kyc_status")),
-            "open_card_status": _OPEN_CARD.get(row.get("open_card_status")),
+            "user_status": label(_USER_STATUS, row.get("user_status")),
+            "kyc_status": label(_KYC_STATUS, row.get("kyc_status")),
+            "open_card_status": label(_OPEN_CARD, row.get("open_card_status")),
             "registration_time": str(reg) if reg else None,
             "last_login_time": str(last) if last else None,
         },
