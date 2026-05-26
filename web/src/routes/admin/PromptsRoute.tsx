@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { getPromptVersions, setRollout } from "../../api/admin";
+import { getPromptAbStats, getPromptVersions, setRollout } from "../../api/admin";
+import type { PromptAbStat } from "../../api/admin";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -34,12 +35,32 @@ function RolloutRow({
   );
 }
 
+/** 将 Date 转成后端要求的 "YYYY-MM-DD HH:MM:SS" UTC 格式 */
+function toUtcParam(d: Date): string {
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
+/** 时间窗选项 */
+type WindowOption = "7d" | "30d";
+
+function windowFrom(opt: WindowOption): string {
+  const now = new Date();
+  const days = opt === "7d" ? 7 : 30;
+  return toUtcParam(new Date(now.getTime() - days * 24 * 60 * 60 * 1000));
+}
+
 export function PromptsRoute() {
   const { token, role } = useStaffSession();
   const [versions, setVersions] = useState<string[]>([]);
   const [rollout, setRolloutState] = useState<Record<string, number>>({});
   const [notice, setNotice] = useState("");
   const [err, setErr] = useState("");
+
+  // AB 表现
+  const [window, setWindow] = useState<WindowOption>("7d");
+  const [abStats, setAbStats] = useState<PromptAbStat[]>([]);
+  const [abErr, setAbErr] = useState("");
+  const [abLoading, setAbLoading] = useState(false);
 
   useEffect(() => {
     if (!token || role !== "admin") {
@@ -53,6 +74,16 @@ export function PromptsRoute() {
       })
       .catch(() => setErr("加载失败"));
   }, [token, role]);
+
+  useEffect(() => {
+    if (!token || role !== "admin") return;
+    setAbLoading(true);
+    setAbErr("");
+    getPromptAbStats(token, { from: windowFrom(window) })
+      .then((d) => setAbStats(d.versions))
+      .catch(() => setAbErr("加载表现数据失败"))
+      .finally(() => setAbLoading(false));
+  }, [token, role, window]);
 
   const total = Object.values(rollout).reduce((a, b) => a + (b || 0), 0);
 
@@ -100,6 +131,114 @@ export function PromptsRoute() {
       <Button size="md" className="mt-3" onClick={save} disabled={total > 100}>
         保存
       </Button>
+
+      {/* 各版本表现对比 */}
+      <div className="mt-6">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-body2 font-medium text-ink-primary">各版本表现</span>
+          <div className="flex gap-1">
+            {(["7d", "30d"] as WindowOption[]).map((opt) => (
+              <button
+                key={opt}
+                onClick={() => setWindow(opt)}
+                className={[
+                  "px-2 py-0.5 rounded text-body3 transition-colors",
+                  window === opt
+                    ? "bg-brand-primary text-white"
+                    : "text-ink-secondary hover:text-ink-primary",
+                ].join(" ")}
+              >
+                {opt === "7d" ? "近 7 天" : "近 30 天"}
+              </button>
+            ))}
+          </div>
+        </div>
+        {abErr && (
+          <Alert variant="error" className="mb-2">
+            {abErr}
+          </Alert>
+        )}
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full text-body3">
+              <thead>
+                <tr className="border-b border-line-default text-ink-secondary">
+                  <th className="px-3 py-2 text-left font-normal">版本</th>
+                  <th className="px-3 py-2 text-right font-normal">assistant 轮次</th>
+                  <th className="px-3 py-2 text-right font-normal">失败数</th>
+                  <th className="px-3 py-2 text-right font-normal">失败率</th>
+                  <th className="px-3 py-2 text-right font-normal">差评数</th>
+                  <th className="px-3 py-2 text-right font-normal">差评率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {abLoading && (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-4 text-center text-ink-tertiary">
+                      加载中…
+                    </td>
+                  </tr>
+                )}
+                {!abLoading && abStats.length === 0 && !abErr && (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-4 text-center text-ink-tertiary">
+                      暂无数据
+                    </td>
+                  </tr>
+                )}
+                {!abLoading &&
+                  abStats.map((s) => {
+                    const failedHigh = s.failed_rate > 0.1;
+                    const downvoteHigh = s.downvote_rate > 0.2;
+                    return (
+                      <tr key={s.version} className="border-b border-line-default last:border-0">
+                        <td className="px-3 py-2 text-ink-primary">{s.version}</td>
+                        <td className="px-3 py-2 text-right text-ink-secondary">
+                          {s.assistant_turns}
+                        </td>
+                        <td
+                          className={[
+                            "px-3 py-2 text-right",
+                            failedHigh ? "text-status-error" : "text-ink-secondary",
+                          ].join(" ")}
+                        >
+                          {s.failed}
+                        </td>
+                        <td
+                          className={[
+                            "px-3 py-2 text-right",
+                            failedHigh ? "text-status-error" : "text-ink-secondary",
+                          ].join(" ")}
+                        >
+                          {(s.failed_rate * 100).toFixed(1)}%
+                        </td>
+                        <td
+                          className={[
+                            "px-3 py-2 text-right",
+                            downvoteHigh ? "text-status-error" : "text-ink-secondary",
+                          ].join(" ")}
+                        >
+                          {s.downvote}
+                        </td>
+                        <td
+                          className={[
+                            "px-3 py-2 text-right",
+                            downvoteHigh ? "text-status-error" : "text-ink-secondary",
+                          ].join(" ")}
+                        >
+                          {(s.downvote_rate * 100).toFixed(1)}%
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+        <p className="mt-1 text-footnote text-ink-tertiary">
+          差评率分母 = 该版本 assistant 消息数
+        </p>
+      </div>
     </PageContainer>
   );
 }
