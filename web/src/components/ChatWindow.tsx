@@ -1,3 +1,4 @@
+import { uploadAttachment } from "../api/attachments";
 import { sendFeedback, sendTicketUserEvent } from "../api/chat";
 import { userType } from "../api/identity";
 import type { ConversationInit } from "../types";
@@ -123,6 +124,7 @@ export function ChatWindow() {
         onSend={send}
         disabled={sending || chat.rateLimited}
         placeholder={inputPlaceholder(chat.rateLimited, mode)}
+        upload={init ? (f) => uploadAttachment(init.conversation_id, f) : undefined}
       />
     </div>
   );

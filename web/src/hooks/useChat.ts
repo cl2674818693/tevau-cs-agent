@@ -148,7 +148,7 @@ function useChatSend(
   const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, attachmentIds?: number[]) => {
       if (!init || rateLimited) return;
       // 幂等键：本次发送固定一个 id，重连/重发复用以避免后端重复处理。
       // 在 setSending 前算好（纯计算），避免中途抛错导致 sending 卡死。
@@ -157,7 +157,12 @@ function useChatSend(
         globalThis.crypto?.randomUUID?.() ??
         `m-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       setSending(true);
-      actions.setMessages((prev) => [...prev, { role: "user", content: text }]);
+      // 本地追加 user 行（沿用既有非乐观以外的本地回显约定），附件用 id 拼看图 URL 渲染
+      const atts = (attachmentIds ?? []).map((id) => ({ id, mime: "image/*" }));
+      actions.setMessages((prev) => [
+        ...prev,
+        { role: "user", content: text, attachments: atts },
+      ]);
       const controller = new AbortController();
       abortRef.current = controller;
       try {
@@ -167,6 +172,7 @@ function useChatSend(
           lastEventId: lastEventIdRef.current,
           signal: controller.signal,
           clientMessageId,
+          attachmentIds,
         })) {
           if (ev._eventId) lastEventIdRef.current = ev._eventId;
           await handleStreamEvent(ev, actions);
