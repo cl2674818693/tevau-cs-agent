@@ -1,5 +1,5 @@
 import { ImagePlus, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Pending = { id: number; url: string };
 
@@ -20,6 +20,16 @@ export function AttachButton({
   const ref = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<Pending[]>([]);
   const [busy, setBusy] = useState(false);
+
+  // 父组件清空 ids（发送成功后）时，同步清掉本地待发预览，避免缩略图残留在输入框
+  useEffect(() => {
+    if (ids.length === 0) {
+      setPending((p) => {
+        p.forEach((x) => URL.revokeObjectURL?.(x.url));
+        return p.length ? [] : p;
+      });
+    }
+  }, [ids.length]);
 
   async function pick(files: FileList | null) {
     if (!files) return;
@@ -48,7 +58,7 @@ export function AttachButton({
   return (
     <>
       {pending.length > 0 && (
-        <div className="flex gap-2 flex-wrap pb-2">
+        <div className="flex gap-2 flex-wrap w-full">
           {pending.map((p) => (
             <div key={p.id} className="relative">
               <img src={p.url} alt="" className="h-14 w-14 rounded object-cover" />

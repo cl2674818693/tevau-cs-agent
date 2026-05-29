@@ -78,7 +78,7 @@ export function InputBox({
 
   return (
     <div className="border-t border-line bg-surface-card px-page py-block-sm safe-bottom">
-      <div className="flex items-end gap-2 rounded-md bg-surface-page border border-line px-3 py-2 transition-all focus-within:border-brand focus-within:shadow-focus">
+      <div className="flex flex-wrap items-end gap-2 rounded-md bg-surface-page border border-line px-3 py-2 transition-all focus-within:border-brand focus-within:shadow-focus">
         {upload && (
           <AttachButton
             upload={upload}

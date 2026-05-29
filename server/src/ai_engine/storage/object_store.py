@@ -1,7 +1,8 @@
 """S3 兼容对象存储抽象。dev 用 MinIO，生产用 OSS(S3兼容)/S3。
 
-看图走 presigned_get（浏览器直连，多实例无需共享盘）；
-发 LLM 走 get → base64（敏感图不交公网 URL，口径统一）。
+看图走 get → 后端同源代理字节（dev 对象存储是 docker 内网 host，浏览器无法直连预签名 URL）；
+发 LLM 同样 get → base64（敏感图不交公网 URL，口径统一）。
+presigned_get 暂保留给未来「对象存储有公网可达 host」时改直连用。
 """
 
 from typing import Protocol

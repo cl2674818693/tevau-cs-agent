@@ -2,8 +2,7 @@ import hashlib
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 
 from ai_engine.auth.staff_session import require_staff
 from ai_engine.config import settings
@@ -90,17 +89,18 @@ async def upload_attachment(
 
 
 @router.get("/api/v1/conversations/{conv_id}/attachments/{aid}")
-async def view_attachment(conv_id: int, aid: int, request: Request) -> RedirectResponse:
+async def view_attachment(conv_id: int, aid: int, request: Request) -> Response:
+    # 经后端同源代理图片字节，不返回对象存储预签名 URL：
+    # dev 对象存储是 docker 内网 host（minio:9000），浏览器无法直连；裸 <img> GET 也带不上鉴权头。
+    # 前端用带鉴权的 fetch 取字节 → objectURL 显示。
     from ai_engine.api.chat import _authorize_conversation
 
     await _authorize_conversation(request, conv_id)
     row = await att_dao.get_attachment(aid)
     if not row or row["conversation_id"] != conv_id:
         raise HTTPException(404, "not found")
-    url = await get_object_store().presigned_get(
-        row["object_key"], settings.attachment_url_ttl_seconds
-    )
-    return RedirectResponse(url)
+    data = await get_object_store().get(row["object_key"])
+    return Response(content=data, media_type=row["mime"])
 
 
 async def _assert_staff_conv(conv_id: int, staff_sub: str) -> None:
@@ -126,11 +126,9 @@ async def staff_upload_attachment(
 @router.get("/staff/api/v1/conversations/{conv_id}/attachments/{aid}")
 async def staff_view_attachment(
     conv_id: int, aid: int, staff: dict[str, Any] = Depends(require_staff)
-) -> RedirectResponse:
+) -> Response:
     row = await att_dao.get_attachment(aid)
     if not row or row["conversation_id"] != conv_id:
         raise HTTPException(404, "not found")
-    url = await get_object_store().presigned_get(
-        row["object_key"], settings.attachment_url_ttl_seconds
-    )
-    return RedirectResponse(url)
+    data = await get_object_store().get(row["object_key"])
+    return Response(content=data, media_type=row["mime"])
