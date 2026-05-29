@@ -1,8 +1,9 @@
 import time
+from collections.abc import Callable
 from typing import Any
 
 import jwt
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
 from ai_engine.config import settings
 
@@ -37,3 +38,19 @@ async def require_staff(authorization: str = Header(default="")) -> dict[str, An
         return verify_staff_token(authorization[7:])
     except ValueError as e:
         raise HTTPException(401, str(e)) from e
+
+
+def require_roles(*roles: str) -> Callable[..., dict[str, Any]]:
+    """生成一个 FastAPI 依赖：要求 staff.role ∈ roles，否则 403。
+
+    用法：staff: dict = Depends(require_roles("supervisor", "admin"))
+    入参 staff 由 require_staff 注入（验签 JWT）。直接传 dict 也可（便于单测）。
+    """
+    allowed = set(roles)
+
+    def _dep(staff: dict[str, Any] = Depends(require_staff)) -> dict[str, Any]:
+        if staff.get("role") not in allowed:
+            raise HTTPException(403, "forbidden")
+        return staff
+
+    return _dep
