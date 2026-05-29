@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { StaffLayout } from "./components/StaffLayout";
 import { PromptsRoute } from "./routes/admin/PromptsRoute";
+import { StaffAccountsRoute } from "./routes/admin/StaffAccountsRoute";
 import { BuLoginRoute } from "./routes/BuLoginRoute";
 import { ChatRoute } from "./routes/ChatRoute";
 import { AuditsRoute } from "./routes/staff/AuditsRoute";
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/staff/audits" element={<AuditsRoute />} />
             <Route path="/staff/tickets" element={<TicketsRoute />} />
             <Route path="/admin/prompts" element={<PromptsRoute />} />
+            <Route path="/admin/staff" element={<StaffAccountsRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
