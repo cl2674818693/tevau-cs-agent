@@ -1,11 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { listTickets, type Ticket } from "../../api/staff";
+import { listTickets, type Ticket, type TicketStatus } from "../../api/staff";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 const PAGE_SIZE = 50;
 const SEVERITY_OPTIONS = ["p0", "p1", "p2", "p3"];
+
+// 工单状态 -> 标签 + 颜色（外部事项中心事件驱动；pending=已建单未受理）
+const STATUS_META: Record<TicketStatus, { label: string; className: string }> = {
+  pending: { label: "待处理", className: "text-status-warning" },
+  in_progress: { label: "进行中", className: "text-status-success" },
+  resolved: { label: "已解决", className: "text-brand" },
+  closed: { label: "已关闭", className: "text-ink-secondary" },
+};
+
+function TicketStatusCell({ status }: { status: TicketStatus }) {
+  const meta = STATUS_META[status] ?? STATUS_META.in_progress;
+  return <span className={meta.className}>{meta.label}</span>;
+}
 
 // eslint-disable-next-line max-lines-per-function -- 工单列表页：筛选区 + 表格 + 分页
 export function TicketsRoute() {
@@ -101,11 +114,7 @@ export function TicketsRoute() {
               <td>{t.category ?? "-"}</td>
               <td>{t.severity ?? "-"}</td>
               <td>
-                {t.closed ? (
-                  <span className="text-ink-secondary">已关闭</span>
-                ) : (
-                  <span className="text-status-success">进行中</span>
-                )}
+                <TicketStatusCell status={t.status} />
               </td>
               <td className="whitespace-nowrap">{t.created_at}</td>
               <td>

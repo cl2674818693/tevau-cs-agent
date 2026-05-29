@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { getRecentAudits } from "../../api/staff";
@@ -7,9 +7,12 @@ import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { EmptyState } from "../../components/ui/empty-state";
 import { PageContainer, PageHeader } from "../../components/ui/page";
+import { Pager } from "../../components/ui/pager";
 import { LoadingState } from "../../components/ui/spinner";
 import { Table, TableScroll, TBody, Td, Th, THead, Tr } from "../../components/ui/table";
 import { useStaffSession } from "../../hooks/useStaffSession";
+
+const PAGE_SIZE = 100;
 
 const TOOL_OPTIONS = [
   "query_user",
@@ -29,7 +32,7 @@ function isEmpty(a: ToolAudit): boolean {
   return a.is_empty === 1 || a.is_empty === true;
 }
 
-// eslint-disable-next-line max-lines-per-function -- 审计页：筛选区 + 表格 + 分页
+// eslint-disable-next-line max-lines-per-function -- 审计页：筛选区 + 表格 + 页码分页
 export function AuditsRoute() {
   const { token } = useStaffSession();
   const nav = useNavigate();
@@ -38,17 +41,23 @@ export function AuditsRoute() {
   const [toolName, setToolName] = useState("");
   const [conversationId, setConversationId] = useState("");
   const [rows, setRows] = useState<ToolAudit[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
-  const [hasMore, setHasMore] = useState(false);
 
-  const filter = useCallback(
-    (beforeId?: number) => ({
+  // 改任一筛选都回到第 1 页（与 page 同批更新，单次请求）
+  const onFilterChange = (fn: () => void) => {
+    fn();
+    setPage(1);
+  };
+
+  const filter = useMemo(
+    () => ({
       rejectedOnly,
       emptyOnly,
       toolName: toolName || undefined,
       conversationId: conversationId.trim() || undefined,
-      beforeId,
     }),
     [rejectedOnly, emptyOnly, toolName, conversationId],
   );
@@ -60,25 +69,14 @@ export function AuditsRoute() {
     }
     setLoading(true);
     setErr("");
-    getRecentAudits(token, filter())
+    getRecentAudits(token, { ...filter, page, limit: PAGE_SIZE })
       .then((data) => {
-        setRows(data);
-        setHasMore(data.length >= 100);
+        setRows(data.audits);
+        setTotal(data.total);
       })
       .catch(() => setErr("加载失败"))
       .finally(() => setLoading(false));
-  }, [token, filter, nav]);
-
-  const loadMore = () => {
-    if (!token || rows.length === 0) return;
-    const lastId = rows[rows.length - 1].id;
-    getRecentAudits(token, filter(lastId))
-      .then((data) => {
-        setRows((prev) => [...prev, ...data]);
-        setHasMore(data.length >= 100);
-      })
-      .catch(() => setErr("加载失败"));
-  };
+  }, [token, filter, page, nav]);
 
   return (
     <PageContainer width="wide">
@@ -86,7 +84,7 @@ export function AuditsRoute() {
       <div className="mb-3 flex flex-wrap items-center gap-3 text-body3 text-ink-secondary">
         <select
           value={toolName}
-          onChange={(e) => setToolName(e.target.value)}
+          onChange={(e) => onFilterChange(() => setToolName(e.target.value))}
           className="rounded border border-line bg-surface-card px-2 py-1 text-ink-primary"
         >
           <option value="">全部工具</option>
@@ -101,14 +99,14 @@ export function AuditsRoute() {
           inputMode="numeric"
           placeholder="会话号"
           value={conversationId}
-          onChange={(e) => setConversationId(e.target.value)}
+          onChange={(e) => onFilterChange(() => setConversationId(e.target.value))}
           className="w-24 rounded border border-line bg-surface-card px-2 py-1 text-ink-primary"
         />
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
             checked={rejectedOnly}
-            onChange={(e) => setRejectedOnly(e.target.checked)}
+            onChange={(e) => onFilterChange(() => setRejectedOnly(e.target.checked))}
           />
           只看被拒
         </label>
@@ -116,7 +114,7 @@ export function AuditsRoute() {
           <input
             type="checkbox"
             checked={emptyOnly}
-            onChange={(e) => setEmptyOnly(e.target.checked)}
+            onChange={(e) => onFilterChange(() => setEmptyOnly(e.target.checked))}
           />
           只看空结果
         </label>
@@ -178,14 +176,8 @@ export function AuditsRoute() {
           </Table>
         </TableScroll>
       )}
-      {hasMore && rows.length > 0 && (
-        <button
-          type="button"
-          onClick={loadMore}
-          className="mt-3 rounded border border-line px-3 py-1 text-body3 text-ink-secondary"
-        >
-          加载更多
-        </button>
+      {!loading && total > 0 && (
+        <Pager page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} className="mt-3" />
       )}
     </PageContainer>
   );

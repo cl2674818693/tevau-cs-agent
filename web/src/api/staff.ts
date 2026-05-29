@@ -255,12 +255,22 @@ export type StaffMessage = {
   attachments?: { id: number; mime: string }[];
 };
 
-export async function getConversationMessages(token: string, id: number): Promise<StaffMessage[]> {
-  const r = await fetch(`/staff/api/v1/conversations/${id}/messages`, {
+export type MessagesPage = { messages: StaffMessage[]; hasMore: boolean };
+
+/** 留痕消息分页：默认取最新一页；往上"加载更早"传 beforeId=当前最旧消息 id。 */
+export async function getConversationMessages(
+  token: string,
+  id: number,
+  opts: { limit?: number; beforeId?: number } = {},
+): Promise<MessagesPage> {
+  const qs = new URLSearchParams({ limit: String(opts.limit ?? 50) });
+  if (opts.beforeId != null) qs.set("before_id", String(opts.beforeId));
+  const r = await fetch(`/staff/api/v1/conversations/${id}/messages?${qs.toString()}`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`messages failed ${r.status}`);
-  return (await r.json()).messages as StaffMessage[];
+  const data = await r.json();
+  return { messages: data.messages as StaffMessage[], hasMore: Boolean(data.has_more) };
 }
 
 export type ToolAudit = {
@@ -311,29 +321,49 @@ export type RecentAuditsFilter = {
   toolName?: string;
   emptyOnly?: boolean;
   conversationId?: string;
-  beforeId?: number;
+  page?: number;
   limit?: number;
 };
 
-export async function getRecentAudits(
-  token: string,
-  filter: RecentAuditsFilter = {},
-): Promise<ToolAudit[]> {
-  const { rejectedOnly, toolName, emptyOnly, conversationId, beforeId, limit = 100 } = filter;
-  const qs = new URLSearchParams({ limit: String(limit) });
+export type RecentAuditsPage = {
+  audits: ToolAudit[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+function buildRecentAuditsQuery(filter: RecentAuditsFilter): URLSearchParams {
+  const { rejectedOnly, toolName, emptyOnly, conversationId, page = 1, limit = 100 } = filter;
+  const qs = new URLSearchParams({ limit: String(limit), page: String(page) });
   if (rejectedOnly) qs.set("rejected", "true");
   if (toolName) qs.set("tool_name", toolName);
   if (emptyOnly) qs.set("empty_only", "true");
   if (conversationId) qs.set("conversation_id", conversationId);
-  if (beforeId != null) qs.set("before_id", String(beforeId));
+  return qs;
+}
+
+/** 跨会话工具审计：页码式分页（page 1 基），返回 total 供页码导航。 */
+export async function getRecentAudits(
+  token: string,
+  filter: RecentAuditsFilter = {},
+): Promise<RecentAuditsPage> {
+  const qs = buildRecentAuditsQuery(filter);
   const r = await fetch(`/staff/api/v1/audits/recent?${qs.toString()}`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`recent audits failed ${r.status}`);
-  return (await r.json()).audits as ToolAudit[];
+  const data = await r.json();
+  return {
+    audits: data.audits as ToolAudit[],
+    total: Number(data.total ?? 0),
+    page: Number(data.page ?? filter.page ?? 1),
+    limit: Number(data.limit ?? filter.limit ?? 100),
+  };
 }
 
 // ---- 运营只读工单列表（外部事项中心是状态真源，本地仅只读镜像）----
+
+export type TicketStatus = "pending" | "in_progress" | "resolved" | "closed";
 
 export type Ticket = {
   external_id: string;
@@ -341,6 +371,7 @@ export type Ticket = {
   severity: string | null;
   conversation_id: number;
   created_at: string;
+  status: TicketStatus;
   closed: boolean;
 };
 

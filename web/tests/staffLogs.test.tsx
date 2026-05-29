@@ -39,7 +39,7 @@ describe("api/staff 留痕 fetchers", () => {
       vi.fn(async () => json({ conversation_id: 1, messages: [{ id: 5, role: "user" }] })),
     );
     const m = await getConversationMessages("t", 1);
-    expect(m[0].id).toBe(5);
+    expect(m.messages[0].id).toBe(5);
   });
 
   it("getRecentAudits sets rejected query param", async () => {

@@ -30,6 +30,21 @@ class S3ObjectStore:
             region_name=settings.object_store_region,
         )
 
+    async def ensure_bucket(self) -> None:
+        """幂等建桶：dev/首启时 MinIO 还没有这个 bucket，put 会抛 NoSuchBucket→500。
+        head 命中即跳过；缺失(404/NoSuchBucket)才建。其他错误照常抛出。"""
+        from botocore.exceptions import ClientError
+
+        async with self._client() as c:
+            try:
+                await c.head_bucket(Bucket=settings.object_store_bucket)
+                return
+            except ClientError as e:
+                code = e.response.get("Error", {}).get("Code", "")
+                if code not in ("404", "NoSuchBucket", "NoSuchKey"):
+                    raise
+            await c.create_bucket(Bucket=settings.object_store_bucket)
+
     async def put(self, key: str, data: bytes, content_type: str) -> None:
         async with self._client() as c:
             await c.put_object(
@@ -65,3 +80,10 @@ def set_object_store(store: ObjectStore) -> None:
     """测试替换用。"""
     global _store
     _store = store
+
+
+async def ensure_bucket() -> None:
+    """启动时确保对象存储 bucket 存在（仅真实 S3/MinIO 后端；测试用的假 store 跳过）。"""
+    store = get_object_store()
+    if isinstance(store, S3ObjectStore):
+        await store.ensure_bucket()

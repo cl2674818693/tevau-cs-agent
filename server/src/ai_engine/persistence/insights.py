@@ -17,23 +17,23 @@ from ai_engine.persistence import db
 _Q_OUT_OF_SCOPE = (
     "SELECT COUNT(*) AS n FROM messages "
     "WHERE role='user' AND topic_verdict='no' "
-    "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+    "AND (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt)"
 )
 _Q_FAILED = (
     "SELECT COUNT(*) AS n FROM messages "
     "WHERE role='user' AND status='failed' "
-    "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+    "AND (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt)"
 )
 _Q_THUMBS_DOWN = (
     "SELECT COUNT(*) AS n FROM message_feedback "
     "WHERE rating='down' "
-    "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+    "AND (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt)"
 )
 # 转人工：会话粒度计数（mode 进入人工通道）。用 conversations.created_at 做窗口。
 _Q_HUMAN_HANDOFF = (
     "SELECT COUNT(*) AS n FROM conversations "
     "WHERE mode IN ('human_pending','human_takeover') "
-    "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+    "AND (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt)"
 )
 
 # 工具健康度：按 tool_name 聚合调用/空结果/拒绝。is_empty 历史行可能为 NULL，
@@ -44,7 +44,7 @@ _Q_TOOL_HEALTH = (
     "SUM(CASE WHEN is_empty=1 THEN 1 ELSE 0 END) AS empty, "
     "SUM(CASE WHEN rejected=1 THEN 1 ELSE 0 END) AS rejected "
     "FROM tool_audits "
-    "WHERE (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt) "
+    "WHERE (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt) "
     "GROUP BY tool_name ORDER BY calls DESC"
 )
 
@@ -91,25 +91,25 @@ _GAP_QUERIES: dict[str, str] = {
     "out_of_scope": (
         "SELECT conversation_id, MAX(created_at) AS last_at FROM messages "
         "WHERE role='user' AND topic_verdict='no' "
-        "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt) "
+        "AND (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt) "
         "GROUP BY conversation_id ORDER BY last_at DESC LIMIT :lim"
     ),
     "failed": (
         "SELECT conversation_id, MAX(created_at) AS last_at FROM messages "
         "WHERE role='user' AND status='failed' "
-        "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt) "
+        "AND (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt) "
         "GROUP BY conversation_id ORDER BY last_at DESC LIMIT :lim"
     ),
     "thumbs_down": (
         "SELECT conversation_id, MAX(created_at) AS last_at FROM message_feedback "
         "WHERE rating='down' "
-        "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt) "
+        "AND (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt) "
         "GROUP BY conversation_id ORDER BY last_at DESC LIMIT :lim"
     ),
     "human_handoff": (
         "SELECT id AS conversation_id, created_at AS last_at FROM conversations "
         "WHERE mode IN ('human_pending','human_takeover') "
-        "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt) "
+        "AND (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt) "
         "ORDER BY last_at DESC LIMIT :lim"
     ),
 }
@@ -127,7 +127,7 @@ _Q_AB_STATS = (
     "FROM messages m "
     "LEFT JOIN message_feedback f ON f.message_id = m.id AND f.rating='down' "
     "WHERE m.role='assistant' AND m.prompt_version IS NOT NULL "
-    "AND (:df IS NULL OR m.created_at >= :df) AND (:dt IS NULL OR m.created_at <= :dt) "
+    "AND (CAST(:df AS TEXT) IS NULL OR m.created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR m.created_at <= :dt) "
     "GROUP BY m.prompt_version ORDER BY m.prompt_version"
 )
 

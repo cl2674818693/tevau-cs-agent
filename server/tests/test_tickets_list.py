@@ -68,6 +68,29 @@ async def test_list_tickets_includes_closed_when_not_open_only(staff_token):
     assert by_id["AI-T1"]["closed"] is False
 
 
+async def test_list_tickets_derives_status_from_latest_event(staff_token):
+    from ai_engine.persistence.tickets import append_ticket_event, create_ticket, list_tickets
+
+    # 四种状态：无事件=pending、in_progress、resolved、closed（取最新一条事件）
+    for ext, conv in [("AI-P", 21), ("AI-IP", 22), ("AI-R", 23), ("AI-C", 24)]:
+        await create_ticket(
+            external_id=ext, conversation_id=conv, payload={"category": "bug", "severity": "p1"}
+        )
+    await append_ticket_event(external_id="AI-IP", event="in_progress", actor="a", comment=None)
+    await append_ticket_event(external_id="AI-R", event="in_progress", actor="a", comment=None)
+    await append_ticket_event(external_id="AI-R", event="resolved", actor="a", comment=None)
+    await append_ticket_event(external_id="AI-C", event="resolved", actor="a", comment=None)
+    await append_ticket_event(external_id="AI-C", event="closed", actor="a", comment=None)
+
+    rows = await list_tickets(open_only=False, severity=None, category=None, limit=50)
+    by_id = {r["external_id"]: r for r in rows}
+    assert by_id["AI-P"]["status"] == "pending"
+    assert by_id["AI-IP"]["status"] == "in_progress"
+    assert by_id["AI-R"]["status"] == "resolved"  # 最新事件 resolved 胜出
+    assert by_id["AI-C"]["status"] == "closed"
+    assert by_id["AI-C"]["closed"] is True
+
+
 async def test_list_tickets_filter_by_severity(staff_token):
     from ai_engine.persistence.tickets import list_tickets
 

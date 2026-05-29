@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +26,8 @@ from ai_engine.integrations.event_center_mock import router as mock_ec_router
 from ai_engine.persistence.business_db import init_business_dbs
 from ai_engine.persistence.db import init_db
 from ai_engine.persistence.maintenance import sweep_loop
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Tevau 客服工单 AI 引擎 (MVP-1)")
 app.add_middleware(
@@ -62,6 +65,13 @@ _sweep_task: asyncio.Task[None] | None = None
 @app.on_event("startup")
 async def _startup() -> None:
     await init_db()
+    # 幂等建对象存储 bucket（缺桶时上传图片会 500）。失败不阻断启动，只记日志。
+    try:
+        from ai_engine.storage.object_store import ensure_bucket
+
+        await ensure_bucket()
+    except Exception:
+        logger.exception("ensure object-store bucket failed")
     # 业务只读库（URL 未配时跳过，MVP-1 模式不连）
     await init_business_dbs(settings.unlimitpay_db_url, settings.nexus_db_url)
     # 配置 REDIS_URL 时拉起会话事件跨副本订阅桥（多副本实时事件互通）

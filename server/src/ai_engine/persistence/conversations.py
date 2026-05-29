@@ -174,6 +174,24 @@ async def list_messages(conv_id: int) -> list[dict[str, object]]:
     )
 
 
+async def list_messages_page(
+    conv_id: int, limit: int, before_id: int | None = None
+) -> list[dict[str, object]]:
+    """留痕分页：取 id < before_id 的最近 limit 条（before_id=None 取最新 limit 条），
+    升序返回。前端首屏取最新一页，往上"加载更早"传 before_id=当前最旧消息 id。"""
+    clause = "conversation_id=:id" + (" AND id < :bid" if before_id is not None else "")
+    binds: dict[str, object] = {"id": conv_id, "n": limit}
+    if before_id is not None:
+        binds["bid"] = before_id
+    rows = await db.fetch_all(
+        "SELECT id, role, content, sender_staff_id, status, error_code, "
+        "client_message_id, topic_verdict, prompt_version, created_at FROM messages "
+        f"WHERE {clause} ORDER BY id DESC LIMIT :n",
+        binds,
+    )
+    return list(reversed(rows))
+
+
 async def list_recent_messages(conv_id: int, limit: int) -> list[dict[str, object]]:
     """取最近 limit 条消息（按 id 升序返回）。历史回放用，避免长会话全量返回。"""
     rows = await db.fetch_all(

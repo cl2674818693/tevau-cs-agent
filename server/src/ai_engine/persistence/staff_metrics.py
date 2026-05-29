@@ -137,25 +137,25 @@ async def compute_kpi(date_from: str | None, date_to: str | None) -> list[dict[s
 # 与项目其他查询一致）。conversations 无独立时间列时复用 created_at。全字面量 SQL。
 _Q_TOTAL_CONV = (
     "SELECT COUNT(*) AS n FROM conversations "
-    "WHERE (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+    "WHERE (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt)"
 )
 _Q_HANDOFF = (
     "SELECT COUNT(*) AS n FROM conversations "
     "WHERE mode IN ('human_pending','human_takeover') "
-    "AND (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+    "AND (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt)"
 )
 _Q_FEEDBACK = (
     "SELECT "
     "SUM(CASE WHEN rating='up' THEN 1 ELSE 0 END) AS up, "
     "SUM(CASE WHEN rating='down' THEN 1 ELSE 0 END) AS down "
     "FROM message_feedback "
-    "WHERE (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+    "WHERE (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt)"
 )
 _Q_TOOL = (
     "SELECT COUNT(*) AS calls, "
     "SUM(CASE WHEN is_empty=1 THEN 1 ELSE 0 END) AS empty "
     "FROM tool_audits "
-    "WHERE (:df IS NULL OR created_at >= :df) AND (:dt IS NULL OR created_at <= :dt)"
+    "WHERE (CAST(:df AS TEXT) IS NULL OR created_at >= :df) AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt)"
 )
 
 

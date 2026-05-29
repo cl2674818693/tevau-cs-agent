@@ -72,6 +72,17 @@ async def update_ticket_severity(external_id: str, severity: str) -> None:
     )
 
 
+# 工单事件 -> 细分状态映射。无事件=pending（已建单未受理），未知事件归 in_progress。
+# 状态取"最新一条事件"，user_rejected_resolved 视为退回处理中。
+_STATUS_OF_EVENT = {
+    "closed": "closed",
+    "resolved": "resolved",
+    "user_confirmed_resolved": "resolved",
+    "in_progress": "in_progress",
+    "user_rejected_resolved": "in_progress",
+}
+
+
 async def list_tickets(
     open_only: bool = False,
     severity: str | None = None,
@@ -112,17 +123,22 @@ async def list_tickets(
         "ORDER BY t.created_at DESC, t.external_id DESC LIMIT :lim"
     )
     rows = await db.fetch_all(sql, binds)
-    # closed 态现算：本次查询的 external_id 是否有 closed 事件
-    closed_set: set[str] = set()
+    # 状态现算：取本批每单"最新一条事件"映射成细分状态（无事件 -> pending）
+    status_map: dict[str, str] = {}
     if rows:
         ext_ids = [str(r["external_id"]) for r in rows]
         placeholders = ",".join(f":e{i}" for i in range(len(ext_ids)))
+        # 关联子查询取每单 MAX(id) 的事件（两库通用）
         ev_rows = await db.fetch_all(
-            f"SELECT DISTINCT external_id FROM ticket_events "
-            f"WHERE event = 'closed' AND external_id IN ({placeholders})",
+            f"SELECT e.external_id, e.event FROM ticket_events e "
+            f"WHERE e.external_id IN ({placeholders}) "
+            f"AND e.id = (SELECT MAX(id) FROM ticket_events x WHERE x.external_id = e.external_id)",
             {f"e{i}": eid for i, eid in enumerate(ext_ids)},
         )
-        closed_set = {str(r["external_id"]) for r in ev_rows}
+        for r in ev_rows:
+            status_map[str(r["external_id"])] = _STATUS_OF_EVENT.get(
+                str(r["event"]), "in_progress"
+            )
     out: list[dict[str, object]] = []
     for row in rows:
         payload = json.loads(str(row["payload_json"]))
@@ -130,6 +146,7 @@ async def list_tickets(
         if category is not None and cat != category:
             continue
         ext = str(row["external_id"])
+        status = status_map.get(ext, "pending")
         out.append(
             {
                 "external_id": ext,
@@ -137,7 +154,8 @@ async def list_tickets(
                 "severity": row["current_severity"],
                 "conversation_id": row["conversation_id"],
                 "created_at": row["created_at"],
-                "closed": ext in closed_set,
+                "status": status,
+                "closed": status == "closed",  # 兼容旧字段
             }
         )
     return out
