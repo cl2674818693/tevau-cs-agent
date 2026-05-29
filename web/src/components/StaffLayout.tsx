@@ -2,11 +2,15 @@ import {
   BarChart3,
   ChevronLeft,
   Inbox,
+  LayoutDashboard,
   Lightbulb,
   type LucideIcon,
+  ScrollText,
   ShieldCheck,
   SlidersHorizontal,
   Ticket,
+  Timer,
+  Users,
 } from "lucide-react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -20,7 +24,8 @@ type NavItem = {
   /** 移动端底部 Tab 用的短标签（避免长标签折行），缺省回退 label。 */
   short?: string;
   icon: LucideIcon;
-  adminOnly?: boolean;
+  /** 允许访问该菜单项的角色列表；缺省表示所有已登录用户可见。 */
+  roles?: string[];
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -29,12 +34,19 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/staff/kpi", label: "KPI", icon: BarChart3 },
   { to: "/staff/insights", label: "知识缺口", short: "缺口", icon: Lightbulb },
   { to: "/staff/audits", label: "工具审计", short: "审计", icon: ShieldCheck },
-  { to: "/admin/prompts", label: "Prompt 灰度", short: "灰度", icon: SlidersHorizontal, adminOnly: true },
+  // 管理后台（按角色显示）
+  { to: "/admin/dashboard", label: "数据大盘", short: "大盘", icon: LayoutDashboard, roles: ["supervisor", "manager", "admin"] },
+  { to: "/admin/staff", label: "客服账号", short: "账号", icon: Users, roles: ["admin"] },
+  { to: "/admin/sla", label: "SLA", icon: Timer, roles: ["supervisor", "admin"] },
+  { to: "/admin/audit", label: "操作审计", short: "操作", icon: ScrollText, roles: ["engineer", "admin"] },
+  // Prompt 灰度后端鉴权仍是 require_admin(admin only)，故菜单 roles 保持 ["admin"]，
+  // 与后端一致避免 engineer 点进去 403（统一到 engineer/admin 留 M2）。
+  { to: "/admin/prompts", label: "Prompt 灰度", short: "灰度", icon: SlidersHorizontal, roles: ["admin"] },
 ];
 
 function useNavItems() {
   const { role } = useStaffSession();
-  return NAV_ITEMS.filter((i) => !i.adminOnly || role === "admin");
+  return NAV_ITEMS.filter((i) => !i.roles || (role != null && i.roles.includes(role)));
 }
 
 /** 桌面端固定侧栏（md 及以上）。 */
