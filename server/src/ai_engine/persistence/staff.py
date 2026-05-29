@@ -66,3 +66,40 @@ async def get_staff(staff_id: str) -> dict[str, Any] | None:
         "SELECT staff_id, display_name, role, active FROM staff WHERE staff_id=:sid",
         {"sid": staff_id},
     )
+
+
+async def list_staff() -> list[dict[str, Any]]:
+    """账号列表（不含 password_hash）。"""
+    return await db.fetch_all(
+        "SELECT id, staff_id, display_name, role, active, created_at "
+        "FROM staff ORDER BY id"
+    )
+
+
+async def update_staff(
+    staff_id: str, display_name: str | None = None, role: str | None = None
+) -> None:
+    """部分更新 display_name / role（传 None 的字段保留原值）。"""
+    if role is not None and role not in _VALID_ROLES:
+        raise ValueError("invalid role")
+    await db.execute(
+        "UPDATE staff SET "
+        "display_name = COALESCE(CAST(:name AS TEXT), display_name), "
+        "role = COALESCE(CAST(:role AS TEXT), role) "
+        "WHERE staff_id = :sid",
+        {"name": display_name, "role": role, "sid": staff_id},
+    )
+
+
+async def set_staff_active(staff_id: str, active: int) -> None:
+    await db.execute(
+        "UPDATE staff SET active = :a WHERE staff_id = :sid",
+        {"a": int(active), "sid": staff_id},
+    )
+
+
+async def reset_staff_password(staff_id: str, new_password: str) -> None:
+    await db.execute(
+        "UPDATE staff SET password_hash = :pw WHERE staff_id = :sid",
+        {"pw": hash_password(new_password), "sid": staff_id},
+    )
