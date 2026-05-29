@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ai_engine.api.admin_prompts import router as admin_prompts_router
+from ai_engine.api.admin_staff import router as admin_staff_router
 from ai_engine.api.attachments import router as attachments_router
 from ai_engine.api.auth_bu import router as auth_bu_router
 from ai_engine.api.chat import router as chat_router
@@ -51,6 +52,7 @@ app.include_router(staff_conv_router)
 app.include_router(staff_kpi_router)
 app.include_router(staff_logs_router)
 app.include_router(admin_prompts_router)
+app.include_router(admin_staff_router)
 app.include_router(user_events_router)
 app.include_router(feedback_router)
 app.include_router(insights_router)
