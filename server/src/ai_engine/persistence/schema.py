@@ -188,3 +188,17 @@ prompt_changes = Table(
     Column("new_json", Text, nullable=False),
     Column("created_at", String(32), nullable=False),
 )
+
+# 后台统一操作审计：所有 admin/管理后台写操作落此表（账号/SLA/工具策略...）。
+admin_audit_log = Table(
+    "admin_audit_log",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("actor", String(128), nullable=False),
+    Column("action", String(64), nullable=False),
+    Column("target_type", String(64)),
+    Column("target_id", String(128)),
+    Column("detail_json", Text),
+    Column("created_at", String(32), nullable=False),
+)
+Index("idx_admin_audit_created", admin_audit_log.c.created_at)
