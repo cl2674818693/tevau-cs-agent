@@ -76,7 +76,10 @@ staff = Table(
     Column("password_hash", String(256), nullable=False),
     Column("active", Integer, nullable=False, server_default="1"),
     Column("created_at", String(32), nullable=False),
-    CheckConstraint("role IN ('agent','senior','engineer','admin')", name="ck_staff_role"),
+    CheckConstraint(
+        "role IN ('agent','senior','engineer','admin','supervisor','manager')",
+        name="ck_staff_role",
+    ),
 )
 
 tool_audits = Table(

@@ -6,7 +6,7 @@ from typing import Any
 from ai_engine.persistence import db
 from ai_engine.persistence.schema import now_str
 
-_VALID_ROLES = {"agent", "senior", "engineer", "admin"}
+_VALID_ROLES = {"agent", "senior", "engineer", "admin", "supervisor", "manager"}
 _PBKDF2_ITERATIONS = 600_000
 
 
