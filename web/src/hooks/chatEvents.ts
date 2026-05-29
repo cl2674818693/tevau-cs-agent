@@ -56,10 +56,22 @@ export function pushSystem(a: ChatActions, content: string) {
   a.setMessages((p) => [...p, { role: "system", content }]);
 }
 
+/** 移除尾部「空 assistant 占位气泡」：message_start 建了它但回合出错/中断后再无内容填入，
+ *  否则会永久卡在「思考中…」。仅当最后一条是无文本无工具调用的 assistant 时剥离。 */
+function dropTrailingEmptyAssistant(prev: Message[]): Message[] {
+  const last = prev[prev.length - 1];
+  if (last?.role === "assistant" && !last.content && !(last.tool_calls?.length)) {
+    return prev.slice(0, -1);
+  }
+  return prev;
+}
+
 async function handleErrorEvent(
   ev: Extract<ChatEvent, { type: "error" }>,
   a: ChatActions,
 ): Promise<void> {
+  // 回合失败：先剥掉 message_start 留下的空占位气泡，避免「思考中…」与错误提示并存
+  a.setMessages(dropTrailingEmptyAssistant);
   if (ev.code === "RATE_LIMITED") {
     a.setRateLimited(true);
     pushSystem(a, ev.message || "请求过于频繁，请稍后再试。");

@@ -20,6 +20,23 @@ async def test_build_request_uses_cached_system(monkeypatch):
     assert req["messages"][0]["content"] == "你好"
 
 
+async def test_build_request_caps_cache_control_at_4(monkeypatch):
+    """Anthropic 限制整请求最多 4 个 cache_control 块。游客回合 system 块达 5 个
+    （3 基础 + 1 游客约束 + 1 语言兜底），全打缓存会 400。只缓存前 4 个稳定前缀块。"""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    from ai_engine.integrations.anthropic_client import build_messages_request
+
+    blocks = [{"type": "text", "text": f"block-{i}"} for i in range(5)]
+    req = build_messages_request(
+        system_blocks=blocks, messages=[], tools=None, model="claude-sonnet-4-6"
+    )
+    cached = [b for b in req["system"] if "cache_control" in b]
+    assert len(cached) <= 4
+    assert len(req["system"]) == 5  # 所有块仍原样下发，只是后面的不打缓存断点
+    assert all("cache_control" in b for b in req["system"][:4])
+    assert "cache_control" not in req["system"][4]
+
+
 async def test_stream_turn_yields_deltas_then_final(monkeypatch):
     """stream_turn 先逐段 yield 文本增量，最后 yield 完整消息（final）。"""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { applyUserStreamEvent } from "../src/hooks/chatEvents";
+import { applyUserStreamEvent, handleStreamEvent } from "../src/hooks/chatEvents";
 import type { ChatEvent, Message } from "../src/types";
 
 function harness() {
@@ -37,5 +37,29 @@ describe("applyUserStreamEvent", () => {
     applyUserStreamEvent({ type: "mode_change", to: "ai" } as unknown as ChatEvent, h.actions);
     expect(h.get()).toHaveLength(0);
     expect(h.setMode).toHaveBeenCalledWith("ai");
+  });
+});
+
+describe("handleStreamEvent error", () => {
+  it("回合出错时剥掉尾部空 assistant 占位气泡，只留错误提示", async () => {
+    let messages: Message[] = [
+      { role: "user", content: "你好" },
+      { role: "assistant", content: "", tool_calls: [] }, // message_start 占位
+    ];
+    const actions = {
+      setMode: vi.fn(),
+      setMessages: (fn: (p: Message[]) => Message[]) => {
+        messages = fn(messages);
+      },
+      setLimitPct: vi.fn(),
+      setRateLimited: vi.fn(),
+      onAuthExpired: vi.fn(async () => {}),
+    };
+    await handleStreamEvent(
+      { type: "error", code: "INTERNAL_ERROR", message: "出错了" } as unknown as ChatEvent,
+      actions,
+    );
+    expect(messages.some((m) => m.role === "assistant" && !m.content)).toBe(false);
+    expect(messages.filter((m) => m.role === "system")).toHaveLength(1);
   });
 });

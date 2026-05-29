@@ -40,6 +40,7 @@ from ai_engine.persistence.conversations import (
     append_message,
     append_user_turn,
     finalize_turn,
+    get_conversation,
     list_messages,
     message_content_text,
     set_inferred_locale,
@@ -229,6 +230,40 @@ def _detect_locale(text: str) -> str | None:
     return None
 
 
+_LOCALE_NAMES = {"zh": "中文", "en": "英文（English）", "ja": "日文（日本語）", "th": "泰文（ไทย）"}
+
+
+def _locale_hint_block(locale: str) -> dict[str, str]:
+    """『默认回复语言』兜底块：仅当用户本条消息无文字可镜像（纯图片/附件）时生效，
+    优先级低于 reply_style 的镜像/显式规则。locale 来源：本轮检测→上轮推断→APP 界面语言。"""
+    name = _LOCALE_NAMES.get(locale, locale)
+    return {
+        "type": "text",
+        "text": (
+            f"【默认回复语言】系统判断本次对话的默认语言为「{name}」。仅当用户本条消息"
+            f"没有任何可识别的文字（例如只发送了图片或附件、无从镜像语言）时，用{name}回复。"
+            "这只是兜底默认值，优先级低于 reply_style 的"
+            "「镜像用户最新消息语言」与「用户显式指定语言」——只要用户消息含文字、"
+            "或用户曾明确要求某语言，一律以 reply_style 规则为准，忽略本默认值。"
+        ),
+    }
+
+
+async def _maybe_locale_hint(
+    user_type: str, conversation_id: int, detected: str | None, ui_locale: str | None
+) -> list[dict[str, str]]:
+    """C 端/游客：无文字可镜像时返回要追加的『默认回复语言』块（否则空）。B 端不动其语言策略。
+    兜底语言来源：本轮检测 → 上轮推断 inferred_locale → APP 界面语言 ui_locale。"""
+    if user_type == "b":
+        return []
+    fallback = detected
+    if not fallback:
+        conv = await get_conversation(conversation_id)
+        inferred = conv["inferred_locale"] if conv else None
+        fallback = str(inferred) if inferred else ui_locale
+    return [_locale_hint_block(fallback)] if fallback else []
+
+
 async def run_turn(
     *,
     conversation_id: int,
@@ -238,6 +273,7 @@ async def run_turn(
     model: str | None = None,
     client_message_id: str | None = None,
     attachment_ids: list[int] | None = None,
+    ui_locale: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     # spec §8 prompt 版本化：按 subject_id 哈希分桶选版本；该版本贯穿本轮
     prompt_version = pick_version(subject_id)
@@ -270,6 +306,11 @@ async def run_turn(
     locale = _detect_locale(user_message)
     if locale:
         await set_inferred_locale(conversation_id, locale)
+    # 纯图片/无文字消息无从镜像语言时，注入「默认回复语言」兜底块（仅 C 端/游客）
+    system_blocks = [
+        *system_blocks,
+        *await _maybe_locale_hint(user_type, conversation_id, locale, ui_locale),
+    ]
 
     # spec §6.4 第二层：haiku 前置话题分类（按需开启）。判定一律落库 + 计数。
     # 纯图片消息（文本为空）无可分类文本，跳过分类视为放行，交给主模型 vision 判断。
@@ -415,7 +456,13 @@ async def _agent_loop(
             return
 
         assistant_blocks, tool_calls_in_round, texts = _collect_blocks(resp)
-        await _persist_assistant(conversation_id, messages, assistant_blocks, prompt_version)
+        # 内存上下文照常追加（供 self-check / 后续轮引用本轮输出）
+        if assistant_blocks:
+            messages.append({"role": "assistant", "content": assistant_blocks})
+        # self-check 前的草稿轮不落库：它 live=False 不流给用户，会被 self-check 修订后的
+        # 最终轮取代；若也落库，刷新历史回放会出现「同一回复两条」（直播只流最终轮）。
+        if assistant_blocks and not _needs_self_check(resp, self_check_done, texts):
+            await _persist_assistant(conversation_id, assistant_blocks, prompt_version)
 
         if _is_tool_round(resp, tool_calls_in_round):
             async for ev in _emit_tool_round(
@@ -466,13 +513,9 @@ async def collect_full_response(
 
 async def _persist_assistant(
     conversation_id: int,
-    messages: list[dict[str, Any]],
     assistant_blocks: list[dict[str, Any]],
     prompt_version: str | None = None,
 ) -> None:
-    if not assistant_blocks:
-        return
-    messages.append({"role": "assistant", "content": assistant_blocks})
     await append_message(
         conversation_id,
         role="assistant",

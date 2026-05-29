@@ -50,6 +50,32 @@ async def test_run_turn_replays_prior_history(seeded_db, monkeypatch, fake_strea
     assert msgs[0]["role"] == "user"
 
 
+async def test_self_check_persists_single_assistant_row(seeded_db, monkeypatch, fake_stream):
+    """普通回合经 self-check 会调两轮 LLM（草稿轮+最终轮），但只应落库一条 assistant。
+
+    草稿轮 live=False 不流给用户，最终轮才流出；若两轮都落库，刷新历史回放会出现
+    「同一回复两条」（正是用户报的：直播一条、刷新两条）。
+    """
+    from ai_engine.agent import runtime
+    from ai_engine.integrations import anthropic_client as ac
+    from ai_engine.persistence.conversations import create_conversation, list_messages
+
+    cid = await create_conversation("b", "BU00243780")
+
+    fake = MagicMock()
+    fake.messages.stream = fake_stream(lambda **kw: _resp("最终回复"))
+    monkeypatch.setattr(ac, "_client", fake)
+
+    async for _ in runtime.run_turn(
+        conversation_id=cid, user_type="b", subject_id="BU00243780", user_message="问题"
+    ):
+        pass
+
+    rows = await list_messages(cid)
+    assistant_rows = [r for r in rows if r["role"] == "assistant"]
+    assert len(assistant_rows) == 1
+
+
 async def test_coalesce_adjacent_same_role():
     from ai_engine.agent.runtime import _coalesce
 

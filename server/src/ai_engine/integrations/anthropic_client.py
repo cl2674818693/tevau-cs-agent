@@ -20,6 +20,12 @@ def _build_client() -> AsyncAnthropic:
 _client = _build_client()
 
 
+# Anthropic 限制：整请求最多 4 个带 cache_control 的块。system 块里稳定提示前缀在前、
+# 每轮可能变的动态块（语言兜底/uncertain 提示）在后追加，故只给前 4 个块打缓存断点。
+# 游客回合 system 块会达 5 个（3 基础 + 1 游客约束 + 1 语言兜底），全打会 400。
+_MAX_CACHE_BLOCKS = 4
+
+
 def build_messages_request(
     *,
     system_blocks: list[dict[str, Any]],
@@ -28,10 +34,12 @@ def build_messages_request(
     model: str,
     max_tokens: int = 4096,
 ) -> dict[str, Any]:
-    """构造 Anthropic Messages API 请求体, 对每个 system 块加 ephemeral cache_control。"""
-    cached_system = []
-    for blk in system_blocks:
-        cached_system.append({**blk, "cache_control": {"type": "ephemeral"}})
+    """构造 Anthropic Messages API 请求体；对前 _MAX_CACHE_BLOCKS 个 system 块加 ephemeral
+    cache_control（受 Anthropic「最多 4 个 cache_control 块」限制），其余块原样下发。"""
+    cached_system = [
+        {**blk, "cache_control": {"type": "ephemeral"}} if i < _MAX_CACHE_BLOCKS else blk
+        for i, blk in enumerate(system_blocks)
+    ]
     return {
         "model": model,
         "system": cached_system,

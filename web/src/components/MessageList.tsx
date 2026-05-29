@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Message } from "../types";
@@ -17,9 +17,16 @@ export function MessageList({
 }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    // 可选链方法调用：jsdom 测试环境无 scrollTo
-    ref.current?.scrollTo?.({ top: ref.current.scrollHeight, behavior: "smooth" });
+  const didInitialScroll = useRef(false);
+  // useLayoutEffect：在 paint 前定位，刷新/恢复历史时不会先闪一下顶部再跳。
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // 首次有内容（刷新/历史回灌是一次性大跳）瞬时贴底；smooth 动画在大跳+高度仍在变时
+    // 常落在中途，故首屏用 auto 硬贴底，后续新消息再用 smooth 跟随。
+    const behavior: ScrollBehavior = didInitialScroll.current ? "smooth" : "auto";
+    el.scrollTo?.({ top: el.scrollHeight, behavior }); // 可选链：jsdom 测试环境无 scrollTo
+    if (messages.length > 0) didInitialScroll.current = true;
   }, [messages]);
 
   return (
