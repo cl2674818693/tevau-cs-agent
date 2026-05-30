@@ -218,3 +218,31 @@ sla_policies = Table(
         "metric IN ('take_time','resolve_time')", name="ck_sla_metric"
     ),
 )
+
+# 质检评分卡模板（运营定义评分项 JSON）
+qa_scorecards = Table(
+    "qa_scorecards",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", String(128), nullable=False),
+    Column("items_json", Text, nullable=False),  # [{"key":"polite","label":"礼貌用语","weight":1}, ...]
+    Column("active", Integer, nullable=False, server_default="1"),
+    Column("created_at", String(32), nullable=False),
+)
+
+# 质检记录：reviewer 对一通会话按 scorecard 打分
+qa_reviews = Table(
+    "qa_reviews",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("conversation_id", Integer, nullable=False),
+    Column("reviewer_staff_id", String(64), nullable=False),
+    Column("scorecard_id", Integer, nullable=False),
+    Column("score", Integer, nullable=False),  # 0-100
+    Column("items_result_json", Text, nullable=False),  # {"polite":1,"accurate":0,...}
+    Column("tags", String(256)),  # 逗号分隔标签：violation,excellent,needs_improvement
+    Column("comment", Text),
+    Column("created_at", String(32), nullable=False),
+)
+Index("idx_qa_reviews_conv", qa_reviews.c.conversation_id)
+Index("idx_qa_reviews_reviewer", qa_reviews.c.reviewer_staff_id, qa_reviews.c.created_at)
