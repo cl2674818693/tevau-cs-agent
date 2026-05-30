@@ -17,14 +17,17 @@ def _today() -> str:
 
 
 async def _get_used(subject_id: str, user_type: str, day: str) -> tuple[int, int]:
+    # M4: 读 by-model 表 SUM 各 model 行得当日总额（旧表已删）
     row = await db.fetch_one(
-        "SELECT input_tokens, output_tokens FROM daily_token_usage "
+        "SELECT COALESCE(SUM(input_tokens), 0) AS in_t, "
+        "COALESCE(SUM(output_tokens), 0) AS out_t "
+        "FROM daily_token_usage_by_model "
         "WHERE subject_id=:sid AND user_type=:ut AND date=:day",
         {"sid": subject_id, "ut": user_type, "day": day},
     )
     if not row:
         return 0, 0
-    return int(row["input_tokens"]), int(row["output_tokens"])
+    return int(row["in_t"]), int(row["out_t"])
 
 
 async def _record(
@@ -35,37 +38,18 @@ async def _record(
     out_tok: int,
     model: str | None = None,
 ) -> None:
-    # ON CONFLICT...DO UPDATE...excluded. 两库（SQLite/Postgres）通用
-    # M2: model 列写入；COALESCE+CAST 保留旧 model，仅当本次写入提供 model 时覆盖。
+    # M4: 只写 by-model 拆分表（旧表已删）；model None 时用 "(unknown)" 占位。
+    m = model if model else "(unknown)"
     await db.execute(
-        "INSERT INTO daily_token_usage(subject_id, user_type, date, input_tokens, "
-        "output_tokens, model) VALUES (:sid, :ut, :day, :in_tok, :out_tok, :model) "
-        # 用表名限定累加列：PG 上裸列名在 DO UPDATE 里有歧义；SQLite 也接受表名限定
-        "ON CONFLICT(subject_id, user_type, date) DO UPDATE SET "
-        "input_tokens=daily_token_usage.input_tokens+excluded.input_tokens, "
-        "output_tokens=daily_token_usage.output_tokens+excluded.output_tokens, "
-        "model=COALESCE(CAST(:model AS TEXT), daily_token_usage.model)",
-        {
-            "sid": subject_id,
-            "ut": user_type,
-            "day": day,
-            "in_tok": in_tok,
-            "out_tok": out_tok,
-            "model": model,
-        },
+        "INSERT INTO daily_token_usage_by_model"
+        "(subject_id, user_type, date, model, input_tokens, output_tokens) "
+        "VALUES (:s, :u, :d, :m, :it, :ot) "
+        "ON CONFLICT(subject_id, user_type, date, model) DO UPDATE SET "
+        "input_tokens = daily_token_usage_by_model.input_tokens + :it, "
+        "output_tokens = daily_token_usage_by_model.output_tokens + :ot",
+        {"s": subject_id, "u": user_type, "d": day,
+         "m": m, "it": int(in_tok), "ot": int(out_tok)},
     )
-    # M3c: 双写 by-model 拆分表（model None 时跳过；旧表行为不变）。
-    if model:
-        await db.execute(
-            "INSERT INTO daily_token_usage_by_model"
-            "(subject_id, user_type, date, model, input_tokens, output_tokens) "
-            "VALUES (:s, :u, :d, :m, :it, :ot) "
-            "ON CONFLICT(subject_id, user_type, date, model) DO UPDATE SET "
-            "input_tokens = daily_token_usage_by_model.input_tokens + :it, "
-            "output_tokens = daily_token_usage_by_model.output_tokens + :ot",
-            {"s": subject_id, "u": user_type, "d": day,
-             "m": model, "it": int(in_tok), "ot": int(out_tok)},
-        )
 
 
 async def is_exhausted(user_type: str, subject_id: str) -> bool:

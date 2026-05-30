@@ -28,10 +28,14 @@ _SOURCES: dict[str, set[str]] = {
         "id", "conversation_id", "tool_name", "rejected", "is_empty",
         "subject_id", "user_type", "created_at",
     },
+    "message_feedback": {
+        "id", "conversation_id", "message_id", "rating",
+        "subject_id", "user_type", "created_at",
+    },
 }
 
 _FILTER_OPS = {"=", "!=", ">", ">=", "<", "<=", "LIKE"}
-_METRIC_OPS = {"count", "sum", "avg", "min", "max"}
+_METRIC_OPS = {"count", "sum", "avg", "min", "max", "count_if"}
 
 
 def _validate_dims(source: str, dims: list[str]) -> None:
@@ -52,6 +56,9 @@ def _validate_metrics(source: str, metrics: list[dict[str, Any]]) -> None:
             raise ValueError(f"unknown metric op: {op}")
         if col != "*" and col not in cols:
             raise ValueError(f"unknown metric col {col} in source {source}")
+        if op == "count_if":
+            if "match" not in m or not isinstance(m["match"], (str, int)):
+                raise ValueError("count_if requires 'match' value")
 
 
 def _validate_filters(source: str, filters: list[dict[str, Any]]) -> None:
@@ -123,19 +130,25 @@ async def execute(
     _validate_metrics(source, metrics)
 
     select_parts: list[str] = list(dims)
-    for m in metrics:
+    binds: dict[str, Any] = {"_lim": int(limit)}
+    for i, m in enumerate(metrics):
         op = str(m["op"]).upper()
         col = str(m["col"])
         alias = str(m.get("alias", f"{op}_{col}"))
         if not alias.replace("_", "").isalnum():
             raise ValueError(f"invalid alias: {alias}")
-        if col == "*":
+        if op == "COUNT_IF":
+            bind_key = f"_mv{i}"
+            select_parts.append(
+                f"SUM(CASE WHEN {col} = :{bind_key} THEN 1 ELSE 0 END) AS {alias}"
+            )
+            binds[bind_key] = m["match"]
+        elif col == "*":
             select_parts.append(f"{op}(*) AS {alias}")
         else:
             select_parts.append(f"{op}({col}) AS {alias}")
 
     where_clauses: list[str] = []
-    binds: dict[str, Any] = {"_lim": int(limit)}
     for i, f in enumerate(filters):
         col = str(f["col"])
         op = str(f["op"])

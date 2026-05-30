@@ -19,11 +19,11 @@ async def test_usage_by_model_sums_correctly(temp_db_url):
     from ai_engine.persistence import db
     await _init(temp_db_url)
     await db.execute(
-        "INSERT INTO daily_token_usage(subject_id, user_type, date, "
-        "input_tokens, output_tokens, model) VALUES "
-        "('u1', 'b', '2026-05-30', 1000, 500, 'claude-sonnet-4-6'), "
-        "('u2', 'b', '2026-05-30', 2000, 700, 'claude-sonnet-4-6'), "
-        "('u3', 'c', '2026-05-30', 100, 50, 'claude-haiku-4-5')"
+        "INSERT INTO daily_token_usage_by_model(subject_id, user_type, date, model, "
+        "input_tokens, output_tokens) VALUES "
+        "('u1', 'b', '2026-05-30', 'claude-sonnet-4-6', 1000, 500), "
+        "('u2', 'b', '2026-05-30', 'claude-sonnet-4-6', 2000, 700), "
+        "('u3', 'c', '2026-05-30', 'claude-haiku-4-5', 100, 50)"
     )
     rows = await admin_cost.usage_by_model(None, None)
     by = {r["model"]: r for r in rows}
@@ -36,9 +36,9 @@ async def test_usage_by_model_with_pricing_computes_cost(temp_db_url):
     from ai_engine.persistence import db
     await _init(temp_db_url)
     await db.execute(
-        "INSERT INTO daily_token_usage(subject_id, user_type, date, "
-        "input_tokens, output_tokens, model) VALUES "
-        "('u1', 'b', '2026-05-30', 10000, 5000, 'claude-sonnet-4-6')"
+        "INSERT INTO daily_token_usage_by_model(subject_id, user_type, date, model, "
+        "input_tokens, output_tokens) VALUES "
+        "('u1', 'b', '2026-05-30', 'claude-sonnet-4-6', 10000, 5000)"
     )
     await admin_cost.upsert_pricing("claude-sonnet-4-6", 30000, 150000, "USD")
     rows = await admin_cost.usage_by_model(None, None, with_cost=True)

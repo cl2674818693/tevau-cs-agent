@@ -53,9 +53,15 @@ function ReportForm({ onCreated, onError }: {
           </select>
           <Button size="md" onClick={submit} disabled={!name}>新建报表</Button>
         </div>
+        <span className="text-footnote text-ink-tertiary">
+          dims：列名数组（例 <code>{`["staff_id"]`}</code>）
+        </span>
         <textarea className="rounded border border-line px-2 py-1 font-mono text-body3"
           rows={2} value={dimsRaw} aria-label="dims JSON"
           onChange={(e) => setDimsRaw(e.target.value)} />
+        <span className="text-footnote text-ink-tertiary">
+          metrics：op ∈ count/sum/avg/min/max/count_if；count_if 需带 <code>match</code> 值
+        </span>
         <textarea className="rounded border border-line px-2 py-1 font-mono text-body3"
           rows={2} value={metricsRaw} aria-label="metrics JSON"
           onChange={(e) => setMetricsRaw(e.target.value)} />

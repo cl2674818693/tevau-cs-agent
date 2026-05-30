@@ -77,18 +77,25 @@ async def run_def(report_id: int, staff: dict[str, Any] = Depends(_view)) -> dic
     return await _run(report_id)
 
 
+def _csv_chunks(rows: list[dict[str, Any]], chunk_size: int = 100):
+    """M4: 分片生成 CSV 文本，避免大报表一次性内存缓冲。"""
+    if not rows:
+        return
+    cols = list(rows[0].keys())
+    head = io.StringIO()
+    csv.writer(head).writerow(cols)
+    yield head.getvalue()
+    for start in range(0, len(rows), chunk_size):
+        buf = io.StringIO()
+        csv.DictWriter(buf, fieldnames=cols).writerows(rows[start:start + chunk_size])
+        yield buf.getvalue()
+
+
 @router.get("/admin/api/v1/reports/{report_id}/export.csv")
 async def export_csv(report_id: int, staff: dict[str, Any] = Depends(_view)) -> StreamingResponse:
     result = await _run(report_id)
-    rows = result["rows"]
-    buf = io.StringIO()
-    if rows:
-        writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
-    buf.seek(0)
     return StreamingResponse(
-        iter([buf.getvalue()]),
+        _csv_chunks(result["rows"]),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="report-{report_id}.csv"'},
     )

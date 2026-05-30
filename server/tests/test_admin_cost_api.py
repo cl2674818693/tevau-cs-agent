@@ -15,9 +15,9 @@ async def env(seeded_db, monkeypatch):
     await create_staff("EN1", "工程", "engineer", "x")
     await create_staff("AG1", "客服", "agent", "x")
     await db.execute(
-        "INSERT INTO daily_token_usage(subject_id, user_type, date, "
-        "input_tokens, output_tokens, model) VALUES "
-        "('u1', 'b', '2026-05-30', 1000, 500, 'claude-sonnet-4-6')"
+        "INSERT INTO daily_token_usage_by_model(subject_id, user_type, date, model, "
+        "input_tokens, output_tokens) VALUES "
+        "('u1', 'b', '2026-05-30', 'claude-sonnet-4-6', 1000, 500)"
     )
     yield {
         "eng": issue_staff_token("EN1", "engineer"),

@@ -142,16 +142,7 @@ staff_actions = Table(
 )
 Index("idx_staff_actions_staff", staff_actions.c.staff_id, staff_actions.c.at)
 
-daily_token_usage = Table(
-    "daily_token_usage",
-    metadata,
-    Column("subject_id", String(128), primary_key=True),
-    Column("user_type", String(8), primary_key=True),
-    Column("date", String(16), primary_key=True),
-    Column("input_tokens", Integer, nullable=False, server_default="0"),
-    Column("output_tokens", Integer, nullable=False, server_default="0"),
-    Column("model", String(32)),  # M2 加列：记录主要使用模型；主键不变（M3 拆 by-model 旁路表）
-)
+# M4: daily_token_usage 旧表已删，写入只落 by-model 拆分表
 
 ticket_events = Table(
     "ticket_events",
@@ -375,7 +366,7 @@ knowledge_entries = Table(
     Column("created_by", String(64)),
     Column("updated_at", String(32), nullable=False),
     CheckConstraint("type IN ('api_doc','error_code','faq')", name="ck_knowledge_type"),
-    CheckConstraint("status IN ('draft','published')", name="ck_knowledge_status"),
+    CheckConstraint("status IN ('draft','pending_review','published')", name="ck_knowledge_status"),
 )
 Index(
     "ux_knowledge_key", knowledge_entries.c.type, knowledge_entries.c.key,
