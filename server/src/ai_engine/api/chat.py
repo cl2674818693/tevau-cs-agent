@@ -17,6 +17,7 @@ from ai_engine.api.staff_conversations import (
 from ai_engine.auth.bu_session import USER_TYPE_GUEST, resolve_identity
 from ai_engine.config import settings
 from ai_engine.governance import rate_limit, token_budget
+from ai_engine.persistence import admin_audit, guardrails
 from ai_engine.persistence import attachments as att_dao
 from ai_engine.persistence import conversations as conv_dao
 
@@ -104,6 +105,50 @@ def _parse_attachment_ids(raw: str | None) -> list[int]:
     return ids[: settings.attachment_max_per_message]
 
 
+async def _early_block(
+    request: Request,
+    user_type: str,
+    subject_id: str,
+    conversation_id: int,
+    message: str,
+) -> tuple[dict[str, str], str] | None:
+    """合并入口护栏：rate_limit + guardrails。返回 (error_frame, stop_reason) 或 None。"""
+    rl_key = (
+        f"g:ip:{request.client.host if request.client else 'anon'}"
+        if user_type == USER_TYPE_GUEST
+        else f"{user_type}:{subject_id}"
+    )
+    allowed, retry_after_ms = await rate_limit.check(rl_key)
+    if not allowed:
+        err = se.error_event(
+            "RATE_LIMITED", "消息过于频繁，请稍后再试。", retry_after_ms=retry_after_ms
+        )
+        return err, "rate_limited"
+    if await _guardrail_check(subject_id, user_type, message, conversation_id):
+        err = se.error_event("GUARDRAIL_BLOCKED", "内容不符合规则，本次提问已拦截。")
+        return err, "guardrail_blocked"
+    return None
+
+
+async def _guardrail_check(
+    subject_id: str, user_type: str, message: str, conversation_id: int
+) -> bool:
+    """评估 guardrails；block 返回 True（调用方应中止 stream），flag 异步留痕，allow 返回 False。"""
+    action, reason = await guardrails.evaluate(subject_id, user_type, message)
+    if action == "flag":
+        try:
+            await admin_audit.log_admin_action(
+                actor=subject_id,
+                action="guardrail.flagged",
+                target_type="conversation",
+                target_id=str(conversation_id),
+                detail={"reason": reason},
+            )
+        except Exception:
+            logger.exception("guardrail flag audit log failed")
+    return action == "block"
+
+
 async def _stream_ai_turn(
     conversation_id: int,
     user_type: str,
@@ -168,19 +213,14 @@ async def chat(
                     "model": "claude-sonnet-4-6",
                 },
             )
-            # spec §6.4 兜底层：单 subject 每分钟消息数限流。
-            # 游客 subject_id 由客户端 X-Guest-ID 决定（可伪造），故按客户端 IP 限流，防绕过刷量。
-            rl_key = (
-                f"g:ip:{request.client.host if request.client else 'anon'}"
-                if user_type == USER_TYPE_GUEST
-                else f"{user_type}:{subject_id}"
+            # 入口护栏：rate_limit + guardrails（任一拦截即结束）
+            blocked = await _early_block(
+                request, user_type, subject_id, conversation_id, message
             )
-            allowed, retry_after_ms = await rate_limit.check(rl_key)
-            if not allowed:
-                yield se.error_event(
-                    "RATE_LIMITED", "消息过于频繁，请稍后再试。", retry_after_ms=retry_after_ms
-                )
-                yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "rate_limited"})
+            if blocked is not None:
+                err_frame, stop_reason = blocked
+                yield err_frame
+                yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": stop_reason})
                 return
             # 幂等：同一 client_message_id 已完成过则重放历史回复，不重复跑 LLM（防重连/重发刷量）
             dup_id = await _duplicate_turn_id(conversation_id, client_message_id)
