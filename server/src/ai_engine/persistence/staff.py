@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import secrets
 from typing import Any
 
@@ -69,9 +70,9 @@ async def get_staff(staff_id: str) -> dict[str, Any] | None:
 
 
 async def list_staff() -> list[dict[str, Any]]:
-    """账号列表（不含 password_hash）。"""
+    """账号列表（不含 password_hash）。M3a 加 group_id/skills 字段。"""
     return await db.fetch_all(
-        "SELECT id, staff_id, display_name, role, active, created_at "
+        "SELECT id, staff_id, display_name, role, active, group_id, skills, created_at "
         "FROM staff ORDER BY id"
     )
 
@@ -102,4 +103,21 @@ async def reset_staff_password(staff_id: str, new_password: str) -> None:
     await db.execute(
         "UPDATE staff SET password_hash = :pw WHERE staff_id = :sid",
         {"pw": hash_password(new_password), "sid": staff_id},
+    )
+
+
+# ─ M3a 扩展 ─────────────────────────────────────────────────────────────────
+
+
+async def set_staff_group(staff_id: str, group_id: int | None) -> None:
+    await db.execute(
+        "UPDATE staff SET group_id = :g WHERE staff_id = :sid",
+        {"g": int(group_id) if group_id is not None else None, "sid": staff_id},
+    )
+
+
+async def set_staff_skills(staff_id: str, skills: list[str]) -> None:
+    await db.execute(
+        "UPDATE staff SET skills = :s WHERE staff_id = :sid",
+        {"s": json.dumps(skills, ensure_ascii=False), "sid": staff_id},
     )
