@@ -32,6 +32,21 @@ def _entry(code: str, v: dict[str, Any]) -> dict[str, Any]:
 
 async def run(code: str | None = None, keyword: str | None = None) -> dict[str, Any]:
     """按错误码 code 查含义/原因，或按关键词搜消息。用户报 API 返回某 code/报错时用。"""
+    # M3b DB-first：知识库已发布条目优先于内置数据源
+    if code:
+        try:
+            from ai_engine.persistence.knowledge import get_published
+
+            row = await get_published(type_="error_code", key=str(code), locale="zh")
+            if row is not None:
+                return {"hits": [{
+                    "code": str(code),
+                    "message": str(row["title"]),
+                    "reason": str(row["content"]),
+                    "_source": "knowledge_db",
+                }]}
+        except Exception:
+            pass
     codes = _load()
     if not codes:
         return {"hits": [], "note": "错误码知识库未加载"}
