@@ -61,17 +61,30 @@ async def usage_by_model(
     user_type: str | None = None,
     with_cost: bool = False,
 ) -> list[dict[str, Any]]:
+    # M3c: 优先读 by-model 拆分表；新表无数据时回退旧表（M2 兼容）。
     rows = await db.fetch_all(
-        "SELECT COALESCE(model, '(unknown)') AS model, "
+        "SELECT model, "
         "SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens "
-        "FROM daily_token_usage "
+        "FROM daily_token_usage_by_model "
         "WHERE (CAST(:df AS TEXT) IS NULL OR date >= :df) "
         "AND (CAST(:dt AS TEXT) IS NULL OR date <= :dt) "
         "AND (CAST(:ut AS TEXT) IS NULL OR user_type = :ut) "
-        "GROUP BY COALESCE(model, '(unknown)') "
+        "GROUP BY model "
         "ORDER BY model",
         {"df": date_from, "dt": date_to, "ut": user_type},
     )
+    if not rows:
+        rows = await db.fetch_all(
+            "SELECT COALESCE(model, '(unknown)') AS model, "
+            "SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens "
+            "FROM daily_token_usage "
+            "WHERE (CAST(:df AS TEXT) IS NULL OR date >= :df) "
+            "AND (CAST(:dt AS TEXT) IS NULL OR date <= :dt) "
+            "AND (CAST(:ut AS TEXT) IS NULL OR user_type = :ut) "
+            "GROUP BY COALESCE(model, '(unknown)') "
+            "ORDER BY model",
+            {"df": date_from, "dt": date_to, "ut": user_type},
+        )
     result = [
         {
             "model": r["model"],

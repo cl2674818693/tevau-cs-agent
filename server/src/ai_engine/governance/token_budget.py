@@ -54,6 +54,18 @@ async def _record(
             "model": model,
         },
     )
+    # M3c: 双写 by-model 拆分表（model None 时跳过；旧表行为不变）。
+    if model:
+        await db.execute(
+            "INSERT INTO daily_token_usage_by_model"
+            "(subject_id, user_type, date, model, input_tokens, output_tokens) "
+            "VALUES (:s, :u, :d, :m, :it, :ot) "
+            "ON CONFLICT(subject_id, user_type, date, model) DO UPDATE SET "
+            "input_tokens = daily_token_usage_by_model.input_tokens + :it, "
+            "output_tokens = daily_token_usage_by_model.output_tokens + :ot",
+            {"s": subject_id, "u": user_type, "d": day,
+             "m": model, "it": int(in_tok), "ot": int(out_tok)},
+        )
 
 
 async def is_exhausted(user_type: str, subject_id: str) -> bool:
