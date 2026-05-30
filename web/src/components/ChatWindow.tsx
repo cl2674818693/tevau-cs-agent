@@ -6,6 +6,7 @@ import i18n from "../i18n";
 import { useChat } from "../hooks/useChat";
 import { useTicketStream } from "../hooks/useTicketStream";
 import { useKeyboardInset } from "../hooks/useVisualViewport";
+import { AgentRatingPromptToast } from "./AgentRatingPromptToast";
 import {
   ChatHeader,
   EmptyState,
@@ -58,6 +59,21 @@ function ChatBody({
       userType={userType}
       onFeedback={onFeedback}
       urlFor={urlFor}
+    />
+  );
+}
+
+function ChatRatingPrompt({
+  init,
+  ticketEvents,
+}: {
+  init: ConversationInit | null;
+  ticketEvents: import("../hooks/useTicketStream").TicketEvent[];
+}) {
+  return (
+    <AgentRatingPromptToast
+      convId={init ? init.conversation_id : null}
+      ticketEvents={ticketEvents}
     />
   );
 }
@@ -127,6 +143,8 @@ export function ChatWindow() {
       />
 
       <TicketCardSlot ticket={latestTicket} mode={mode} />
+
+      <ChatRatingPrompt init={init} ticketEvents={ticketEvents} />
 
       {showHandoff && <HandoffPrompt onClick={chat.requestHandoff} disabled={sending} />}
 
