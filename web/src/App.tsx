@@ -5,9 +5,12 @@ import { StaffLayout } from "./components/StaffLayout";
 import { AuditCenterRoute } from "./routes/admin/AuditCenterRoute";
 import { CostRoute } from "./routes/admin/CostRoute";
 import { DashboardRoute } from "./routes/admin/DashboardRoute";
+import { GuardrailsRoute } from "./routes/admin/GuardrailsRoute";
+import { KnowledgeRoute } from "./routes/admin/KnowledgeRoute";
 import { PresenceRoute } from "./routes/admin/PresenceRoute";
-import { ShiftsRoute } from "./routes/admin/ShiftsRoute";
+import { PromptEditorRoute } from "./routes/admin/PromptEditorRoute";
 import { PromptsRoute } from "./routes/admin/PromptsRoute";
+import { ShiftsRoute } from "./routes/admin/ShiftsRoute";
 import { QaReviewRoute } from "./routes/admin/QaReviewRoute";
 import { RbacRoute } from "./routes/admin/RbacRoute";
 import { RoutingRulesRoute } from "./routes/admin/RoutingRulesRoute";
@@ -64,6 +67,9 @@ export default function App() {
             <Route path="/admin/presence" element={<PresenceRoute />} />
             <Route path="/admin/shifts" element={<ShiftsRoute />} />
             <Route path="/admin/routing" element={<RoutingRulesRoute />} />
+            <Route path="/admin/prompt-editor" element={<PromptEditorRoute />} />
+            <Route path="/admin/knowledge" element={<KnowledgeRoute />} />
+            <Route path="/admin/guardrails" element={<GuardrailsRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

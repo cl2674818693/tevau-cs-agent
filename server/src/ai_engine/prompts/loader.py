@@ -63,3 +63,28 @@ def build_system_blocks(
             }
         )
     return blocks
+
+
+# M3b: async DB-first 入口（独立于 read_prompt 同步链路；为后续 runtime 接入做准备）。
+async def load(version: str, file_name: str) -> str:
+    """DB-first：优先读 prompt_drafts 已发布版本；缺失回退文件。
+
+    设计上独立于既有同步 read_prompt：runtime 链路改造为 async 后再接入。
+    M3b 阶段只为新增的 Prompt 编辑/预览路径提供。
+    """
+    try:
+        from ai_engine.persistence.prompt_drafts import get_published
+
+        row = await get_published(version, file_name)
+        if row is not None:
+            return str(row["content"])
+    except Exception:
+        pass
+    return _read_file(version, file_name)
+
+
+def _read_file(version: str, file_name: str) -> str:
+    from pathlib import Path
+
+    from ai_engine.config import settings
+    return Path(settings.prompts_dir, version, file_name).read_text(encoding="utf-8")

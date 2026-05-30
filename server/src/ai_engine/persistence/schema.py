@@ -343,3 +343,57 @@ routing_rules = Table(
     ),
 )
 Index("idx_routing_priority", routing_rules.c.priority, routing_rules.c.active)
+
+# Prompt 草稿 / 发布（M3b §5.4.b）
+# DB-first 读取：loader 先查 status=published 的最新行；缺失回退文件。
+prompt_drafts = Table(
+    "prompt_drafts",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("version", String(16), nullable=False),
+    Column("file_name", String(64), nullable=False),
+    Column("content", Text, nullable=False),
+    Column("status", String(16), nullable=False, server_default="draft"),
+    Column("editor", String(64)),
+    Column("created_at", String(32), nullable=False),
+    CheckConstraint("status IN ('draft','published')", name="ck_prompt_draft_status"),
+)
+Index("idx_prompt_drafts_lookup", prompt_drafts.c.version, prompt_drafts.c.file_name, prompt_drafts.c.status)
+
+# 知识库条目（M3b §5.4.e）
+knowledge_entries = Table(
+    "knowledge_entries",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("type", String(32), nullable=False),
+    Column("key", String(128), nullable=False),
+    Column("title", String(256), nullable=False),
+    Column("content", Text, nullable=False),
+    Column("locale", String(16), nullable=False, server_default="zh"),
+    Column("status", String(16), nullable=False, server_default="draft"),
+    Column("source_gap_signal", String(64)),
+    Column("created_by", String(64)),
+    Column("updated_at", String(32), nullable=False),
+    CheckConstraint("type IN ('api_doc','error_code','faq')", name="ck_knowledge_type"),
+    CheckConstraint("status IN ('draft','published')", name="ck_knowledge_status"),
+)
+Index(
+    "ux_knowledge_key", knowledge_entries.c.type, knowledge_entries.c.key,
+    knowledge_entries.c.locale, knowledge_entries.c.status, unique=True,
+)
+
+# 范围 / 拦截规则（M3b §5.4.f）
+guardrail_rules = Table(
+    "guardrail_rules",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("type", String(32), nullable=False),
+    Column("pattern", String(512), nullable=False),
+    Column("action", String(16), nullable=False, server_default="block"),
+    Column("active", Integer, nullable=False, server_default="1"),
+    Column("created_by", String(64)),
+    Column("created_at", String(32), nullable=False),
+    CheckConstraint("type IN ('blocklist','sensitive_word','scope_toggle')", name="ck_guardrail_type"),
+    CheckConstraint("action IN ('block','flag')", name="ck_guardrail_action"),
+)
+Index("idx_guardrail_active", guardrail_rules.c.active, guardrail_rules.c.type)
