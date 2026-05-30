@@ -85,3 +85,13 @@ async def match_for_conversation(
         if mt in ("scope", "keyword") and last_user_text and mv in last_user_text:
             return int(rule["target_group_id"])
     return None
+
+
+async def route_conversation_now(conv_id: int, user_type: str) -> int | None:
+    """读会话最近 user 消息文本 → 匹配规则 → 写 target_group_id。返回匹配到的 group_id 或 None。"""
+    from ai_engine.persistence import conversations as conv_dao
+
+    text = await conv_dao.last_user_text(conv_id)
+    gid = await match_for_conversation(user_type=user_type, last_user_text=text)
+    await conv_dao.set_target_group(conv_id, gid)
+    return gid
