@@ -1,5 +1,7 @@
 import {
+  Activity,
   BarChart3,
+  CalendarClock,
   ChevronLeft,
   ClipboardCheck,
   Inbox,
@@ -7,6 +9,7 @@ import {
   LayoutDashboard,
   Lightbulb,
   type LucideIcon,
+  Route,
   ScrollText,
   Shield,
   ShieldCheck,
@@ -15,6 +18,7 @@ import {
   Timer,
   UserCog,
   Users,
+  Users2,
   Wallet,
 } from "lucide-react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -53,6 +57,11 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/tools", label: "工具策略", short: "工具", icon: KeySquare, roles: ["engineer", "admin"] },
   { to: "/admin/cost", label: "成本大盘", short: "成本", icon: Wallet, roles: ["engineer", "manager", "admin"] },
   { to: "/admin/rbac", label: "角色权限", short: "RBAC", icon: Shield, roles: ["admin"] },
+  // M3a 坐席组织
+  { to: "/admin/staff-groups", label: "客服分组", short: "分组", icon: Users2, roles: ["supervisor", "admin"] },
+  { to: "/admin/presence", label: "在线状态", short: "在线", icon: Activity, roles: ["supervisor", "admin"] },
+  { to: "/admin/shifts", label: "排班", short: "排班", icon: CalendarClock, roles: ["supervisor", "admin"] },
+  { to: "/admin/routing", label: "会话路由", short: "路由", icon: Route, roles: ["supervisor", "admin"] },
 ];
 
 function useNavItems() {
