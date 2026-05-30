@@ -10,6 +10,7 @@ import { ShiftsRoute } from "./routes/admin/ShiftsRoute";
 import { PromptsRoute } from "./routes/admin/PromptsRoute";
 import { QaReviewRoute } from "./routes/admin/QaReviewRoute";
 import { RbacRoute } from "./routes/admin/RbacRoute";
+import { RoutingRulesRoute } from "./routes/admin/RoutingRulesRoute";
 import { SlaRoute } from "./routes/admin/SlaRoute";
 import { StaffAccountsRoute } from "./routes/admin/StaffAccountsRoute";
 import { StaffGroupsRoute } from "./routes/admin/StaffGroupsRoute";
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/admin/staff-groups" element={<StaffGroupsRoute />} />
             <Route path="/admin/presence" element={<PresenceRoute />} />
             <Route path="/admin/shifts" element={<ShiftsRoute />} />
+            <Route path="/admin/routing" element={<RoutingRulesRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
