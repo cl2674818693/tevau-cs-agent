@@ -1,16 +1,21 @@
 import {
   BarChart3,
   ChevronLeft,
+  ClipboardCheck,
   Inbox,
+  KeySquare,
   LayoutDashboard,
   Lightbulb,
   type LucideIcon,
   ScrollText,
+  Shield,
   ShieldCheck,
   SlidersHorizontal,
   Ticket,
   Timer,
+  UserCog,
   Users,
+  Wallet,
 } from "lucide-react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -42,6 +47,12 @@ const NAV_ITEMS: NavItem[] = [
   // Prompt 灰度后端鉴权仍是 require_admin(admin only)，故菜单 roles 保持 ["admin"]，
   // 与后端一致避免 engineer 点进去 403（统一到 engineer/admin 留 M2）。
   { to: "/admin/prompts", label: "Prompt 灰度", short: "灰度", icon: SlidersHorizontal, roles: ["admin"] },
+  // M2 新增（路由由 Phase 1–6 各 task 注册）
+  { to: "/admin/qa", label: "会话质检", short: "质检", icon: ClipboardCheck, roles: ["supervisor", "admin"] },
+  { to: "/admin/performance", label: "客服绩效", short: "绩效", icon: UserCog, roles: ["supervisor", "admin"] },
+  { to: "/admin/tools", label: "工具策略", short: "工具", icon: KeySquare, roles: ["engineer", "admin"] },
+  { to: "/admin/cost", label: "成本大盘", short: "成本", icon: Wallet, roles: ["engineer", "manager", "admin"] },
+  { to: "/admin/rbac", label: "角色权限", short: "RBAC", icon: Shield, roles: ["admin"] },
 ];
 
 function useNavItems() {
