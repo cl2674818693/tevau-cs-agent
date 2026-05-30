@@ -147,6 +147,7 @@ daily_token_usage = Table(
     Column("date", String(16), primary_key=True),
     Column("input_tokens", Integer, nullable=False, server_default="0"),
     Column("output_tokens", Integer, nullable=False, server_default="0"),
+    Column("model", String(32)),  # M2 加列：记录主要使用模型；主键不变（M3 拆 by-model 旁路表）
 )
 
 ticket_events = Table(
@@ -278,3 +279,14 @@ tool_policies = Table(
     Column("updated_at", String(32), nullable=False),
 )
 Index("ux_tool_policy_role", tool_policies.c.tool_name, tool_policies.c.role, unique=True)
+
+# 模型单价（M2 成本大盘用）。单价存"每千 token × 10000"，避免浮点 — 展示时除以 10000。
+model_pricing = Table(
+    "model_pricing",
+    metadata,
+    Column("model", String(64), primary_key=True),
+    Column("input_price_per_1k_x10000", Integer, nullable=False),
+    Column("output_price_per_1k_x10000", Integer, nullable=False),
+    Column("currency", String(8), nullable=False, server_default="USD"),
+    Column("updated_at", String(32), nullable=False),
+)
