@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -10,6 +11,7 @@ from ai_engine.auth.bu_session import USER_TYPE_GUEST, resolve_identity
 from ai_engine.integrations.event_center_client import push_event_center
 from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
+from ai_engine.persistence import routing_rules
 from ai_engine.persistence import tickets as ticket_dao
 from ai_engine.persistence.staff_metrics import refresh_human_pending
 
@@ -33,6 +35,13 @@ async def request_human(conv_id: int, body: RequestHumanIn, request: Request) ->
         return {"ok": True, "note": "already human-handled"}
     await conv_dao.set_mode(conv_id, "human_pending")
     await refresh_human_pending()
+    # 转人工时按路由规则匹配 target_group_id（失败不阻塞主流程，仅记日志）
+    try:
+        await routing_rules.route_conversation_now(conv_id=conv_id, user_type=user_type)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "route_conversation_now failed (conv_id=%s)", conv_id
+        )
     out = await create_ticket_run(
         subject_id=subject_id,
         user_type=user_type,
