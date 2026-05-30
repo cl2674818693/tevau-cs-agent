@@ -1,3 +1,4 @@
+import i18n from "../i18n";
 import type { ChatEvent, ConversationInit, Message } from "../types";
 import { authHeaders } from "./identity";
 
@@ -69,6 +70,8 @@ export async function* streamChat(args: {
   let url = `/api/v1/chat?conversation_id=${args.conversationId}&message=${encodeURIComponent(
     args.message,
   )}`;
+  // 当前外壳语言（C 端=APP locale）：后端在用户消息无文字可镜像（纯图片）时用作默认回复语言
+  url += `&ui_locale=${encodeURIComponent(i18n.language)}`;
   // 幂等键：重发/重连时同 id 命中后端会重放历史回复，不重复跑 LLM
   if (args.clientMessageId) url += `&client_message_id=${encodeURIComponent(args.clientMessageId)}`;
   // 图片附件：先上传拿到的 id，逗号分隔随消息带上，后端绑定到本轮 user 行

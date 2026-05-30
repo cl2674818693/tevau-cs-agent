@@ -9,7 +9,7 @@ import {
   streamConversationMessages,
 } from "../api/chat";
 import { AuthExpiredError, resolveIdentity, userType } from "../api/identity";
-import i18n from "../i18n";
+import i18n, { syncLanguageFromBridge } from "../i18n";
 import { backoffDelay } from "../lib/backoff";
 import {
   loadResumeContext,
@@ -104,6 +104,7 @@ function useChatInit(
     setStatus("loading");
     try {
       await resolveIdentity();
+      await syncLanguageFromBridge(); // 外壳语言跟随 APP（C 端）；首屏前完成，避免语言闪烁
       const { sessionId, resume } = await loadResumeContext();
       fallbackRef.current = sessionId === null;
       const info = await initConversation(resume);

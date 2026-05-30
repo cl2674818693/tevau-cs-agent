@@ -157,6 +157,7 @@ async def _stream_ai_turn(
     client_message_id: str | None,
     cancel_evt: asyncio.Event,
     attachment_ids: list[int],
+    ui_locale: str | None,
 ) -> AsyncIterator[dict[str, str]]:
     """正常 AI 回合：message_start → run_turn 事件映射 → message_stop。"""
     yield se.sse_payload(se.EVENT_MESSAGE_START, {"message_id": secrets.token_hex(6)})
@@ -177,6 +178,7 @@ async def _stream_ai_turn(
         user_message=message,
         client_message_id=client_message_id,
         attachment_ids=attachment_ids,
+        ui_locale=ui_locale,
     ):
         if cancel_evt.is_set():
             yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "cancelled"})
@@ -195,6 +197,7 @@ async def chat(
     message: str = Query(...),
     client_message_id: str | None = Query(default=None),
     attachment_ids: str | None = Query(default=None),
+    ui_locale: str | None = Query(default=None),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> EventSourceResponse:
     """SSE 主链路（两端：C 端 Bearer JWT / B 端 cookie）。client_message_id 用于幂等重放。"""
@@ -273,6 +276,7 @@ async def chat(
                 client_message_id,
                 cancel_evt,
                 att_ids,
+                ui_locale,
             ):
                 yield frame
         except Exception:  # 顶层兜底：记日志，对外只回固定文案，不外泄内部错误细节
