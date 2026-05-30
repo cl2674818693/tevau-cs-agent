@@ -16,6 +16,7 @@ from ai_engine.auth.staff_session import require_staff
 from ai_engine.config import settings
 from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
+from ai_engine.persistence import tool_policies
 from ai_engine.persistence.db import get_conn
 from ai_engine.persistence.schema import now_str
 from ai_engine.persistence.staff import get_staff
@@ -406,19 +407,23 @@ async def run_ai_tool(
     """客服代查 AI 工具：强制以该会话身份调用（不能跨用户），结果仅返回客服、不进对话流。"""
     if staff.get("role") not in ("senior", "engineer"):
         raise HTTPException(403, "ai-tools requires senior/engineer")
-    if tool_name not in _STAFF_TOOL_WHITELIST:
+    # M2 Task 4.3: 白名单/脱敏从硬编码常量改为读 DB tool_policies；表为空时回退
+    # 到 _STAFF_TOOL_WHITELIST 默认（在 tool_policies 模块中维护相同集合）。
+    role = str(staff.get("role"))
+    if not await tool_policies.is_tool_allowed(tool_name, role):
         raise HTTPException(400, f"tool not allowed: {tool_name}")
     conv = await conv_dao.get_conversation(conv_id)
     if conv is None:
         raise HTTPException(404, "conversation not found")
-    # spec §13.3：仅 engineer 可解锁部分脱敏；senior 看脱敏结果
+    unmask_flag = await tool_policies.is_unmask_allowed(tool_name, role)
+    # spec §13.3：脱敏决策（默认仅 engineer 可解锁），现由 tool_policies 管理
     return await dispatch(
         tool_name=tool_name,
         params=body.params,
         user_type=str(conv["user_type"]),
         subject_id=str(conv["subject_id"]),
         conversation_id=conv_id,
-        unmask=(staff.get("role") == "engineer"),
+        unmask=unmask_flag,
     )
 
 
