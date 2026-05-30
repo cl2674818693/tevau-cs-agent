@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { StaffLayout } from "./components/StaffLayout";
 import { PromptsRoute } from "./routes/admin/PromptsRoute";
+import { SlaRoute } from "./routes/admin/SlaRoute";
 import { StaffAccountsRoute } from "./routes/admin/StaffAccountsRoute";
 import { BuLoginRoute } from "./routes/BuLoginRoute";
 import { ChatRoute } from "./routes/ChatRoute";
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/staff/tickets/:externalId" element={<TicketDetailRoute />} />
             <Route path="/admin/prompts" element={<PromptsRoute />} />
             <Route path="/admin/staff" element={<StaffAccountsRoute />} />
+            <Route path="/admin/sla" element={<SlaRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
