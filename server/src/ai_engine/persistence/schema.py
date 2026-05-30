@@ -43,6 +43,7 @@ conversations = Table(
     Column("archived", Integer, nullable=False, server_default="0"),
     # 👎 反馈触发：运营据此筛出待复核会话。
     Column("needs_review", Integer, nullable=False, server_default="0"),
+    Column("target_group_id", Integer),  # M3a 路由匹配后写入；null 表示无定向
     Column("created_at", String(32), nullable=False),
     CheckConstraint("user_type IN ('c','b','g')", name="ck_conversations_user_type"),
 )
@@ -325,3 +326,20 @@ staff_shifts = Table(
     Column("created_at", String(32), nullable=False),
 )
 Index("idx_shifts_staff_time", staff_shifts.c.staff_id, staff_shifts.c.start_at)
+
+# 会话路由规则（M3a §5.1.d）
+routing_rules = Table(
+    "routing_rules",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("match_type", String(32), nullable=False),
+    Column("match_value", String(256), nullable=False),
+    Column("target_group_id", Integer, nullable=False),
+    Column("priority", Integer, nullable=False, server_default="100"),
+    Column("active", Integer, nullable=False, server_default="1"),
+    Column("created_at", String(32), nullable=False),
+    CheckConstraint(
+        "match_type IN ('user_type','scope','keyword')", name="ck_routing_match_type"
+    ),
+)
+Index("idx_routing_priority", routing_rules.c.priority, routing_rules.c.active)
