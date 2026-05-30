@@ -14,6 +14,7 @@ import { InsightsRoute } from "./routes/staff/InsightsRoute";
 import { KpiRoute } from "./routes/staff/KpiRoute";
 import { SpectateRoute } from "./routes/staff/SpectateRoute";
 import { StaffLoginRoute } from "./routes/staff/StaffLoginRoute";
+import { TicketDetailRoute } from "./routes/staff/TicketDetailRoute";
 import { TicketsRoute } from "./routes/staff/TicketsRoute";
 import "./styles/globals.css";
 
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/staff/insights" element={<InsightsRoute />} />
             <Route path="/staff/audits" element={<AuditsRoute />} />
             <Route path="/staff/tickets" element={<TicketsRoute />} />
+            <Route path="/staff/tickets/:externalId" element={<TicketDetailRoute />} />
             <Route path="/admin/prompts" element={<PromptsRoute />} />
             <Route path="/admin/staff" element={<StaffAccountsRoute />} />
           </Route>

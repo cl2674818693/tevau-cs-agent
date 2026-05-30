@@ -110,7 +110,11 @@ export function TicketsRoute() {
         <tbody>
           {rows.map((t) => (
             <tr key={t.external_id} className="border-t border-line text-ink-primary align-top">
-              <td className="py-1 whitespace-nowrap">{t.external_id}</td>
+              <td className="py-1 whitespace-nowrap">
+                <Link to={`/staff/tickets/${t.external_id}`} className="text-brand">
+                  {t.external_id}
+                </Link>
+              </td>
               <td>{t.category ?? "-"}</td>
               <td>{t.severity ?? "-"}</td>
               <td>
