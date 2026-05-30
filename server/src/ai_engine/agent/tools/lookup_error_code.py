@@ -30,14 +30,16 @@ def _entry(code: str, v: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-async def run(code: str | None = None, keyword: str | None = None) -> dict[str, Any]:
-    """按错误码 code 查含义/原因，或按关键词搜消息。用户报 API 返回某 code/报错时用。"""
+async def run(
+    code: str | None = None, keyword: str | None = None, locale: str = "zh"
+) -> dict[str, Any]:
+    """按错误码 code 查含义/原因，或按关键词搜消息。M4: 加 locale 参数支持多语言知识库。"""
     # M3b DB-first：知识库已发布条目优先于内置数据源
     if code:
         try:
             from ai_engine.persistence.knowledge import get_published
 
-            row = await get_published(type_="error_code", key=str(code), locale="zh")
+            row = await get_published(type_="error_code", key=str(code), locale=locale)
             if row is not None:
                 return {"hits": [{
                     "code": str(code),

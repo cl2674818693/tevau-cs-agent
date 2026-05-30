@@ -39,7 +39,17 @@ async def upsert_entry(
     )
 
 
+async def submit_for_review(entry_id: int) -> None:
+    """M4: 草稿提交审核（draft → pending_review）。"""
+    await db.execute(
+        "UPDATE knowledge_entries SET status = 'pending_review', updated_at = :now "
+        "WHERE id = :id AND status = 'draft'",
+        {"now": now_str(), "id": int(entry_id)},
+    )
+
+
 async def publish(entry_id: int) -> None:
+    """M4: 审核通过（pending_review → published）；兼容直接 draft → published。"""
     await db.execute(
         "UPDATE knowledge_entries SET status = 'published', updated_at = :now "
         "WHERE id = :id",

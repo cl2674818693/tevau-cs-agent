@@ -31,11 +31,26 @@ async def list_all() -> list[dict[str, Any]]:
     )
 
 
-async def list_active(window_seconds: int = 300) -> list[dict[str, Any]]:
-    """返回当前 status != offline 且 last_seen_at 在窗口内的客服。"""
+async def list_active(
+    window_seconds: int = 300, on_shift_only: bool = False
+) -> list[dict[str, Any]]:
+    """返回当前 status != offline 且 last_seen_at 在窗口内的客服。
+
+    M4: on_shift_only=True 时进一步过滤"当前在班"（与 staff_shifts 表 JOIN）。
+    """
     cutoff = (datetime.now(UTC) - timedelta(seconds=window_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+    if not on_shift_only:
+        return await db.fetch_all(
+            "SELECT staff_id, status, last_seen_at FROM staff_presence "
+            "WHERE status != 'offline' AND last_seen_at >= :cutoff ORDER BY staff_id",
+            {"cutoff": cutoff},
+        )
+    now_ts = (datetime.now(UTC)).strftime("%Y-%m-%d %H:%M:%S")
     return await db.fetch_all(
-        "SELECT staff_id, status, last_seen_at FROM staff_presence "
-        "WHERE status != 'offline' AND last_seen_at >= :cutoff ORDER BY staff_id",
-        {"cutoff": cutoff},
+        "SELECT p.staff_id, p.status, p.last_seen_at FROM staff_presence p "
+        "WHERE p.status != 'offline' AND p.last_seen_at >= :cutoff "
+        "AND EXISTS (SELECT 1 FROM staff_shifts s WHERE s.staff_id = p.staff_id "
+        "AND s.start_at <= :now AND s.end_at >= :now) "
+        "ORDER BY p.staff_id",
+        {"cutoff": cutoff, "now": now_ts},
     )

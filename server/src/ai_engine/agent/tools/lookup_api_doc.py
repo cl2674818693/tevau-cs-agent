@@ -74,14 +74,15 @@ def _score(q: str, path: str, method: str, op: dict[str, Any]) -> int:
     return score
 
 
-async def run(query: str, limit: int = 5) -> dict[str, Any]:
+async def run(query: str, limit: int = 5, locale: str = "zh") -> dict[str, Any]:
+    """M4: 加 locale 参数支持多语言知识库。"""
     if not query or len(query) > 200:
         raise ValueError("query length 1..200")
     # M3b DB-first：知识库已发布条目（type=api_doc, key=query 精确匹配）优先
     try:
         from ai_engine.persistence.knowledge import get_published
 
-        row = await get_published(type_="api_doc", key=query, locale="zh")
+        row = await get_published(type_="api_doc", key=query, locale=locale)
         if row is not None:
             return {"hits": [{
                 "title": str(row["title"]),

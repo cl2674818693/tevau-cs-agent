@@ -65,9 +65,12 @@ async def delete_rule(rule_id: int) -> None:
 
 
 async def evaluate(
-    subject_id: str, user_type: str, text: str
+    subject_id: str, user_type: str, text: str, scope: str | None = None
 ) -> tuple[str, str | None]:
-    """返回 ("allow", None) 或 ("block"|"flag", reason)。"""
+    """返回 ("allow", None) 或 ("block"|"flag", reason)。
+
+    M4: scope_toggle 规则——pattern 是 scope 名（如 "stock"），调用方传 scope 命中即触发。
+    """
     for rule in await _active_rules():
         t = str(rule["type"])
         pat = str(rule["pattern"])
@@ -76,4 +79,6 @@ async def evaluate(
             return action, f"blocklist:{pat}"
         if t == "sensitive_word" and pat in text:
             return action, f"sensitive_word:{pat}"
+        if t == "scope_toggle" and scope is not None and pat == scope:
+            return action, f"scope_toggle:{pat}"
     return "allow", None

@@ -33,5 +33,6 @@ async def heartbeat(
 @router.get("/admin/api/v1/presence")
 async def admin_list(staff: dict[str, Any] = Depends(_sup)) -> dict[str, Any]:
     all_rows = await staff_presence.list_all()
-    active = await staff_presence.list_active(window_seconds=300)
+    # M4: 窗口与前端心跳间隔同步加大（5min 心跳 → 容许 10min 内未掉线）
+    active = await staff_presence.list_active(window_seconds=600)
     return {"all": all_rows, "active": active}

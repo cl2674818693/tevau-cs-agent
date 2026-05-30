@@ -111,7 +111,8 @@ function StaffTable({ rows, groups, onRefresh, onNotice, onError }: StaffTablePr
     catch (e) { onError(e instanceof Error ? e.message : "操作失败"); }
   }
   async function onChangeGroup(staffId: string, groupId: number) {
-    if (!token || groupId === 0) return;
+    // M4: 0 表示清空（后端语义已扩展）
+    if (!token) return;
     try { await patchStaff(token, staffId, { group_id: groupId }); onRefresh(); }
     catch (e) { onError(e instanceof Error ? e.message : "操作失败"); }
   }

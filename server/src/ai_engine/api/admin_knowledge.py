@@ -57,6 +57,19 @@ async def create_entry(
     return {"ok": True, "id": eid}
 
 
+@router.post("/admin/api/v1/knowledge/{entry_id}/submit")
+async def submit_for_review(
+    entry_id: int, staff: dict[str, Any] = Depends(_sup)
+) -> dict[str, Any]:
+    """M4: draft → pending_review。"""
+    await knowledge.submit_for_review(entry_id)
+    await admin_audit.log_admin_action(
+        actor=str(staff.get("sub", "unknown")), action="knowledge.submit_for_review",
+        target_type="knowledge_entry", target_id=str(entry_id),
+    )
+    return {"ok": True}
+
+
 @router.post("/admin/api/v1/knowledge/{entry_id}/publish")
 async def publish(entry_id: int, staff: dict[str, Any] = Depends(_sup)) -> dict[str, Any]:
     await knowledge.publish(entry_id)
