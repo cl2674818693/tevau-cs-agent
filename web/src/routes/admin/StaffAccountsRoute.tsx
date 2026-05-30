@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { createStaff, listStaff, patchStaff, resetPassword, STAFF_ROLES, type StaffRow } from "../../api/adminStaff";
+import { listGroups, type StaffGroup } from "../../api/adminStaffGroups";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -11,7 +12,7 @@ import { LoadingState } from "../../components/ui/spinner";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 type CreateForm = { staff_id: string; display_name: string; role: string; password: string };
-type StaffTableProps = { rows: StaffRow[]; onRefresh: () => void; onNotice: (msg: string) => void; onError: (msg: string) => void };
+type StaffTableProps = { rows: StaffRow[]; groups: StaffGroup[]; onRefresh: () => void; onNotice: (msg: string) => void; onError: (msg: string) => void };
 
 function CreateStaffForm({ onCreated }: { onCreated: () => void }) {
   const { token } = useStaffSession();
@@ -57,41 +58,76 @@ function CreateStaffForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-function StaffTable({ rows, onRefresh, onNotice, onError }: StaffTableProps) {
-  const { token } = useStaffSession();
+type RowActions = {
+  onChangeRole: (staffId: string, newRole: string) => void;
+  onChangeGroup: (staffId: string, groupId: number) => void;
+  onToggleActive: (s: StaffRow) => void;
+  onReset: (staffId: string) => void;
+};
 
+function StaffRowItem({ s, groups, actions }: {
+  s: StaffRow; groups: StaffGroup[]; actions: RowActions;
+}) {
+  return (
+    <tr className="border-b border-line last:border-0">
+      <td className="px-3 py-2 text-ink-primary">{s.staff_id}</td>
+      <td className="px-3 py-2 text-ink-secondary">{s.display_name}</td>
+      <td className="px-3 py-2">
+        <select value={s.role} className="rounded border border-line px-1 py-0.5"
+          onChange={(e) => actions.onChangeRole(s.staff_id, e.target.value)}>
+          {STAFF_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </td>
+      <td className="px-3 py-2">
+        <select value={s.group_id ?? 0} className="rounded border border-line px-1 py-0.5"
+          onChange={(e) => actions.onChangeGroup(s.staff_id, Number(e.target.value))}>
+          <option value={0}>—</option>
+          {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
+      </td>
+      <td className="px-3 py-2">
+        <span className={s.active ? "text-status-success" : "text-ink-tertiary"}>
+          {s.active ? "启用" : "停用"}
+        </span>
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex gap-2">
+          <button className="text-brand" onClick={() => actions.onToggleActive(s)}>
+            {s.active ? "停用" : "启用"}
+          </button>
+          <button className="text-brand" onClick={() => actions.onReset(s.staff_id)}>重置密码</button>
+          <Link className="text-brand" to={`/admin/performance/${s.staff_id}`}>绩效</Link>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function StaffTable({ rows, groups, onRefresh, onNotice, onError }: StaffTableProps) {
+  const { token } = useStaffSession();
   async function onChangeRole(staffId: string, newRole: string) {
     if (!token) return;
-    try {
-      await patchStaff(token, staffId, { role: newRole });
-      onRefresh();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "操作失败");
-    }
+    try { await patchStaff(token, staffId, { role: newRole }); onRefresh(); }
+    catch (e) { onError(e instanceof Error ? e.message : "操作失败"); }
   }
-
+  async function onChangeGroup(staffId: string, groupId: number) {
+    if (!token || groupId === 0) return;
+    try { await patchStaff(token, staffId, { group_id: groupId }); onRefresh(); }
+    catch (e) { onError(e instanceof Error ? e.message : "操作失败"); }
+  }
   async function onToggleActive(s: StaffRow) {
     if (!token) return;
-    try {
-      await patchStaff(token, s.staff_id, { active: s.active ? 0 : 1 });
-      onRefresh();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "操作失败");
-    }
+    try { await patchStaff(token, s.staff_id, { active: s.active ? 0 : 1 }); onRefresh(); }
+    catch (e) { onError(e instanceof Error ? e.message : "操作失败"); }
   }
-
   async function onReset(staffId: string) {
     if (!token) return;
     const pw = window.prompt(`为 ${staffId} 设置新密码`);
     if (!pw) return;
-    try {
-      await resetPassword(token, staffId, pw);
-      onNotice("密码已重置");
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "操作失败");
-    }
+    try { await resetPassword(token, staffId, pw); onNotice("密码已重置"); }
+    catch (e) { onError(e instanceof Error ? e.message : "操作失败"); }
   }
-
+  const actions: RowActions = { onChangeRole, onChangeGroup, onToggleActive, onReset };
   return (
     <Card className="mt-3">
       <div className="overflow-x-auto">
@@ -101,36 +137,14 @@ function StaffTable({ rows, onRefresh, onNotice, onError }: StaffTableProps) {
               <th className="px-3 py-2 text-left font-normal">staff_id</th>
               <th className="px-3 py-2 text-left font-normal">显示名</th>
               <th className="px-3 py-2 text-left font-normal">角色</th>
+              <th className="px-3 py-2 text-left font-normal">分组</th>
               <th className="px-3 py-2 text-left font-normal">状态</th>
               <th className="px-3 py-2 text-left font-normal">操作</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((s) => (
-              <tr key={s.staff_id} className="border-b border-line last:border-0">
-                <td className="px-3 py-2 text-ink-primary">{s.staff_id}</td>
-                <td className="px-3 py-2 text-ink-secondary">{s.display_name}</td>
-                <td className="px-3 py-2">
-                  <select value={s.role} onChange={(e) => onChangeRole(s.staff_id, e.target.value)}
-                    className="rounded border border-line px-1 py-0.5">
-                    {STAFF_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </td>
-                <td className="px-3 py-2">
-                  <span className={s.active ? "text-status-success" : "text-ink-tertiary"}>
-                    {s.active ? "启用" : "停用"}
-                  </span>
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex gap-2">
-                    <button className="text-brand" onClick={() => onToggleActive(s)}>
-                      {s.active ? "停用" : "启用"}
-                    </button>
-                    <button className="text-brand" onClick={() => onReset(s.staff_id)}>重置密码</button>
-                    <Link className="text-brand" to={`/admin/performance/${s.staff_id}`}>绩效</Link>
-                  </div>
-                </td>
-              </tr>
+              <StaffRowItem key={s.staff_id} s={s} groups={groups} actions={actions} />
             ))}
           </tbody>
         </table>
@@ -142,6 +156,7 @@ function StaffTable({ rows, onRefresh, onNotice, onError }: StaffTableProps) {
 export function StaffAccountsRoute() {
   const { token, role } = useStaffSession();
   const [rows, setRows] = useState<StaffRow[]>([]);
+  const [groups, setGroups] = useState<StaffGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState("");
@@ -149,8 +164,8 @@ export function StaffAccountsRoute() {
   function reload() {
     if (!token) return;
     setLoading(true);
-    listStaff(token)
-      .then(setRows)
+    Promise.all([listStaff(token), listGroups(token)])
+      .then(([rs, gs]) => { setRows(rs); setGroups(gs); })
       .catch(() => setErr("加载失败"))
       .finally(() => setLoading(false));
   }
@@ -176,7 +191,7 @@ export function StaffAccountsRoute() {
         role === "admin" && (
           <>
             <CreateStaffForm onCreated={reload} />
-            <StaffTable rows={rows} onRefresh={reload} onNotice={setNotice} onError={setErr} />
+            <StaffTable rows={rows} groups={groups} onRefresh={reload} onNotice={setNotice} onError={setErr} />
           </>
         )
       )}

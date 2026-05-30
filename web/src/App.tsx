@@ -10,6 +10,7 @@ import { QaReviewRoute } from "./routes/admin/QaReviewRoute";
 import { RbacRoute } from "./routes/admin/RbacRoute";
 import { SlaRoute } from "./routes/admin/SlaRoute";
 import { StaffAccountsRoute } from "./routes/admin/StaffAccountsRoute";
+import { StaffGroupsRoute } from "./routes/admin/StaffGroupsRoute";
 import { StaffPerformanceRoute } from "./routes/admin/StaffPerformanceRoute";
 import { ToolPoliciesRoute } from "./routes/admin/ToolPoliciesRoute";
 import { BuLoginRoute } from "./routes/BuLoginRoute";
@@ -56,6 +57,7 @@ export default function App() {
             <Route path="/admin/tools" element={<ToolPoliciesRoute />} />
             <Route path="/admin/cost" element={<CostRoute />} />
             <Route path="/admin/rbac" element={<RbacRoute />} />
+            <Route path="/admin/staff-groups" element={<StaffGroupsRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

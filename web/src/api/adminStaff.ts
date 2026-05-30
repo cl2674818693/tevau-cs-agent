@@ -10,6 +10,8 @@ export type StaffRow = {
   display_name: string;
   role: string;
   active: number;
+  group_id: number | null;
+  skills: string | null;  // JSON 数组字符串 (M3a)
   created_at: string;
 };
 
@@ -37,7 +39,7 @@ export async function createStaff(
 export async function patchStaff(
   token: string,
   staffId: string,
-  body: { display_name?: string; role?: string; active?: number },
+  body: { display_name?: string; role?: string; active?: number; group_id?: number; skills?: string[] },
 ): Promise<void> {
   const r = await staffFetch(`/admin/api/v1/staff/${staffId}`, {
     method: "PATCH",
