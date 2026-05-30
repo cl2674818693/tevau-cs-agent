@@ -5,6 +5,7 @@ import { StaffLayout } from "./components/StaffLayout";
 import { AuditCenterRoute } from "./routes/admin/AuditCenterRoute";
 import { DashboardRoute } from "./routes/admin/DashboardRoute";
 import { PromptsRoute } from "./routes/admin/PromptsRoute";
+import { QaReviewRoute } from "./routes/admin/QaReviewRoute";
 import { SlaRoute } from "./routes/admin/SlaRoute";
 import { StaffAccountsRoute } from "./routes/admin/StaffAccountsRoute";
 import { BuLoginRoute } from "./routes/BuLoginRoute";
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/admin/sla" element={<SlaRoute />} />
             <Route path="/admin/audit" element={<AuditCenterRoute />} />
             <Route path="/admin/dashboard" element={<DashboardRoute />} />
+            <Route path="/admin/qa" element={<QaReviewRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
