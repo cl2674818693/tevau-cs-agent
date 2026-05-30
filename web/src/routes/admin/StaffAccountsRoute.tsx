@@ -10,6 +10,7 @@ import { LoadingState } from "../../components/ui/spinner";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 type CreateForm = { staff_id: string; display_name: string; role: string; password: string };
+type StaffTableProps = { rows: StaffRow[]; onRefresh: () => void; onNotice: (msg: string) => void; onError: (msg: string) => void };
 
 function CreateStaffForm({ onCreated }: { onCreated: () => void }) {
   const { token } = useStaffSession();
@@ -55,31 +56,39 @@ function CreateStaffForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-function StaffTable({ rows, onRefresh, onNotice }: {
-  rows: StaffRow[];
-  onRefresh: () => void;
-  onNotice: (msg: string) => void;
-}) {
+function StaffTable({ rows, onRefresh, onNotice, onError }: StaffTableProps) {
   const { token } = useStaffSession();
 
   async function onChangeRole(staffId: string, newRole: string) {
     if (!token) return;
-    await patchStaff(token, staffId, { role: newRole });
-    onRefresh();
+    try {
+      await patchStaff(token, staffId, { role: newRole });
+      onRefresh();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "操作失败");
+    }
   }
 
   async function onToggleActive(s: StaffRow) {
     if (!token) return;
-    await patchStaff(token, s.staff_id, { active: s.active ? 0 : 1 });
-    onRefresh();
+    try {
+      await patchStaff(token, s.staff_id, { active: s.active ? 0 : 1 });
+      onRefresh();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "操作失败");
+    }
   }
 
   async function onReset(staffId: string) {
     if (!token) return;
     const pw = window.prompt(`为 ${staffId} 设置新密码`);
     if (!pw) return;
-    await resetPassword(token, staffId, pw);
-    onNotice("密码已重置");
+    try {
+      await resetPassword(token, staffId, pw);
+      onNotice("密码已重置");
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "操作失败");
+    }
   }
 
   return (
@@ -165,7 +174,7 @@ export function StaffAccountsRoute() {
         role === "admin" && (
           <>
             <CreateStaffForm onCreated={reload} />
-            <StaffTable rows={rows} onRefresh={reload} onNotice={setNotice} />
+            <StaffTable rows={rows} onRefresh={reload} onNotice={setNotice} onError={setErr} />
           </>
         )
       )}
