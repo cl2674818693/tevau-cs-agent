@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ClipboardCheck,
   FileEdit,
+  FileSpreadsheet,
   Inbox,
   KeySquare,
   LayoutDashboard,
@@ -70,6 +71,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/prompt-editor", label: "Prompt 编辑", short: "编辑", icon: FileEdit, roles: ["engineer", "admin"] },
   { to: "/admin/knowledge", label: "知识库", short: "知识", icon: BookOpen, roles: ["supervisor", "engineer", "admin"] },
   { to: "/admin/guardrails", label: "范围拦截", short: "拦截", icon: ShieldAlert, roles: ["engineer", "admin"] },
+  // M3c 自定义报表
+  { to: "/admin/reports", label: "自定义报表", short: "报表", icon: FileSpreadsheet, roles: ["supervisor", "manager", "admin"] },
 ];
 
 function useNavItems() {
