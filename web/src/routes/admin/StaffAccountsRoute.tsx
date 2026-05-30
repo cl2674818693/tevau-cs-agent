@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { createStaff, listStaff, patchStaff, resetPassword, STAFF_ROLES, type StaffRow } from "../../api/adminStaff";
 import { Alert } from "../../components/ui/alert";
@@ -126,6 +127,7 @@ function StaffTable({ rows, onRefresh, onNotice, onError }: StaffTableProps) {
                       {s.active ? "停用" : "启用"}
                     </button>
                     <button className="text-brand" onClick={() => onReset(s.staff_id)}>重置密码</button>
+                    <Link className="text-brand" to={`/admin/performance/${s.staff_id}`}>绩效</Link>
                   </div>
                 </td>
               </tr>

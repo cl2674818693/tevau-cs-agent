@@ -8,6 +8,7 @@ import { PromptsRoute } from "./routes/admin/PromptsRoute";
 import { QaReviewRoute } from "./routes/admin/QaReviewRoute";
 import { SlaRoute } from "./routes/admin/SlaRoute";
 import { StaffAccountsRoute } from "./routes/admin/StaffAccountsRoute";
+import { StaffPerformanceRoute } from "./routes/admin/StaffPerformanceRoute";
 import { BuLoginRoute } from "./routes/BuLoginRoute";
 import { ChatRoute } from "./routes/ChatRoute";
 import { AuditsRoute } from "./routes/staff/AuditsRoute";
@@ -47,6 +48,8 @@ export default function App() {
             <Route path="/admin/audit" element={<AuditCenterRoute />} />
             <Route path="/admin/dashboard" element={<DashboardRoute />} />
             <Route path="/admin/qa" element={<QaReviewRoute />} />
+            <Route path="/admin/performance" element={<StaffPerformanceRoute />} />
+            <Route path="/admin/performance/:staffId" element={<StaffPerformanceRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
