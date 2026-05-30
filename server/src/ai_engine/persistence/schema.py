@@ -246,3 +246,20 @@ qa_reviews = Table(
 )
 Index("idx_qa_reviews_conv", qa_reviews.c.conversation_id)
 Index("idx_qa_reviews_reviewer", qa_reviews.c.reviewer_staff_id, qa_reviews.c.created_at)
+
+# 用户对人工客服的满意度评分（区别于 message_feedback 是对 AI 的 👍👎）
+agent_ratings = Table(
+    "agent_ratings",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("conversation_id", Integer, nullable=False),
+    Column("staff_id", String(64), nullable=False),
+    Column("subject_id", String(128), nullable=False),
+    Column("user_type", String(8), nullable=False),
+    Column("rating", Integer, nullable=False),  # 1-5
+    Column("comment", Text),
+    Column("created_at", String(32), nullable=False),
+    CheckConstraint("rating BETWEEN 1 AND 5", name="ck_agent_rating_range"),
+)
+Index("idx_agent_ratings_staff", agent_ratings.c.staff_id, agent_ratings.c.created_at)
+Index("idx_agent_ratings_conv", agent_ratings.c.conversation_id)
