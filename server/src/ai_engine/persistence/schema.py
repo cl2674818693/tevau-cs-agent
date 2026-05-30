@@ -304,3 +304,12 @@ staff_groups = Table(
     Column("created_at", String(32), nullable=False),
 )
 Index("ux_staff_group_name", staff_groups.c.name, unique=True)
+
+# 客服在线状态（M3a §5.1.c）— 心跳更新 last_seen_at；后台按 5 分钟内有心跳算 online。
+staff_presence = Table(
+    "staff_presence",
+    metadata,
+    Column("staff_id", String(64), primary_key=True),
+    Column("status", String(16), nullable=False, server_default="offline"),
+    Column("last_seen_at", String(32), nullable=False),
+)
