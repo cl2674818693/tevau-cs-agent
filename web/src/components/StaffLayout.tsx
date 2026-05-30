@@ -1,9 +1,11 @@
 import {
   Activity,
   BarChart3,
+  BookOpen,
   CalendarClock,
   ChevronLeft,
   ClipboardCheck,
+  FileEdit,
   Inbox,
   KeySquare,
   LayoutDashboard,
@@ -12,6 +14,7 @@ import {
   Route,
   ScrollText,
   Shield,
+  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   Ticket,
@@ -63,6 +66,10 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/presence", label: "在线状态", short: "在线", icon: Activity, roles: ["supervisor", "admin"] },
   { to: "/admin/shifts", label: "排班", short: "排班", icon: CalendarClock, roles: ["supervisor", "admin"] },
   { to: "/admin/routing", label: "会话路由", short: "路由", icon: Route, roles: ["supervisor", "admin"] },
+  // M3b AI 运营
+  { to: "/admin/prompt-editor", label: "Prompt 编辑", short: "编辑", icon: FileEdit, roles: ["engineer", "admin"] },
+  { to: "/admin/knowledge", label: "知识库", short: "知识", icon: BookOpen, roles: ["supervisor", "engineer", "admin"] },
+  { to: "/admin/guardrails", label: "范围拦截", short: "拦截", icon: ShieldAlert, roles: ["engineer", "admin"] },
 ];
 
 function useNavItems() {
