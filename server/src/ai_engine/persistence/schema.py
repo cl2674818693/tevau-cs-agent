@@ -263,3 +263,18 @@ agent_ratings = Table(
 )
 Index("idx_agent_ratings_staff", agent_ratings.c.staff_id, agent_ratings.c.created_at)
 Index("idx_agent_ratings_conv", agent_ratings.c.conversation_id)
+
+# AI 工具按角色的策略：是否允许 / 是否可解锁脱敏。
+# (tool_name, role) 唯一；表为空时回退到代码默认（M2 平滑过渡）。
+tool_policies = Table(
+    "tool_policies",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("tool_name", String(64), nullable=False),
+    Column("role", String(32), nullable=False),
+    Column("allowed", Integer, nullable=False, server_default="0"),
+    Column("unmask_allowed", Integer, nullable=False, server_default="0"),
+    Column("updated_by", String(64)),
+    Column("updated_at", String(32), nullable=False),
+)
+Index("ux_tool_policy_role", tool_policies.c.tool_name, tool_policies.c.role, unique=True)
