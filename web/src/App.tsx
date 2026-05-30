@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { StaffLayout } from "./components/StaffLayout";
 import { AuditCenterRoute } from "./routes/admin/AuditCenterRoute";
+import { CostRoute } from "./routes/admin/CostRoute";
 import { DashboardRoute } from "./routes/admin/DashboardRoute";
 import { PromptsRoute } from "./routes/admin/PromptsRoute";
 import { QaReviewRoute } from "./routes/admin/QaReviewRoute";
@@ -52,6 +53,7 @@ export default function App() {
             <Route path="/admin/performance" element={<StaffPerformanceRoute />} />
             <Route path="/admin/performance/:staffId" element={<StaffPerformanceRoute />} />
             <Route path="/admin/tools" element={<ToolPoliciesRoute />} />
+            <Route path="/admin/cost" element={<CostRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
