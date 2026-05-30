@@ -46,6 +46,8 @@ class StaffPatchIn(BaseModel):
     display_name: str | None = None
     role: str | None = None
     active: int | None = None
+    group_id: int | None = None
+    skills: list[str] | None = None
 
 
 @router.patch("/admin/api/v1/staff/{staff_id}")
@@ -57,6 +59,10 @@ async def patch_staff(
             await staff_mod.update_staff(staff_id, display_name=body.display_name, role=body.role)
         if body.active is not None:
             await staff_mod.set_staff_active(staff_id, body.active)
+        if body.group_id is not None:
+            await staff_mod.set_staff_group(staff_id, body.group_id)
+        if body.skills is not None:
+            await staff_mod.set_staff_skills(staff_id, body.skills)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     await admin_audit.log_admin_action(

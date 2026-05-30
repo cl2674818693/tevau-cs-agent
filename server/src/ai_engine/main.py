@@ -11,6 +11,7 @@ from ai_engine.api.admin_prompts import router as admin_prompts_router
 from ai_engine.api.admin_qa import router as admin_qa_router
 from ai_engine.api.admin_sla import router as admin_sla_router
 from ai_engine.api.admin_staff import router as admin_staff_router
+from ai_engine.api.admin_staff_groups import router as admin_staff_groups_router
 from ai_engine.api.admin_staff_performance import router as admin_staff_perf_router
 from ai_engine.api.admin_tool_policies import router as admin_tool_policies_router
 from ai_engine.api.agent_ratings import router as agent_ratings_router
@@ -66,6 +67,7 @@ app.include_router(admin_prompts_router)
 app.include_router(admin_qa_router)
 app.include_router(admin_sla_router)
 app.include_router(admin_staff_router)
+app.include_router(admin_staff_groups_router)
 app.include_router(admin_staff_perf_router)
 app.include_router(admin_tool_policies_router)
 app.include_router(agent_ratings_router)
