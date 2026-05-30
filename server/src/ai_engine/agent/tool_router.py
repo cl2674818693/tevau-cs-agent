@@ -53,6 +53,18 @@ _GUEST_BLOCKED = (
 )
 
 
+async def _resolve_ai_unmask(unmask: bool | None, tool_name: str) -> bool:
+    """unmask=None → 从 tool_policies(role=ai) 取；DB 失败回退 False。"""
+    if unmask is not None:
+        return unmask
+    try:
+        from ai_engine.persistence.tool_policies import is_unmask_allowed
+
+        return await is_unmask_allowed(tool_name, "ai")
+    except Exception:
+        return False
+
+
 async def dispatch(
     *,
     tool_name: str,
@@ -60,8 +72,11 @@ async def dispatch(
     user_type: str,
     subject_id: str,
     conversation_id: int,
-    unmask: bool = False,
+    unmask: bool | None = None,
 ) -> dict[str, Any]:
+    """unmask=None 表示"按 DB/默认决定"（M5：未显式传时查 is_unmask_allowed("ai")）；
+    M2/M3b 客服代查端点显式传 True/False，不受本逻辑影响。"""
+    unmask = await _resolve_ai_unmask(unmask, tool_name)
     tool = base.get(tool_name)
     if tool is None:
         await log_tool_call(
