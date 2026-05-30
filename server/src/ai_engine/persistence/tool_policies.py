@@ -25,6 +25,9 @@ _STAFF_DEFAULT_TOOLS: set[str] = {
 
 
 def _default_allowed(tool_name: str, role: str) -> bool:
+    # M3b: AI 自动调用默认放行（M1 兼容）；显式 DB 行可禁用。
+    if role == "ai":
+        return True
     # M1 既有逻辑：客服(含 senior/engineer/admin)都能代查白名单内工具；
     # supervisor/manager 不参与代查，默认拒。
     if role in {"agent", "senior", "engineer", "admin"}:

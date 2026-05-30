@@ -46,4 +46,4 @@ export const TOOL_NAMES: string[] = [
   "read_file",
 ];
 
-export const POLICY_ROLES: string[] = ["agent", "senior", "engineer", "supervisor"];
+export const POLICY_ROLES: string[] = ["agent", "senior", "engineer", "supervisor", "ai"];

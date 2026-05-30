@@ -71,6 +71,21 @@ async def dispatch(
         metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
         return {"ok": False, "error": f"unknown tool: {tool_name}"}
 
+    # M3b: AI 自动调用前置策略检查（默认放行；DB 可显式禁用）。
+    try:
+        from ai_engine.persistence.tool_policies import is_tool_allowed
+        if not await is_tool_allowed(tool_name, "ai"):
+            await log_tool_call(
+                conversation_id, tool_name, params, 0, 0, True, "policy blocked (ai)",
+                result_count=0, is_empty=True, subject_id=subject_id, user_type=user_type,
+            )
+            metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
+            raise PermissionError(f"tool blocked by policy: {tool_name}")
+    except PermissionError:
+        raise
+    except Exception:
+        pass
+
     # 游客降级：未登录用户禁用一切需要身份隔离的工具（含 create_ticket），返回引导登录回执。
     if user_type == USER_TYPE_GUEST and tool.requires_subject_id:
         await log_tool_call(
