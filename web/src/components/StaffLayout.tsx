@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 
+import { useStaffPresenceHeartbeat } from "../hooks/useStaffPresenceHeartbeat";
 import { useStaffSession } from "../hooks/useStaffSession";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
@@ -173,6 +174,7 @@ function MobileTabBar() {
 export function StaffLayout() {
   const { token } = useStaffSession();
   const { pathname } = useLocation();
+  useStaffPresenceHeartbeat();  // M3a 在线状态心跳：token 缺失时 hook 内部跳过
   if (!token) return <Navigate to="/staff/login" replace />;
 
   const isTopLevel = NAV_ITEMS.some((i) => i.to === pathname);
