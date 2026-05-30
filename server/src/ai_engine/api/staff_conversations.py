@@ -156,9 +156,22 @@ def publish_conversation_event(conv_id: int, event: dict[str, Any]) -> None:
 async def list_conversations(
     status: str = Query("human_pending"),
     risk_only: bool = Query(False),
+    my_group_only: bool = Query(False),
     staff: dict[str, Any] = Depends(require_staff),
 ) -> list[dict[str, object]]:
-    return await conv_dao.list_for_staff(status, risk_only=risk_only)
+    rows = await conv_dao.list_for_staff(status, risk_only=risk_only)
+    # M4: my_group_only=true 时按当前 staff 所在组过滤；target_group_id IS NULL 视为对所有人可见。
+    if my_group_only:
+        from ai_engine.persistence.staff import get_staff
+        staff_id = str(staff.get("sub", ""))
+        me = await get_staff(staff_id) if staff_id else None
+        my_group = int(me["group_id"]) if me and me.get("group_id") is not None else None
+        rows = [
+            r for r in rows
+            if r.get("target_group_id") is None
+            or (my_group is not None and int(r["target_group_id"]) == my_group)
+        ]
+    return rows
 
 
 @router.get("/staff/api/v1/conversations/{conv_id}")

@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 
+import { useDynamicMenu } from "../hooks/useDynamicMenu";
 import { useStaffPresenceHeartbeat } from "../hooks/useStaffPresenceHeartbeat";
 import { useStaffSession } from "../hooks/useStaffSession";
 import { cn } from "../lib/utils";
@@ -75,9 +76,38 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/reports", label: "自定义报表", short: "报表", icon: FileSpreadsheet, roles: ["supervisor", "manager", "admin"] },
 ];
 
+// M4: 管理后台菜单的 path → RBAC permission_key 映射
+const PATH_TO_PERM: Record<string, string> = {
+  "/admin/dashboard": "admin.dashboard",
+  "/admin/staff": "admin.staff",
+  "/admin/performance": "admin.performance",
+  "/admin/qa": "admin.qa",
+  "/admin/sla": "admin.sla",
+  "/admin/tools": "admin.tools",
+  "/admin/cost": "admin.cost",
+  "/admin/audit": "admin.audit",
+  "/admin/prompts": "admin.prompts",
+  "/admin/rbac": "admin.rbac",
+  "/admin/staff-groups": "admin.staff_groups",
+  "/admin/presence": "admin.presence",
+  "/admin/shifts": "admin.shifts",
+  "/admin/routing": "admin.routing",
+  "/admin/prompt-editor": "admin.prompt_editor",
+  "/admin/knowledge": "admin.knowledge",
+  "/admin/guardrails": "admin.guardrails",
+  "/admin/reports": "admin.reports",
+};
+
 function useNavItems() {
   const { role } = useStaffSession();
-  return NAV_ITEMS.filter((i) => !i.roles || (role != null && i.roles.includes(role)));
+  const { matrix } = useDynamicMenu();
+  return NAV_ITEMS.filter((i) => {
+    const permKey = PATH_TO_PERM[i.to];
+    if (matrix && permKey && role) {
+      return matrix.matrix[role]?.[permKey] === true;
+    }
+    return !i.roles || (role != null && i.roles.includes(role));
+  });
 }
 
 /** 桌面端固定侧栏（md 及以上）。 */

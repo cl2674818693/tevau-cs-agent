@@ -64,7 +64,8 @@ async def authenticate(staff_id: str, password: str) -> dict[str, Any] | None:
 
 async def get_staff(staff_id: str) -> dict[str, Any] | None:
     return await db.fetch_one(
-        "SELECT staff_id, display_name, role, active FROM staff WHERE staff_id=:sid",
+        "SELECT staff_id, display_name, role, active, group_id, skills "
+        "FROM staff WHERE staff_id=:sid",
         {"sid": staff_id},
     )
 
@@ -110,9 +111,13 @@ async def reset_staff_password(staff_id: str, new_password: str) -> None:
 
 
 async def set_staff_group(staff_id: str, group_id: int | None) -> None:
+    # M4: 接受 0 视为清空（前端用 0 表示 "—"）。
+    g: int | None = None
+    if group_id is not None and int(group_id) != 0:
+        g = int(group_id)
     await db.execute(
         "UPDATE staff SET group_id = :g WHERE staff_id = :sid",
-        {"g": int(group_id) if group_id is not None else None, "sid": staff_id},
+        {"g": g, "sid": staff_id},
     )
 
 
