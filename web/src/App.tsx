@@ -7,6 +7,7 @@ import { CostRoute } from "./routes/admin/CostRoute";
 import { DashboardRoute } from "./routes/admin/DashboardRoute";
 import { PromptsRoute } from "./routes/admin/PromptsRoute";
 import { QaReviewRoute } from "./routes/admin/QaReviewRoute";
+import { RbacRoute } from "./routes/admin/RbacRoute";
 import { SlaRoute } from "./routes/admin/SlaRoute";
 import { StaffAccountsRoute } from "./routes/admin/StaffAccountsRoute";
 import { StaffPerformanceRoute } from "./routes/admin/StaffPerformanceRoute";
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="/admin/performance/:staffId" element={<StaffPerformanceRoute />} />
             <Route path="/admin/tools" element={<ToolPoliciesRoute />} />
             <Route path="/admin/cost" element={<CostRoute />} />
+            <Route path="/admin/rbac" element={<RbacRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
