@@ -202,3 +202,19 @@ admin_audit_log = Table(
     Column("created_at", String(32), nullable=False),
 )
 Index("idx_admin_audit_created", admin_audit_log.c.created_at)
+
+# SLA 策略：接管/解决时长阈值，可按全局/user_type 设。违规为运行时计算，不落表。
+sla_policies = Table(
+    "sla_policies",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("metric", String(32), nullable=False),  # take_time / resolve_time
+    Column("threshold_seconds", Integer, nullable=False),
+    Column("scope", String(32), nullable=False, server_default="all"),  # all / user_type
+    Column("scope_value", String(64)),  # scope=user_type 时为 c/b/g
+    Column("active", Integer, nullable=False, server_default="1"),
+    Column("created_at", String(32), nullable=False),
+    CheckConstraint(
+        "metric IN ('take_time','resolve_time')", name="ck_sla_metric"
+    ),
+)
