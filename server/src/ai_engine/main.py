@@ -12,6 +12,8 @@ from ai_engine.api.admin_knowledge import router as admin_knowledge_router
 from ai_engine.api.admin_prompt_editor import router as admin_prompt_editor_router
 from ai_engine.api.admin_prompts import router as admin_prompts_router
 from ai_engine.api.admin_qa import router as admin_qa_router
+from ai_engine.api.admin_rbac import router as admin_rbac_router
+from ai_engine.api.admin_reports import router as admin_reports_router
 from ai_engine.api.admin_routing_rules import router as admin_routing_rules_router
 from ai_engine.api.admin_shifts import router as admin_shifts_router
 from ai_engine.api.admin_sla import router as admin_sla_router
@@ -75,6 +77,8 @@ app.include_router(admin_knowledge_router)
 app.include_router(admin_prompt_editor_router)
 app.include_router(admin_prompts_router)
 app.include_router(admin_qa_router)
+app.include_router(admin_rbac_router)
+app.include_router(admin_reports_router)
 app.include_router(admin_routing_rules_router)
 app.include_router(admin_shifts_router)
 app.include_router(admin_sla_router)

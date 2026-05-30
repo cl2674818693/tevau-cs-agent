@@ -1,32 +1,22 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { getMatrix, type RbacMatrix, upsertMatrix } from "../../api/adminRbac";
 import { Alert } from "../../components/ui/alert";
+import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { PageContainer, PageHeader } from "../../components/ui/page";
+import { LoadingState } from "../../components/ui/spinner";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-const ROLES = ["agent", "senior", "supervisor", "engineer", "manager", "admin"];
+type LocalMatrix = Record<string, Record<string, boolean>>;
 
-type ModuleRow = {
-  path: string;
-  label: string;
-  roles: string[];
-};
-
-const MODULES: ModuleRow[] = [
-  { path: "/admin/dashboard",   label: "数据大盘",      roles: ["supervisor", "manager", "admin"] },
-  { path: "/admin/staff",       label: "客服账号",      roles: ["admin"] },
-  { path: "/admin/performance", label: "客服绩效",      roles: ["supervisor", "admin"] },
-  { path: "/admin/qa",          label: "会话质检",      roles: ["supervisor", "admin"] },
-  { path: "/admin/sla",         label: "SLA 配置",      roles: ["supervisor", "admin"] },
-  { path: "/admin/tools",       label: "工具策略",      roles: ["engineer", "admin"] },
-  { path: "/admin/cost",        label: "成本大盘",      roles: ["engineer", "manager", "admin"] },
-  { path: "/admin/audit",       label: "操作审计",      roles: ["engineer", "admin"] },
-  { path: "/admin/prompts",     label: "Prompt 灰度",   roles: ["admin"] },
-  { path: "/admin/rbac",        label: "角色权限",      roles: ["admin"] },
-];
-
-function RoleMatrix() {
+function MatrixGrid({
+  matrix, roles, perms, onToggle,
+}: {
+  matrix: LocalMatrix; roles: string[]; perms: string[];
+  onToggle: (role: string, perm: string, v: boolean) => void;
+}) {
   return (
     <Card>
       <div className="overflow-x-auto">
@@ -34,24 +24,20 @@ function RoleMatrix() {
           <thead>
             <tr className="border-b border-line text-ink-secondary">
               <th className="px-3 py-2 text-left font-normal">模块</th>
-              {ROLES.map((r) => (
+              {roles.map((r) => (
                 <th key={r} className="px-3 py-2 text-center font-normal">{r}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {MODULES.map((m) => (
-              <tr key={m.path} className="border-b border-line last:border-0">
-                <td className="px-3 py-2 text-ink-primary">
-                  <Link to={m.path} className="text-brand">{m.label}</Link>
-                </td>
-                {ROLES.map((r) => (
+            {perms.map((p) => (
+              <tr key={p} className="border-b border-line last:border-0">
+                <td className="px-3 py-2 text-ink-primary">{p}</td>
+                {roles.map((r) => (
                   <td key={r} className="px-3 py-2 text-center">
-                    {m.roles.includes(r) ? (
-                      <span className="text-status-success">✓</span>
-                    ) : (
-                      <span className="text-ink-tertiary">·</span>
-                    )}
+                    <input type="checkbox" aria-label={`${p}/${r}`}
+                      checked={matrix[r]?.[p] ?? false}
+                      onChange={(e) => onToggle(r, p, e.target.checked)} />
                   </td>
                 ))}
               </tr>
@@ -64,24 +50,58 @@ function RoleMatrix() {
 }
 
 export function RbacRoute() {
-  const { role } = useStaffSession();
-  if (role !== "admin") {
-    return (
-      <PageContainer width="wide">
-        <PageHeader title="角色权限" />
-        <Alert variant="error">需要管理员权限</Alert>
-      </PageContainer>
-    );
+  const { token, role } = useStaffSession();
+  const allowed = role === "admin";
+  const [data, setData] = useState<RbacMatrix | null>(null);
+  const [local, setLocal] = useState<LocalMatrix>({});
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (!token || !allowed) { setErr("需要管理员权限"); setLoading(false); return; }
+    setLoading(true);
+    getMatrix(token)
+      .then((d) => { setData(d); setLocal(d.matrix); })
+      .catch(() => setErr("加载失败"))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, role]);
+
+  function toggle(r: string, p: string, v: boolean) {
+    setLocal((prev) => ({ ...prev, [r]: { ...prev[r], [p]: v } }));
   }
+
+  const items = useMemo(() => {
+    if (!data) return [];
+    return data.roles.flatMap((r) => data.permission_keys.map((p) => ({
+      role: r, permission_key: p, allowed: local[r]?.[p] ? 1 : 0,
+    })));
+  }, [data, local]);
+
+  async function save() {
+    if (!token) return;
+    setErr(""); setNotice("");
+    try { await upsertMatrix(token, items); setNotice("已保存（缓存已刷新）"); }
+    catch (e) { setErr(e instanceof Error ? e.message : "保存失败"); }
+  }
+
   return (
     <PageContainer width="wide">
-      <PageHeader title="角色权限（只读）" />
+      <PageHeader title="角色权限（可编辑）" />
+      {err && <Alert variant="error" className="mb-2">{err}</Alert>}
+      {notice && <Alert variant="success" className="mb-2">{notice}</Alert>}
       <p className="mb-3 text-body3 text-ink-secondary">
-        M2 阶段一：展示六角色在各模块的可见性。改角色请到
-        <Link to="/admin/staff" className="ml-1 text-brand">客服账号</Link>
-        页面操作。M3 将引入 role_permissions 表支持自定义。
+        改完保存后，rbac.is_permitted 即时按新矩阵生效（缓存失效）。改角色仍走
+        <Link to="/admin/staff" className="ml-1 text-brand">客服账号</Link>。
       </p>
-      <RoleMatrix />
+      {loading ? <LoadingState /> : (allowed && data && (
+        <>
+          <MatrixGrid matrix={local} roles={data.roles} perms={data.permission_keys}
+            onToggle={toggle} />
+          <div className="mt-3"><Button size="md" onClick={save}>保存</Button></div>
+        </>
+      ))}
     </PageContainer>
   );
 }

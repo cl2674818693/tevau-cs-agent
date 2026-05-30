@@ -397,3 +397,43 @@ guardrail_rules = Table(
     CheckConstraint("action IN ('block','flag')", name="ck_guardrail_action"),
 )
 Index("idx_guardrail_active", guardrail_rules.c.active, guardrail_rules.c.type)
+
+# 动态 RBAC（M3c §5.6.b 阶段二）
+role_permissions = Table(
+    "role_permissions",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("role", String(32), nullable=False),
+    Column("permission_key", String(64), nullable=False),
+    Column("allowed", Integer, nullable=False, server_default="0"),
+    Column("updated_by", String(64)),
+    Column("updated_at", String(32), nullable=False),
+)
+Index("ux_role_perm", role_permissions.c.role, role_permissions.c.permission_key, unique=True)
+
+# By-model 拆分表（M3c）：彻底解决 M2 同 subject 同日多模型时 model 列被覆盖问题。
+daily_token_usage_by_model = Table(
+    "daily_token_usage_by_model",
+    metadata,
+    Column("subject_id", String(128), primary_key=True),
+    Column("user_type", String(8), primary_key=True),
+    Column("date", String(16), primary_key=True),
+    Column("model", String(32), primary_key=True),
+    Column("input_tokens", Integer, nullable=False, server_default="0"),
+    Column("output_tokens", Integer, nullable=False, server_default="0"),
+)
+
+# 自定义报表定义（M3c §5.5.c）
+report_definitions = Table(
+    "report_definitions",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", String(128), nullable=False),
+    Column("source", String(64), nullable=False),
+    Column("dims_json", Text, nullable=False, server_default="[]"),
+    Column("filters_json", Text, nullable=False, server_default="[]"),
+    Column("metrics_json", Text, nullable=False, server_default='[{"op":"count","col":"*","alias":"n"}]'),
+    Column("owner", String(64)),
+    Column("created_at", String(32), nullable=False),
+)
+Index("idx_reports_owner", report_definitions.c.owner)
