@@ -27,16 +27,32 @@ async def _get_used(subject_id: str, user_type: str, day: str) -> tuple[int, int
     return int(row["input_tokens"]), int(row["output_tokens"])
 
 
-async def _record(subject_id: str, user_type: str, day: str, in_tok: int, out_tok: int) -> None:
+async def _record(
+    subject_id: str,
+    user_type: str,
+    day: str,
+    in_tok: int,
+    out_tok: int,
+    model: str | None = None,
+) -> None:
     # ON CONFLICT...DO UPDATE...excluded. 两库（SQLite/Postgres）通用
+    # M2: model 列写入；COALESCE+CAST 保留旧 model，仅当本次写入提供 model 时覆盖。
     await db.execute(
         "INSERT INTO daily_token_usage(subject_id, user_type, date, input_tokens, "
-        "output_tokens) VALUES (:sid, :ut, :day, :in_tok, :out_tok) "
+        "output_tokens, model) VALUES (:sid, :ut, :day, :in_tok, :out_tok, :model) "
         # 用表名限定累加列：PG 上裸列名在 DO UPDATE 里有歧义；SQLite 也接受表名限定
         "ON CONFLICT(subject_id, user_type, date) DO UPDATE SET "
         "input_tokens=daily_token_usage.input_tokens+excluded.input_tokens, "
-        "output_tokens=daily_token_usage.output_tokens+excluded.output_tokens",
-        {"sid": subject_id, "ut": user_type, "day": day, "in_tok": in_tok, "out_tok": out_tok},
+        "output_tokens=daily_token_usage.output_tokens+excluded.output_tokens, "
+        "model=COALESCE(CAST(:model AS TEXT), daily_token_usage.model)",
+        {
+            "sid": subject_id,
+            "ut": user_type,
+            "day": day,
+            "in_tok": in_tok,
+            "out_tok": out_tok,
+            "model": model,
+        },
     )
 
 
@@ -50,15 +66,22 @@ async def is_exhausted(user_type: str, subject_id: str) -> bool:
 
 
 async def check_and_record(
-    user_type: str, subject_id: str, input_tok: int, output_tok: int
+    user_type: str,
+    subject_id: str,
+    input_tok: int,
+    output_tok: int,
+    model: str | None = None,
 ) -> tuple[bool, dict[str, Any]]:
-    """返回 (allowed, info)。已达上限则拒服（不记账）；否则记账并返回是否需 80% 提醒。"""
+    """返回 (allowed, info)。已达上限则拒服（不记账）；否则记账并返回是否需 80% 提醒。
+
+    M2: 可选 model 参数，落到 daily_token_usage.model 列（成本大盘按模型聚合）。
+    """
     day = _today()
     limit = settings.daily_token_limit
     used_in, used_out = await _get_used(subject_id, user_type, day)
     used_total = used_in + used_out
     if used_total >= limit:
         return False, {"used": used_total, "limit": limit}
-    await _record(subject_id, user_type, day, input_tok, output_tok)
+    await _record(subject_id, user_type, day, input_tok, output_tok, model=model)
     new_total = used_total + input_tok + output_tok
     return True, {"used": new_total, "limit": limit, "warn": new_total / limit > _WARN_RATIO}

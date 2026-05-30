@@ -94,11 +94,18 @@ def _usage(resp: object) -> tuple[int, int]:
 
 
 async def _budget_gate(
-    resp: object, user_type: str, subject_id: str, warned: bool
+    resp: object,
+    user_type: str,
+    subject_id: str,
+    warned: bool,
+    model: str | None = None,
 ) -> tuple[bool, dict[str, Any] | None, bool]:
-    """记账并裁决。返回 (是否终止本轮, 给前端的 system 事件 or None, 更新后的 warned)。"""
+    """记账并裁决。返回 (是否终止本轮, 给前端的 system 事件 or None, 更新后的 warned)。
+
+    M2: model 可选，落到 daily_token_usage.model 列（成本大盘按模型聚合）。
+    """
     in_tok, out_tok = _usage(resp)
-    allowed, info = await check_and_record(user_type, subject_id, in_tok, out_tok)
+    allowed, info = await check_and_record(user_type, subject_id, in_tok, out_tok, model=model)
     if not allowed:
         return (
             True,
@@ -448,7 +455,7 @@ async def _agent_loop(
         _record_llm(resp, model)
         # spec §8 成本治理：每轮 LLM 返回后记账；超额拒服、80% 提醒
         stop, budget_event, warned_budget = await _budget_gate(
-            resp, user_type, subject_id, warned_budget
+            resp, user_type, subject_id, warned_budget, model=model
         )
         if budget_event:
             yield budget_event
