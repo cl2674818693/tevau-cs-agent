@@ -75,6 +75,8 @@ staff = Table(
     Column("role", String(32), nullable=False),
     Column("password_hash", String(256), nullable=False),
     Column("active", Integer, nullable=False, server_default="1"),
+    Column("group_id", Integer),  # M3a 可选：所属客服组
+    Column("skills", Text),  # M3a 可选：技能标签 JSON 数组字符串 ["c","b","stock"]
     Column("created_at", String(32), nullable=False),
     CheckConstraint(
         "role IN ('agent','senior','engineer','admin','supervisor','manager')",
@@ -290,3 +292,15 @@ model_pricing = Table(
     Column("currency", String(8), nullable=False, server_default="USD"),
     Column("updated_at", String(32), nullable=False),
 )
+
+# 客服分组（M3a §5.1.b）
+staff_groups = Table(
+    "staff_groups",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", String(128), nullable=False),
+    Column("description", Text),
+    Column("active", Integer, nullable=False, server_default="1"),
+    Column("created_at", String(32), nullable=False),
+)
+Index("ux_staff_group_name", staff_groups.c.name, unique=True)
