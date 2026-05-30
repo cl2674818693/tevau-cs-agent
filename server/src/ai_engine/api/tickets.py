@@ -91,6 +91,17 @@ async def staff_list_tickets(
     }
 
 
+@router.get("/staff/api/v1/tickets/{external_id}")
+async def staff_get_ticket(
+    external_id: str, staff: dict[str, Any] = Depends(require_staff)
+) -> dict[str, Any]:
+    """工单详情（含事件链）。本地只读镜像，外部事项中心为状态真源。"""
+    t = await get_ticket(external_id)
+    if t is None:
+        raise HTTPException(404, "ticket not found")
+    return t
+
+
 def _observe_resolution(ticket: dict[str, object]) -> None:
     """工单解决耗时入 histogram（spec §11）。created_at 为 sqlite 朴素 UTC。"""
     try:
