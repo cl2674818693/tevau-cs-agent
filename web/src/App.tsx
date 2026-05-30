@@ -6,6 +6,7 @@ import { AuditCenterRoute } from "./routes/admin/AuditCenterRoute";
 import { CostRoute } from "./routes/admin/CostRoute";
 import { DashboardRoute } from "./routes/admin/DashboardRoute";
 import { PresenceRoute } from "./routes/admin/PresenceRoute";
+import { ShiftsRoute } from "./routes/admin/ShiftsRoute";
 import { PromptsRoute } from "./routes/admin/PromptsRoute";
 import { QaReviewRoute } from "./routes/admin/QaReviewRoute";
 import { RbacRoute } from "./routes/admin/RbacRoute";
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="/admin/rbac" element={<RbacRoute />} />
             <Route path="/admin/staff-groups" element={<StaffGroupsRoute />} />
             <Route path="/admin/presence" element={<PresenceRoute />} />
+            <Route path="/admin/shifts" element={<ShiftsRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
