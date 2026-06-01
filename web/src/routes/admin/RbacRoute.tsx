@@ -1,10 +1,11 @@
+import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 
 import { getMatrix, type RbacMatrix, upsertMatrix } from "../../api/adminRbac";
-import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
+import { Checkbox } from "../../components/ui/checkbox";
 import { PageContainer, PageHeader } from "../../components/ui/page";
 import { LoadingState } from "../../components/ui/spinner";
 import { useStaffSession } from "../../hooks/useStaffSession";
@@ -18,11 +19,11 @@ function MatrixGrid({
   onToggle: (role: string, perm: string, v: boolean) => void;
 }) {
   return (
-    <Card>
+    <div className="rounded-md border border-border p-4">
       <div className="overflow-x-auto">
-        <table className="w-full text-body3">
+        <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-line text-ink-secondary">
+            <tr className="border-b border-border text-muted-foreground">
               <th className="px-3 py-2 text-left font-normal">模块</th>
               {roles.map((r) => (
                 <th key={r} className="px-3 py-2 text-center font-normal">{r}</th>
@@ -31,13 +32,15 @@ function MatrixGrid({
           </thead>
           <tbody>
             {perms.map((p) => (
-              <tr key={p} className="border-b border-line last:border-0">
-                <td className="px-3 py-2 text-ink-primary">{p}</td>
+              <tr key={p} className="border-b border-border last:border-0">
+                <td className="px-3 py-2 text-foreground">{p}</td>
                 {roles.map((r) => (
                   <td key={r} className="px-3 py-2 text-center">
-                    <input type="checkbox" aria-label={`${p}/${r}`}
+                    <Checkbox
+                      aria-label={`${p}/${r}`}
                       checked={matrix[r]?.[p] ?? false}
-                      onChange={(e) => onToggle(r, p, e.target.checked)} />
+                      onCheckedChange={(v) => onToggle(r, p, v as boolean)}
+                    />
                   </td>
                 ))}
               </tr>
@@ -45,7 +48,7 @@ function MatrixGrid({
           </tbody>
         </table>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -55,15 +58,14 @@ export function RbacRoute() {
   const [data, setData] = useState<RbacMatrix | null>(null);
   const [local, setLocal] = useState<LocalMatrix>({});
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!token || !allowed) { setErr("需要管理员权限"); setLoading(false); return; }
+    if (!token || !allowed) { setLoading(false); return; }
     setLoading(true);
     getMatrix(token)
       .then((d) => { setData(d); setLocal(d.matrix); })
-      .catch(() => setErr("加载失败"))
+      .catch(() => toast.error("加载失败"))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, role]);
@@ -79,28 +81,48 @@ export function RbacRoute() {
     })));
   }, [data, local]);
 
+  function reset() {
+    if (data) setLocal(data.matrix);
+  }
+
   async function save() {
     if (!token) return;
-    setErr(""); setNotice("");
-    try { await upsertMatrix(token, items); setNotice("已保存（缓存已刷新）"); }
-    catch (e) { setErr(e instanceof Error ? e.message : "保存失败"); }
+    setSaving(true);
+    try {
+      await upsertMatrix(token, items);
+      toast.success("权限已保存");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <PageContainer width="wide">
-      <PageHeader title="角色权限（可编辑）" />
-      {err && <Alert variant="error" className="mb-2">{err}</Alert>}
-      {notice && <Alert variant="success" className="mb-2">{notice}</Alert>}
-      <p className="mb-3 text-body3 text-ink-secondary">
+      <PageHeader
+        title="角色权限"
+        actions={
+          allowed && data ? (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={reset} disabled={saving}>
+                重置
+              </Button>
+              <Button size="sm" onClick={save} disabled={saving}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                保存
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
+      <p className="mb-3 text-sm text-muted-foreground">
         改完保存后，rbac.is_permitted 即时按新矩阵生效（缓存失效）。改角色仍走
-        <Link to="/admin/staff" className="ml-1 text-brand">客服账号</Link>。
+        <Link to="/admin/staff" className="ml-1 text-primary">客服账号</Link>。
       </p>
       {loading ? <LoadingState /> : (allowed && data && (
-        <>
-          <MatrixGrid matrix={local} roles={data.roles} perms={data.permission_keys}
-            onToggle={toggle} />
-          <div className="mt-3"><Button size="md" onClick={save}>保存</Button></div>
-        </>
+        <MatrixGrid matrix={local} roles={data.roles} perms={data.permission_keys}
+          onToggle={toggle} />
       ))}
     </PageContainer>
   );
