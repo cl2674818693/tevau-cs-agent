@@ -37,6 +37,23 @@ export async function createShift(
   if (!r.ok) throw new Error(`create ${r.status}`);
 }
 
+export async function patchShift(
+  token: string,
+  id: number,
+  body: { staff_id?: string; start_at?: string; end_at?: string },
+): Promise<Shift> {
+  const r = await staffFetch(`/admin/api/v1/shifts/${id}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const b = await r.json().catch(() => ({}));
+    throw new Error(b.detail ?? `patch ${r.status}`);
+  }
+  return r.json();
+}
+
 export async function deleteShift(token: string, id: number): Promise<void> {
   const r = await staffFetch(`/admin/api/v1/shifts/${id}`, {
     method: "DELETE",

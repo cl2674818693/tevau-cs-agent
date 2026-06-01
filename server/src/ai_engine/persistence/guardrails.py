@@ -49,6 +49,30 @@ async def list_rules() -> list[dict[str, Any]]:
     )
 
 
+async def patch_rule(rule_id: int, fields: dict) -> dict | None:
+    """Update editable fields (not active); return updated row or None."""
+    allowed = {"type", "pattern", "action"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        raise ValueError("no updatable fields")
+    if "type" in updates and updates["type"] not in _VALID_TYPES:
+        raise ValueError(f"invalid type: {updates['type']}")
+    if "action" in updates and updates["action"] not in _VALID_ACTIONS:
+        raise ValueError(f"invalid action: {updates['action']}")
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    updates["id"] = int(rule_id)
+    await db.execute(
+        f"UPDATE guardrail_rules SET {set_clause} WHERE id = :id", updates
+    )
+    invalidate_cache()
+    rows = await db.fetch_all(
+        "SELECT id, type, pattern, action, active, created_by, created_at "
+        "FROM guardrail_rules WHERE id = :id",
+        {"id": int(rule_id)},
+    )
+    return rows[0] if rows else None
+
+
 async def set_active(rule_id: int, active: int) -> None:
     await db.execute(
         "UPDATE guardrail_rules SET active = :a WHERE id = :id",

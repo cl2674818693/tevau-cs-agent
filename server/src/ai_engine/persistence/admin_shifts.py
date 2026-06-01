@@ -30,5 +30,23 @@ async def list_shifts(
     )
 
 
+async def patch_shift(shift_id: int, fields: dict) -> dict | None:
+    """Update provided fields; return updated row or None if not found."""
+    allowed = {"staff_id", "start_at", "end_at"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        raise ValueError("no updatable fields")
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    updates["id"] = int(shift_id)
+    await db.execute(
+        f"UPDATE staff_shifts SET {set_clause} WHERE id = :id", updates
+    )
+    rows = await db.fetch_all(
+        "SELECT id, staff_id, start_at, end_at, created_at FROM staff_shifts WHERE id = :id",
+        {"id": int(shift_id)},
+    )
+    return rows[0] if rows else None
+
+
 async def delete_shift(shift_id: int) -> None:
     await db.execute("DELETE FROM staff_shifts WHERE id = :id", {"id": int(shift_id)})

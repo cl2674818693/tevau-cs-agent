@@ -60,6 +60,28 @@ async def list_rules() -> list[dict[str, Any]]:
     )
 
 
+async def patch_rule(rule_id: int, fields: dict) -> dict | None:
+    """Update editable fields (not active); return updated row or None."""
+    allowed = {"priority", "match_type", "match_value", "target_group_id"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        raise ValueError("no updatable fields")
+    if "match_type" in updates and updates["match_type"] not in _VALID_MATCH:
+        raise ValueError(f"invalid match_type: {updates['match_type']}")
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    updates["id"] = int(rule_id)
+    await db.execute(
+        f"UPDATE routing_rules SET {set_clause} WHERE id = :id", updates
+    )
+    invalidate_cache()
+    rows = await db.fetch_all(
+        "SELECT id, match_type, match_value, target_group_id, priority, active, created_at "
+        "FROM routing_rules WHERE id = :id",
+        {"id": int(rule_id)},
+    )
+    return rows[0] if rows else None
+
+
 async def set_active(rule_id: int, active: int) -> None:
     await db.execute(
         "UPDATE routing_rules SET active = :a WHERE id = :id",

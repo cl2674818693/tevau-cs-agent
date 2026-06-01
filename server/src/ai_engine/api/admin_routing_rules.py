@@ -43,22 +43,53 @@ async def create_rule(body: RuleIn, staff: dict[str, Any] = Depends(_sup)) -> di
 
 
 class RulePatchIn(BaseModel):
-    active: int
+    # toggle active
+    active: int | None = None
+    # content edits
+    priority: int | None = None
+    match_type: str | None = None
+    match_value: str | None = None
+    target_group_id: int | None = None
 
 
 @router.patch("/admin/api/v1/routing-rules/{rule_id}")
 async def patch_rule(
     rule_id: int, body: RulePatchIn, staff: dict[str, Any] = Depends(_sup)
 ) -> dict[str, Any]:
-    await routing_rules.set_active(rule_id, body.active)
+    set_fields = body.model_dump(exclude_unset=True)
+    if not set_fields:
+        raise HTTPException(400, "no fields to update")
+    actor = staff.get("sub", "unknown")
+    # handle active toggle separately (existing behaviour)
+    if "active" in set_fields and len(set_fields) == 1:
+        await routing_rules.set_active(rule_id, set_fields["active"])
+        await admin_audit.log_admin_action(
+            actor=actor,
+            action="routing_rule.update",
+            target_type="routing_rule",
+            target_id=str(rule_id),
+            detail={"active": set_fields["active"]},
+        )
+        return {"ok": True}
+    # content edit (excludes active)
+    content_fields = {k: v for k, v in set_fields.items() if k != "active"}
+    try:
+        row = await routing_rules.patch_rule(rule_id, content_fields)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    if row is None:
+        raise HTTPException(404, "rule not found")
+    # also handle active if present alongside content fields
+    if "active" in set_fields:
+        await routing_rules.set_active(rule_id, set_fields["active"])
     await admin_audit.log_admin_action(
-        actor=staff.get("sub", "unknown"),
+        actor=actor,
         action="routing_rule.update",
         target_type="routing_rule",
         target_id=str(rule_id),
-        detail={"active": body.active},
+        detail=set_fields,
     )
-    return {"ok": True}
+    return row
 
 
 @router.delete("/admin/api/v1/routing-rules/{rule_id}")

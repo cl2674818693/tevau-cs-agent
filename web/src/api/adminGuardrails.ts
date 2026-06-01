@@ -43,6 +43,23 @@ export async function setGuardrailActive(token: string, id: number, active: numb
   if (!r.ok) throw new Error(`patch ${r.status}`);
 }
 
+export async function patchGuardrail(
+  token: string,
+  id: number,
+  body: { type?: string; pattern?: string; action?: string },
+): Promise<Guardrail> {
+  const r = await staffFetch(`/admin/api/v1/guardrails/${id}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const b = await r.json().catch(() => ({}));
+    throw new Error(b.detail ?? `patch ${r.status}`);
+  }
+  return r.json();
+}
+
 export async function deleteGuardrail(token: string, id: number): Promise<void> {
   const r = await staffFetch(`/admin/api/v1/guardrails/${id}`, {
     method: "DELETE",

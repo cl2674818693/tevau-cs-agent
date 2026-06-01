@@ -11,6 +11,7 @@ import {
   createRule,
   deleteRule,
   listRules,
+  patchRule,
   type RoutingRule,
   setRuleActive,
 } from "../../api/adminRoutingRules";
@@ -67,7 +68,7 @@ const ruleSchema = z.object({
 });
 type RuleFormValues = z.infer<typeof ruleSchema>;
 
-// ── Sheet (create only — no updateRule API) ──────────────────────────────────
+// ── Sheets ───────────────────────────────────────────────────────────────────
 
 function RuleSheet({
   open,
@@ -251,12 +252,199 @@ function RuleSheet({
   );
 }
 
+// ── Edit Sheet ───────────────────────────────────────────────────────────────
+
+function EditRuleSheet({
+  rule,
+  open,
+  onOpenChange,
+  token,
+  groups,
+  onSuccess,
+}: {
+  rule: RoutingRule;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  token: string;
+  groups: StaffGroup[];
+  onSuccess: () => void;
+}) {
+  const form = useForm<RuleFormValues>({
+    resolver: zodResolver(ruleSchema),
+    defaultValues: {
+      match_type: rule.match_type as (typeof MATCH_TYPES)[number],
+      match_value: rule.match_value,
+      target_group_id: rule.target_group_id,
+      priority: rule.priority,
+    },
+  });
+
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        match_type: rule.match_type as (typeof MATCH_TYPES)[number],
+        match_value: rule.match_value,
+        target_group_id: rule.target_group_id,
+        priority: rule.priority,
+      });
+    }
+  }, [open, rule, form]);
+
+  async function onSubmit(values: RuleFormValues) {
+    try {
+      await patchRule(token, rule.id, {
+        match_type: values.match_type,
+        match_value: values.match_value,
+        target_group_id: values.target_group_id,
+        priority: values.priority,
+      });
+      toast.success("规则已更新");
+      onOpenChange(false);
+      onSuccess();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "更新失败");
+    }
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex flex-col gap-0 p-0">
+        <SheetHeader className="border-b px-6 py-4">
+          <SheetTitle>编辑规则 #{rule.id}</SheetTitle>
+        </SheetHeader>
+
+        <Form {...form}>
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="flex flex-1 flex-col overflow-y-auto"
+          >
+            <div className="flex-1 space-y-5 px-6 py-5">
+              <FormField
+                control={form.control}
+                name="match_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>匹配类型</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="选择类型" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="user_type">user_type</SelectItem>
+                        <SelectItem value="scope">scope</SelectItem>
+                        <SelectItem value="keyword">keyword</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="match_value"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>匹配值</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="user_type=c/b/g；keyword=文本"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="target_group_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>目标分组</FormLabel>
+                    <Select
+                      value={String(field.value)}
+                      onValueChange={(v) => field.onChange(Number(v))}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="选择分组" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {groups.length === 0 ? (
+                          <SelectItem value="0" disabled>
+                            （先建分组）
+                          </SelectItem>
+                        ) : (
+                          groups.map((g) => (
+                            <SelectItem key={g.id} value={String(g.id)}>
+                              {g.name}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="priority"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>优先级（数字越小越优先）</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={field.value}
+                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <SheetFooter className="border-t px-6 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                取消
+              </Button>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                保存
+              </Button>
+            </SheetFooter>
+          </form>
+        </Form>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Columns ──────────────────────────────────────────────────────────────────
 
 function buildColumns(
   token: string,
   groupName: (id: number) => string,
   onRefresh: () => void,
+  onEdit: (r: RoutingRule) => void,
 ): ColumnDef<RoutingRule>[] {
   return [
     {
@@ -347,6 +535,9 @@ function buildColumns(
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onEdit(r)}>
+                  编辑
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleToggle}>
                   {r.active ? "停用" : "启用"}
                 </DropdownMenuItem>
@@ -389,6 +580,7 @@ export function RoutingRulesRoute() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [editRule, setEditRule] = useState<RoutingRule | null>(null);
 
   function reload() {
     if (!token) return;
@@ -418,7 +610,7 @@ export function RoutingRulesRoute() {
     groups.find((g) => g.id === id)?.name ?? `#${id}`;
 
   const columns =
-    token && allowed ? buildColumns(token, groupName, reload) : [];
+    token && allowed ? buildColumns(token, groupName, reload, setEditRule) : [];
 
   return (
     <PageContainer width="wide">
@@ -459,6 +651,17 @@ export function RoutingRulesRoute() {
         <RuleSheet
           open={sheetOpen}
           onOpenChange={setSheetOpen}
+          token={token}
+          groups={groups}
+          onSuccess={reload}
+        />
+      )}
+
+      {token && allowed && editRule && (
+        <EditRuleSheet
+          rule={editRule}
+          open={!!editRule}
+          onOpenChange={(v) => { if (!v) setEditRule(null); }}
           token={token}
           groups={groups}
           onSuccess={reload}

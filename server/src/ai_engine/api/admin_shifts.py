@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ai_engine.auth.staff_session import require_roles
@@ -44,6 +44,37 @@ async def create_shift(body: ShiftIn, staff: dict[str, Any] = Depends(_sup)) -> 
         detail=body.model_dump(),
     )
     return {"ok": True, "id": sid}
+
+
+class PatchShiftBody(BaseModel):
+    staff_id: str | None = None
+    start_at: str | None = None
+    end_at: str | None = None
+
+
+@router.patch("/admin/api/v1/shifts/{shift_id}")
+async def patch_shift(
+    shift_id: int,
+    body: PatchShiftBody,
+    staff: dict[str, Any] = Depends(_sup),
+) -> dict[str, Any]:
+    update_fields = body.model_dump(exclude_unset=True)
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="no fields to update")
+    try:
+        row = await admin_shifts.patch_shift(shift_id, update_fields)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    if row is None:
+        raise HTTPException(404, "shift not found")
+    await admin_audit.log_admin_action(
+        actor=staff.get("sub", "unknown"),
+        action="shift.update",
+        target_type="shift",
+        target_id=str(shift_id),
+        detail=update_fields,
+    )
+    return row
 
 
 @router.delete("/admin/api/v1/shifts/{shift_id}")

@@ -12,6 +12,7 @@ import {
   deleteGuardrail,
   type Guardrail,
   listGuardrails,
+  patchGuardrail,
   setGuardrailActive,
 } from "../../api/adminGuardrails";
 import { DataTable } from "../../components/admin/data-table/DataTable";
@@ -66,7 +67,7 @@ const guardrailSchema = z.object({
 });
 type GuardrailFormValues = z.infer<typeof guardrailSchema>;
 
-// ── Sheet (create only — no update API) ──────────────────────────────────────
+// ── Sheets ───────────────────────────────────────────────────────────────────
 
 function GuardrailSheet({
   open,
@@ -200,11 +201,152 @@ function GuardrailSheet({
   );
 }
 
+// ── Edit Sheet ───────────────────────────────────────────────────────────────
+
+function EditGuardrailSheet({
+  guardrail,
+  open,
+  onOpenChange,
+  token,
+  onSuccess,
+}: {
+  guardrail: Guardrail;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  token: string;
+  onSuccess: () => void;
+}) {
+  const form = useForm<GuardrailFormValues>({
+    resolver: zodResolver(guardrailSchema),
+    defaultValues: {
+      type: guardrail.type as (typeof GUARDRAIL_TYPES)[number],
+      pattern: guardrail.pattern,
+      action: guardrail.action as (typeof GUARDRAIL_ACTIONS)[number],
+    },
+  });
+
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        type: guardrail.type as (typeof GUARDRAIL_TYPES)[number],
+        pattern: guardrail.pattern,
+        action: guardrail.action as (typeof GUARDRAIL_ACTIONS)[number],
+      });
+    }
+  }, [open, guardrail, form]);
+
+  async function onSubmit(values: GuardrailFormValues) {
+    try {
+      await patchGuardrail(token, guardrail.id, values);
+      toast.success("规则已更新");
+      onOpenChange(false);
+      onSuccess();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "更新失败");
+    }
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex flex-col gap-0 p-0">
+        <SheetHeader className="border-b px-6 py-4">
+          <SheetTitle>编辑规则 #{guardrail.id}</SheetTitle>
+        </SheetHeader>
+
+        <Form {...form}>
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="flex flex-1 flex-col overflow-y-auto"
+          >
+            <div className="flex-1 space-y-5 px-6 py-5">
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>类型</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="选择类型" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="blocklist">blocklist</SelectItem>
+                        <SelectItem value="sensitive_word">sensitive_word</SelectItem>
+                        <SelectItem value="scope_toggle">scope_toggle</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="pattern"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>pattern</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="subject_id / 词 / scope 名"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="action"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>动作</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="选择动作" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="block">block</SelectItem>
+                        <SelectItem value="flag">flag</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <SheetFooter className="border-t px-6 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                取消
+              </Button>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                保存
+              </Button>
+            </SheetFooter>
+          </form>
+        </Form>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Columns ──────────────────────────────────────────────────────────────────
 
 function buildColumns(
   token: string,
   onRefresh: () => void,
+  onEdit: (g: Guardrail) => void,
 ): ColumnDef<Guardrail>[] {
   return [
     {
@@ -290,6 +432,9 @@ function buildColumns(
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onEdit(g)}>
+                  编辑
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleToggle}>
                   {g.active ? "停用" : "启用"}
                 </DropdownMenuItem>
@@ -331,6 +476,7 @@ export function GuardrailsRoute() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [editGuardrail, setEditGuardrail] = useState<Guardrail | null>(null);
 
   function reload() {
     if (!token) return;
@@ -353,7 +499,7 @@ export function GuardrailsRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, role]);
 
-  const columns = token && allowed ? buildColumns(token, reload) : [];
+  const columns = token && allowed ? buildColumns(token, reload, setEditGuardrail) : [];
 
   return (
     <PageContainer width="wide">
@@ -394,6 +540,16 @@ export function GuardrailsRoute() {
         <GuardrailSheet
           open={sheetOpen}
           onOpenChange={setSheetOpen}
+          token={token}
+          onSuccess={reload}
+        />
+      )}
+
+      {token && allowed && editGuardrail && (
+        <EditGuardrailSheet
+          guardrail={editGuardrail}
+          open={!!editGuardrail}
+          onOpenChange={(v) => { if (!v) setEditGuardrail(null); }}
           token={token}
           onSuccess={reload}
         />

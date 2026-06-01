@@ -44,6 +44,23 @@ export async function setRuleActive(token: string, id: number, active: number): 
   if (!r.ok) throw new Error(`patch ${r.status}`);
 }
 
+export async function patchRule(
+  token: string,
+  id: number,
+  body: { priority?: number; match_type?: string; match_value?: string; target_group_id?: number },
+): Promise<RoutingRule> {
+  const r = await staffFetch(`/admin/api/v1/routing-rules/${id}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const b = await r.json().catch(() => ({}));
+    throw new Error(b.detail ?? `patch ${r.status}`);
+  }
+  return r.json();
+}
+
 export async function deleteRule(token: string, id: number): Promise<void> {
   const r = await staffFetch(`/admin/api/v1/routing-rules/${id}`, {
     method: "DELETE",
