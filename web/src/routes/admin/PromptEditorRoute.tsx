@@ -1,106 +1,288 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import {
   createDraft, deleteDraft, listDrafts, type PromptDraft, publishDraft,
 } from "../../api/adminPromptEditor";
-import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { PageContainer, PageHeader } from "../../components/ui/page";
 import { LoadingState } from "../../components/ui/spinner";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "../../components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { Textarea } from "../../components/ui/textarea";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 const KNOWN_VERSIONS = ["v1.0.0", "v1.1.0", "v2.0.0"];
 
-function DraftEditor({ version, onCreated, onError }: {
-  version: string; onCreated: () => void; onError: (m: string) => void;
+// ── 版本侧边栏 ──────────────────────────────────────────────────────────────
+
+function VersionSidebar({
+  versions,
+  selected,
+  onSelect,
+  drafts,
+}: {
+  versions: string[];
+  selected: string;
+  onSelect: (v: string) => void;
+  drafts: PromptDraft[];
+}) {
+  // group by version for draft count
+  const draftVersions = new Set(drafts.filter((d) => d.status === "draft").map((d) => d.version));
+  const publishedVersions = new Set(drafts.filter((d) => d.status === "published").map((d) => d.version));
+
+  return (
+    <aside className="hidden w-72 flex-col gap-1 border-r pr-4 md:flex">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">版本</p>
+      {versions.map((v) => (
+        <button
+          key={v}
+          onClick={() => onSelect(v)}
+          className={[
+            "flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors",
+            selected === v
+              ? "bg-primary text-primary-foreground"
+              : "hover:bg-muted",
+          ].join(" ")}
+        >
+          <span className="font-mono">{v}</span>
+          <span className="flex gap-1">
+            {draftVersions.has(v) && (
+              <Badge variant="pending" className="text-[10px] px-1.5 py-0">草稿</Badge>
+            )}
+            {publishedVersions.has(v) && (
+              <Badge variant="success" className="text-[10px] px-1.5 py-0">已发布</Badge>
+            )}
+          </span>
+        </button>
+      ))}
+    </aside>
+  );
+}
+
+// ── 编辑器面板 ──────────────────────────────────────────────────────────────
+
+function EditorPanel({
+  version,
+  drafts,
+  onChanged,
+}: {
+  version: string;
+  drafts: PromptDraft[];
+  onChanged: () => void;
 }) {
   const { token } = useStaffSession();
+
+  // 当前选中的草稿（默认 first draft or null）
+  const [selectedDraftId, setSelectedDraftId] = useState<number | null>(null);
   const [fname, setFname] = useState("reply_style.c.md");
   const [content, setContent] = useState("");
-  async function submit() {
+  const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState<number | null>(null);
+
+  // 当版本切换时，把编辑框清空并重置选择
+  useEffect(() => {
+    setSelectedDraftId(null);
+    setContent("");
+    setFname("reply_style.c.md");
+  }, [version]);
+
+  // 选中某草稿时，把内容填入编辑框
+  useEffect(() => {
+    if (selectedDraftId === null) return;
+    const d = drafts.find((x) => x.id === selectedDraftId);
+    if (d) { setContent(d.content); setFname(d.file_name); }
+  }, [selectedDraftId, drafts]);
+
+  const selectedDraft = selectedDraftId !== null ? drafts.find((d) => d.id === selectedDraftId) : null;
+
+  async function handleSave() {
     if (!token || !fname) return;
+    setSaving(true);
     try {
       await createDraft(token, { version, file_name: fname, content });
+      toast.success("草稿已保存");
       setContent("");
-      onCreated();
-    } catch (e) { onError(e instanceof Error ? e.message : "创建失败"); }
+      setSelectedDraftId(null);
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
   }
-  return (
-    <Card>
-      <div className="flex flex-col gap-2 px-page py-block-sm">
-        <div className="flex flex-wrap items-end gap-2">
-          <Input placeholder="文件名 reply_style.c.md" value={fname} className="w-72"
-            onChange={(e) => setFname(e.target.value)} />
-          <Button size="md" onClick={submit} disabled={!fname || !content}>新建草稿</Button>
-        </div>
-        <textarea className="rounded border border-line px-2 py-1 font-mono text-body3"
-          rows={8} placeholder="Prompt 内容（Markdown）" value={content}
-          aria-label="Prompt 内容"
-          onChange={(e) => setContent(e.target.value)} />
-      </div>
-    </Card>
-  );
-}
 
-function DraftRow({ d, onChanged, onError }: {
-  d: PromptDraft; onChanged: () => void; onError: (m: string) => void;
-}) {
-  const { token } = useStaffSession();
-  async function pub() {
+  async function handlePublish(id: number) {
     if (!token) return;
-    try { await publishDraft(token, d.id); onChanged(); }
-    catch (e) { onError(e instanceof Error ? e.message : "发布失败"); }
+    setPublishing(id);
+    try {
+      await publishDraft(token, id);
+      toast.success("已发布");
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "发布失败");
+    } finally {
+      setPublishing(null);
+    }
   }
-  async function rm() {
-    if (!token) return;
-    try { await deleteDraft(token, d.id); onChanged(); }
-    catch (e) { onError(e instanceof Error ? e.message : "删除失败"); }
-  }
-  return (
-    <tr className="border-b border-line last:border-0">
-      <td className="px-3 py-2">{d.id}</td>
-      <td className="px-3 py-2 text-ink-primary">{d.file_name}</td>
-      <td className="px-3 py-2">{d.status}</td>
-      <td className="px-3 py-2 text-ink-tertiary">{d.editor ?? "—"}</td>
-      <td className="px-3 py-2 text-ink-tertiary">{d.created_at}</td>
-      <td className="px-3 py-2">
-        <div className="flex gap-2">
-          {d.status === "draft" && <button className="text-brand" onClick={pub}>发布</button>}
-          <button className="text-status-error" onClick={rm}>删除</button>
-        </div>
-      </td>
-    </tr>
-  );
-}
 
-function DraftsTable({ drafts, onChanged, onError }: {
-  drafts: PromptDraft[]; onChanged: () => void; onError: (m: string) => void;
-}) {
+  async function handleDelete(id: number) {
+    if (!token) return;
+    try {
+      await deleteDraft(token, id);
+      toast.success("已删除");
+      if (selectedDraftId === id) setSelectedDraftId(null);
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "删除失败");
+    }
+  }
+
   return (
-    <Card className="mt-3">
-      <table className="w-full text-body3">
-        <thead>
-          <tr className="border-b border-line text-ink-secondary">
-            <th className="px-3 py-2 text-left font-normal">ID</th>
-            <th className="px-3 py-2 text-left font-normal">文件</th>
-            <th className="px-3 py-2 text-left font-normal">状态</th>
-            <th className="px-3 py-2 text-left font-normal">编辑人</th>
-            <th className="px-3 py-2 text-left font-normal">时间</th>
-            <th className="px-3 py-2 text-left font-normal">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {drafts.length === 0 && (
-            <tr><td colSpan={6} className="px-3 py-4 text-center text-ink-tertiary">该版本无草稿</td></tr>
+    <Tabs defaultValue="editor" className="flex flex-1 flex-col gap-3">
+      <TabsList className="self-start">
+        <TabsTrigger value="editor">编辑器</TabsTrigger>
+        <TabsTrigger value="history">历史版本</TabsTrigger>
+      </TabsList>
+
+      {/* ── Tab1: 编辑器 ── */}
+      <TabsContent value="editor" className="flex flex-1 flex-col gap-3">
+        {/* 状态行 */}
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="font-mono text-sm font-semibold">{version}</span>
+          {selectedDraft ? (
+            <Badge variant={selectedDraft.status === "draft" ? "pending" : "success"}>
+              {selectedDraft.status === "draft" ? "草稿" : "已发布"}
+            </Badge>
+          ) : (
+            <Badge variant="neutral">新草稿</Badge>
           )}
-          {drafts.map((d) => <DraftRow key={d.id} d={d} onChanged={onChanged} onError={onError} />)}
-        </tbody>
-      </table>
-    </Card>
+          <span className="flex-1" />
+          <Input
+            value={fname}
+            onChange={(e) => setFname(e.target.value)}
+            placeholder="文件名 reply_style.c.md"
+            className="w-52 font-mono text-sm"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleSave}
+            disabled={saving || !fname || !content}
+          >
+            {saving ? "保存中…" : "保存草稿"}
+          </Button>
+          {selectedDraft?.status === "draft" && (
+            <Button
+              size="sm"
+              onClick={() => handlePublish(selectedDraft.id)}
+              disabled={publishing === selectedDraft.id}
+            >
+              {publishing === selectedDraft.id ? "发布中…" : "发布"}
+            </Button>
+          )}
+        </div>
+
+        {/* 快速选已有草稿 */}
+        {drafts.filter((d) => d.status === "draft").length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <span className="text-xs text-muted-foreground self-center">加载草稿：</span>
+            {drafts.filter((d) => d.status === "draft").map((d) => (
+              <button
+                key={d.id}
+                onClick={() => setSelectedDraftId(d.id)}
+                className={[
+                  "rounded border px-2 py-0.5 font-mono text-xs transition-colors",
+                  selectedDraftId === d.id
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border hover:bg-muted",
+                ].join(" ")}
+              >
+                #{d.id} {d.file_name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 编辑框 */}
+        <Textarea
+          className="min-h-[500px] flex-1 font-mono text-sm"
+          placeholder="Prompt 内容（Markdown）"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          aria-label="Prompt 内容"
+        />
+      </TabsContent>
+
+      {/* ── Tab2: 历史版本 ── */}
+      <TabsContent value="history">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>ID</TableHead>
+              <TableHead>文件</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead>编辑人</TableHead>
+              <TableHead>时间</TableHead>
+              <TableHead>操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {drafts.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  该版本无记录
+                </TableCell>
+              </TableRow>
+            )}
+            {drafts.map((d) => (
+              <TableRow key={d.id}>
+                <TableCell className="font-mono">{d.id}</TableCell>
+                <TableCell>{d.file_name}</TableCell>
+                <TableCell>
+                  <Badge variant={d.status === "draft" ? "pending" : "success"}>
+                    {d.status === "draft" ? "草稿" : "已发布"}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-muted-foreground">{d.editor ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{d.created_at}</TableCell>
+                <TableCell>
+                  <div className="flex gap-2">
+                    {d.status === "draft" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-primary h-auto px-2 py-0.5 text-xs"
+                        onClick={() => handlePublish(d.id)}
+                        disabled={publishing === d.id}
+                      >
+                        发布
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive h-auto px-2 py-0.5 text-xs"
+                      onClick={() => handleDelete(d.id)}
+                    >
+                      删除
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TabsContent>
+    </Tabs>
   );
 }
+
+// ── 主路由 ──────────────────────────────────────────────────────────────────
 
 export function PromptEditorRoute() {
   const { token, role } = useStaffSession();
@@ -108,39 +290,51 @@ export function PromptEditorRoute() {
   const [version, setVersion] = useState("v2.0.0");
   const [drafts, setDrafts] = useState<PromptDraft[]>([]);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
 
   function reload() {
     if (!token) return;
     setLoading(true);
-    listDrafts(token, version).then(setDrafts).catch(() => setErr("加载失败")).finally(() => setLoading(false));
+    listDrafts(token, version)
+      .then(setDrafts)
+      .catch(() => toast.error("加载失败"))
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {
-    if (!token || !allowed) { setErr("需要工程或管理员权限"); setLoading(false); return; }
+    if (!token || !allowed) {
+      toast.error("需要工程或管理员权限");
+      setLoading(false);
+      return;
+    }
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, role, version]);
 
   return (
     <PageContainer width="wide">
-      <PageHeader title="Prompt 在线编辑" />
-      {err && <Alert variant="error" className="mb-2">{err}</Alert>}
-      {allowed && (
-        <Card className="mb-3">
-          <div className="flex items-end gap-2 px-page py-block-sm">
-            <span className="text-body3 text-ink-secondary">版本：</span>
-            <select value={version} onChange={(e) => setVersion(e.target.value)}
-              className="rounded border border-line px-2 py-1 text-body2">
-              {KNOWN_VERSIONS.map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </div>
-        </Card>
-      )}
-      {allowed && <DraftEditor version={version} onCreated={reload} onError={setErr} />}
-      {loading ? <LoadingState /> : allowed && (
-        <DraftsTable drafts={drafts} onChanged={reload} onError={setErr} />
-      )}
+      <PageHeader title="Prompt 编辑" />
+      <div className="flex gap-6">
+        {/* 左侧版本列表 */}
+        {allowed && (
+          <VersionSidebar
+            versions={KNOWN_VERSIONS}
+            selected={version}
+            onSelect={setVersion}
+            drafts={drafts}
+          />
+        )}
+
+        {/* 右侧内容 */}
+        <div className="flex flex-1 flex-col">
+          {loading ? (
+            <LoadingState />
+          ) : allowed ? (
+            <EditorPanel version={version} drafts={drafts} onChanged={reload} />
+          ) : (
+            <p className="text-muted-foreground">需要工程或管理员权限</p>
+          )}
+        </div>
+      </div>
     </PageContainer>
   );
 }
