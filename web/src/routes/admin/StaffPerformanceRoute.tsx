@@ -1,43 +1,47 @@
-import type { ColumnDef } from "@tanstack/react-table";
-import { Clock, Users, CheckCircle, ArrowLeft, GitBranch } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  ArrowLeftOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  ForkOutlined,
+  TeamOutlined,
+} from "@ant-design/icons";
+import {
+  Alert,
+  Breadcrumb,
+  Button,
+  Card,
+  DatePicker,
+  Flex,
+  Skeleton,
+  Space,
+  Statistic,
+  Table,
+  Tabs,
+  Typography,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
+import type { Dayjs } from "dayjs";
+import dayjs from "dayjs";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import {
-  listPerformance,
   getPerformance,
+  listPerformance,
   listStaffConversations,
   listStaffQaReviews,
+  type StaffConversation,
   type StaffKpiRow,
   type StaffPerformance,
-  type StaffConversation,
   type StaffQaReview,
 } from "../../api/adminStaffPerformance";
-import { KpiCard } from "../../components/admin/KpiCard";
-import { DataTable } from "../../components/admin/data-table/DataTable";
-import { DataTableColumnHeader } from "../../components/admin/data-table/DataTableColumnHeader";
-import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
-import { Alert } from "../../components/ui/alert";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "../../components/ui/breadcrumb";
-import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
-import { DatePicker } from "../../components/ui/date-picker";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import { Skeleton } from "../../components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
 
-function toUtcParam(d: Date): string {
-  return d.toISOString().slice(0, 19).replace("T", " ");
+function toUtcParam(d: Dayjs): string {
+  return d.toDate().toISOString().slice(0, 19).replace("T", " ");
 }
 
 function fmtSeconds(s: number): string {
@@ -51,93 +55,78 @@ function fmtPct(r: number): string {
   return `${(r * 100).toFixed(1)}%`;
 }
 
-// ── Team overview ─────────────────────────────────────────────────────────────
+// ── Overview (列表页) ─────────────────────────────────────────────────────────
 
-function KpiSkeleton() {
+function OverviewKpiCards({
+  loading,
+  team,
+}: {
+  loading: boolean;
+  team: { staff_count: number; total_takeovers: number; total_resolved: number; total_transfers: number; avg_handle_seconds: number } | undefined;
+}) {
+  if (loading) {
+    return (
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i}>
+            <Skeleton active paragraph={{ rows: 1 }} />
+          </Card>
+        ))}
+      </div>
+    );
+  }
+  if (!team) return null;
   return (
     <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <Skeleton key={i} className="h-[100px] rounded-xl" />
-      ))}
+      <Card>
+        <Statistic title="客服人数" value={team.staff_count} prefix={<TeamOutlined />} />
+      </Card>
+      <Card>
+        <Statistic
+          title="总接管数"
+          value={team.total_takeovers}
+          prefix={<CheckCircleOutlined />}
+        />
+      </Card>
+      <Card>
+        <Statistic
+          title="总解决数"
+          value={team.total_resolved}
+          prefix={<CheckCircleOutlined />}
+        />
+      </Card>
+      <Card>
+        <Statistic
+          title="团队平均处理时长"
+          value={fmtSeconds(team.avg_handle_seconds)}
+          prefix={<ClockCircleOutlined />}
+        />
+      </Card>
     </div>
   );
-}
-
-function buildColumns(): ColumnDef<StaffKpiRow>[] {
-  return [
-    {
-      accessorKey: "staff_id",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="staff_id" />
-      ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs">{row.original.staff_id}</span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "takeovers",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="接管数" />
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "resolved",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="解决数" />
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "transfers",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="转派数" />
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "transfer_ratio",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="转派率" />
-      ),
-      cell: ({ row }) => fmtPct(row.original.transfer_ratio),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "avg_handle_seconds",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="平均处理时长" />
-      ),
-      cell: ({ row }) => fmtSeconds(row.original.avg_handle_seconds),
-      enableSorting: true,
-    },
-    {
-      id: "actions",
-      header: () => null,
-      cell: ({ row }) => (
-        <div className="flex justify-end">
-          <Button variant="ghost" size="sm" asChild>
-            <Link to={`/admin/performance/${row.original.staff_id}`}>
-              查看详情
-            </Link>
-          </Button>
-        </div>
-      ),
-    },
-  ];
 }
 
 function StaffPerformanceOverview() {
   const { token, role } = useStaffSession();
   const allowed = role === "supervisor" || role === "admin";
 
-  const defaultFrom = new Date(Date.now() - 30 * 24 * 3600 * 1000);
-  const defaultTo = new Date();
-
-  const [fromDate, setFromDate] = useState<Date | undefined>(defaultFrom);
-  const [toDate, setToDate] = useState<Date | undefined>(defaultTo);
-  const [data, setData] = useState<{ staff: StaffKpiRow[]; team: { staff_count: number; total_takeovers: number; total_resolved: number; total_transfers: number; avg_handle_seconds: number } } | null>(null);
+  const [range, setRange] = useState<[Dayjs, Dayjs] | null>([
+    dayjs().subtract(30, "day"),
+    dayjs(),
+  ]);
+  const [data, setData] = useState<
+    | {
+        staff: StaffKpiRow[];
+        team: {
+          staff_count: number;
+          total_takeovers: number;
+          total_resolved: number;
+          total_transfers: number;
+          avg_handle_seconds: number;
+        };
+      }
+    | null
+  >(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
@@ -151,286 +140,136 @@ function StaffPerformanceOverview() {
     setLoading(true);
     setErr("");
     const opts: { from?: string; to?: string } = {};
-    if (fromDate) opts.from = toUtcParam(fromDate);
-    if (toDate) opts.to = toUtcParam(toDate);
+    if (range?.[0]) opts.from = toUtcParam(range[0]);
+    if (range?.[1]) opts.to = toUtcParam(range[1]);
     listPerformance(token, opts)
       .then((res) => setData({ staff: res.staff, team: res.team }))
       .catch(() => setErr("加载失败"))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, role, fromDate, toDate]);
+  }, [token, role, range]);
 
-  const columns = buildColumns();
+  const columns: ColumnsType<StaffKpiRow> = useMemo(
+    () => [
+      {
+        title: "staff_id",
+        dataIndex: "staff_id",
+        sorter: (a, b) => a.staff_id.localeCompare(b.staff_id),
+        render: (v: string) => (
+          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+            {v}
+          </span>
+        ),
+      },
+      {
+        title: "接管数",
+        dataIndex: "takeovers",
+        sorter: (a, b) => a.takeovers - b.takeovers,
+      },
+      {
+        title: "解决数",
+        dataIndex: "resolved",
+        sorter: (a, b) => a.resolved - b.resolved,
+      },
+      {
+        title: "转派数",
+        dataIndex: "transfers",
+        sorter: (a, b) => a.transfers - b.transfers,
+      },
+      {
+        title: "转派率",
+        dataIndex: "transfer_ratio",
+        sorter: (a, b) => a.transfer_ratio - b.transfer_ratio,
+        render: (v: number) => fmtPct(v),
+      },
+      {
+        title: "平均处理时长",
+        dataIndex: "avg_handle_seconds",
+        sorter: (a, b) => a.avg_handle_seconds - b.avg_handle_seconds,
+        render: (v: number) => fmtSeconds(v),
+      },
+      {
+        title: "",
+        key: "actions",
+        width: 100,
+        align: "right",
+        render: (_: unknown, row: StaffKpiRow) => (
+          <Link to={`/admin/performance/${row.staff_id}`}>
+            <Button type="link" size="small" style={{ padding: 0 }}>
+              查看详情
+            </Button>
+          </Link>
+        ),
+      },
+    ],
+    [],
+  );
 
   return (
-    <PageContainer width="wide">
-      <PageHeader
-        title="客服绩效"
-        actions={
-          <div className="flex items-center gap-2">
-            <DatePicker date={fromDate} onChange={setFromDate} placeholder="开始日期" />
-            <span className="text-sm text-muted-foreground">至</span>
-            <DatePicker date={toDate} onChange={setToDate} placeholder="结束日期" />
-          </div>
-        }
-      />
+    <div className="space-y-4 p-6">
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          客服绩效
+        </Title>
+        <RangePicker
+          value={range}
+          onChange={(v) => setRange(v as [Dayjs, Dayjs] | null)}
+          allowClear={false}
+        />
+      </Flex>
 
-      {err && (
-        <Alert variant="destructive" className="mb-4">
-          {err}
-        </Alert>
-      )}
+      {err && <Alert type="error" showIcon title={err} />}
 
-      {loading ? (
-        <KpiSkeleton />
-      ) : allowed && data ? (
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          <KpiCard
-            label="客服人数"
-            value={data.team.staff_count}
-            icon={Users}
-          />
-          <KpiCard
-            label="总接管数"
-            value={data.team.total_takeovers}
-            icon={CheckCircle}
-          />
-          <KpiCard
-            label="总解决数"
-            value={data.team.total_resolved}
-            icon={CheckCircle}
-          />
-          <KpiCard
-            label="团队平均处理时长"
-            value={fmtSeconds(data.team.avg_handle_seconds)}
-            icon={Clock}
-          />
-        </div>
-      ) : null}
+      <OverviewKpiCards loading={loading} team={data?.team} />
 
       {!loading && allowed && data && (
-        <div className="mt-6">
-          <DataTable
+        <Card>
+          <Table<StaffKpiRow>
+            rowKey="staff_id"
+            size="middle"
             columns={columns}
-            data={data.staff}
-            toolbar={(t) => (
-              <DataTableToolbar
-                table={t}
-                searchColumn="staff_id"
-                placeholder="搜索 staff_id…"
-              />
-            )}
+            dataSource={data.staff}
+            pagination={{ pageSize: 20, showSizeChanger: true }}
+            locale={{ emptyText: "暂无数据" }}
           />
-        </div>
+        </Card>
       )}
-    </PageContainer>
-  );
-}
-
-// ── Detail ────────────────────────────────────────────────────────────────────
-
-function DetailKpiSkeleton() {
-  return (
-    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <Skeleton key={i} className="h-[100px] rounded-xl" />
-      ))}
     </div>
   );
 }
 
-function buildConvColumns(): ColumnDef<StaffConversation>[] {
-  return [
-    {
-      accessorKey: "id",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="会话 ID" />
-      ),
-      cell: ({ row }) => (
-        <Link
-          to={`/admin/conversations/${row.original.id}`}
-          className="font-mono text-xs text-primary hover:underline"
-        >
-          #{row.original.id}
-        </Link>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "user_type",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="用户类型" />
-      ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs">{row.original.user_type}</span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "status",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="状态" />
-      ),
-      cell: ({ row }) => (
-        <span className="text-xs">{row.original.status}</span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "mode",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="模式" />
-      ),
-      cell: ({ row }) => (
-        <span className="text-xs">{row.original.mode}</span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "created_at",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="创建时间" />
-      ),
-      cell: ({ row }) => (
-        <span className="text-xs">{row.original.created_at}</span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "assigned_at",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="接管时间" />
-      ),
-      cell: ({ row }) => (
-        <span className="text-xs">{row.original.assigned_at ?? "—"}</span>
-      ),
-      enableSorting: true,
-    },
-  ];
-}
-
-function buildQaColumns(): ColumnDef<StaffQaReview>[] {
-  return [
-    {
-      accessorKey: "review_id",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="记录 ID" />
-      ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs">#{row.original.review_id}</span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "conv_id",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="会话 ID" />
-      ),
-      cell: ({ row }) => (
-        <Link
-          to={`/admin/conversations/${row.original.conv_id}`}
-          className="font-mono text-xs text-primary hover:underline"
-        >
-          #{row.original.conv_id}
-        </Link>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "scorecard_name",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="评分卡" />
-      ),
-      cell: ({ row }) => (
-        <span className="text-xs">{row.original.scorecard_name ?? "—"}</span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "total_score",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="总分" />
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "verdict",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="标签" />
-      ),
-      cell: ({ row }) => (
-        <span className="text-xs">{row.original.verdict ?? "—"}</span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "reviewer_staff_id",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="质检员" />
-      ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs">{row.original.reviewer_staff_id}</span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "created_at",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="质检时间" />
-      ),
-      cell: ({ row }) => (
-        <span className="text-xs">{row.original.created_at}</span>
-      ),
-      enableSorting: true,
-    },
-  ];
-}
+// ── Detail (单客服) ───────────────────────────────────────────────────────────
 
 function OverviewTab({ p }: { p: StaffPerformance }) {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-2">
         <Card>
-          <div className="flex flex-col gap-1 p-4">
-            <span className="text-xs font-medium text-muted-foreground">满意度</span>
-            <div className="text-2xl font-bold">
-              {p.satisfaction.avg_rating.toFixed(1)}
-            </div>
-            <span className="text-xs text-muted-foreground">
-              共 {p.satisfaction.count} 条评价
-            </span>
-          </div>
+          <Statistic
+            title="满意度"
+            value={p.satisfaction.avg_rating}
+            precision={1}
+          />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            共 {p.satisfaction.count} 条评价
+          </Text>
         </Card>
         <Card>
-          <div className="flex flex-col gap-1 p-4">
-            <span className="text-xs font-medium text-muted-foreground">质检均分</span>
-            <div className="text-2xl font-bold">
-              {p.qa.avg_score.toFixed(1)}
-            </div>
-            <span className="text-xs text-muted-foreground">
-              共 {p.qa.count} 次质检
-            </span>
-          </div>
+          <Statistic title="质检均分" value={p.qa.avg_score} precision={1} />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            共 {p.qa.count} 次质检
+          </Text>
         </Card>
       </div>
       <div className="grid gap-3 md:grid-cols-3">
         <Card>
-          <div className="flex flex-col gap-1 p-4">
-            <span className="text-xs font-medium text-muted-foreground">解决率</span>
-            <div className="text-2xl font-bold">{fmtPct(p.resolved_ratio)}</div>
-          </div>
+          <Statistic title="解决率" value={fmtPct(p.resolved_ratio)} />
         </Card>
         <Card>
-          <div className="flex flex-col gap-1 p-4">
-            <span className="text-xs font-medium text-muted-foreground">转派率</span>
-            <div className="text-2xl font-bold">{fmtPct(p.transfer_ratio)}</div>
-          </div>
+          <Statistic title="转派率" value={fmtPct(p.transfer_ratio)} />
         </Card>
         <Card>
-          <div className="flex flex-col gap-1 p-4">
-            <span className="text-xs font-medium text-muted-foreground">释放率</span>
-            <div className="text-2xl font-bold">{fmtPct(p.release_ratio)}</div>
-          </div>
+          <Statistic title="释放率" value={fmtPct(p.release_ratio)} />
         </Card>
       </div>
     </div>
@@ -441,11 +280,10 @@ function StaffPerformanceDetail({ staffId }: { staffId: string }) {
   const { token, role } = useStaffSession();
   const allowed = role === "supervisor" || role === "admin";
 
-  const defaultFrom = new Date(Date.now() - 30 * 24 * 3600 * 1000);
-  const defaultTo = new Date();
-
-  const [fromDate, setFromDate] = useState<Date | undefined>(defaultFrom);
-  const [toDate, setToDate] = useState<Date | undefined>(defaultTo);
+  const [range, setRange] = useState<[Dayjs, Dayjs] | null>([
+    dayjs().subtract(30, "day"),
+    dayjs(),
+  ]);
   const [p, setP] = useState<StaffPerformance | null>(null);
   const [convs, setConvs] = useState<StaffConversation[]>([]);
   const [qaReviews, setQaReviews] = useState<StaffQaReview[]>([]);
@@ -462,8 +300,8 @@ function StaffPerformanceDetail({ staffId }: { staffId: string }) {
     setLoading(true);
     setErr("");
     const opts: { from?: string; to?: string } = {};
-    if (fromDate) opts.from = toUtcParam(fromDate);
-    if (toDate) opts.to = toUtcParam(toDate);
+    if (range?.[0]) opts.from = toUtcParam(range[0]);
+    if (range?.[1]) opts.to = toUtcParam(range[1]);
     Promise.all([
       getPerformance(token, staffId, opts),
       listStaffConversations(token, staffId, opts),
@@ -477,114 +315,186 @@ function StaffPerformanceDetail({ staffId }: { staffId: string }) {
       .catch(() => setErr("加载失败"))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, role, staffId, fromDate, toDate]);
+  }, [token, role, staffId, range]);
 
-  const convColumns = buildConvColumns();
-  const qaColumns = buildQaColumns();
+  const convColumns: ColumnsType<StaffConversation> = useMemo(
+    () => [
+      {
+        title: "会话 ID",
+        dataIndex: "id",
+        sorter: (a, b) => a.id - b.id,
+        render: (id: number) => (
+          <Link
+            to={`/admin/conversations/${id}`}
+            style={{
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 12,
+            }}
+          >
+            #{id}
+          </Link>
+        ),
+      },
+      { title: "用户类型", dataIndex: "user_type", width: 100 },
+      { title: "状态", dataIndex: "status", width: 120 },
+      { title: "模式", dataIndex: "mode", width: 120 },
+      { title: "创建时间", dataIndex: "created_at" },
+      {
+        title: "接管时间",
+        dataIndex: "assigned_at",
+        render: (v: string | null) => v ?? "—",
+      },
+    ],
+    [],
+  );
+
+  const qaColumns: ColumnsType<StaffQaReview> = useMemo(
+    () => [
+      {
+        title: "记录 ID",
+        dataIndex: "review_id",
+        width: 100,
+        render: (v: number) => (
+          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+            #{v}
+          </span>
+        ),
+      },
+      {
+        title: "会话 ID",
+        dataIndex: "conv_id",
+        width: 100,
+        render: (id: number) => (
+          <Link
+            to={`/admin/conversations/${id}`}
+            style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+          >
+            #{id}
+          </Link>
+        ),
+      },
+      {
+        title: "评分卡",
+        dataIndex: "scorecard_name",
+        render: (v: string | null) => v ?? "—",
+      },
+      { title: "总分", dataIndex: "total_score", width: 100 },
+      {
+        title: "标签",
+        dataIndex: "verdict",
+        render: (v: string | null) => v ?? "—",
+      },
+      { title: "质检员", dataIndex: "reviewer_staff_id", width: 120 },
+      { title: "质检时间", dataIndex: "created_at" },
+    ],
+    [],
+  );
 
   return (
-    <PageContainer width="wide">
-      {/* Breadcrumb */}
-      <Breadcrumb className="mb-2">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link to="/admin/performance">客服绩效</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{staffId}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <PageHeader
-        title={`客服绩效 — ${staffId}`}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/admin/performance">
-                <ArrowLeft className="mr-1 h-3.5 w-3.5" />
-                返回
-              </Link>
-            </Button>
-            <DatePicker date={fromDate} onChange={setFromDate} placeholder="开始日期" />
-            <span className="text-sm text-muted-foreground">至</span>
-            <DatePicker date={toDate} onChange={setToDate} placeholder="结束日期" />
-          </div>
-        }
+    <div className="space-y-4 p-6">
+      <Breadcrumb
+        items={[
+          { title: <Link to="/admin/performance">客服绩效</Link> },
+          { title: <span style={{ fontWeight: 500 }}>{staffId}</span> },
+        ]}
       />
 
-      {err && (
-        <Alert variant="destructive" className="mb-4">
-          {err}
-        </Alert>
-      )}
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          客服绩效 — {staffId}
+        </Title>
+        <Space>
+          <Link to="/admin/performance">
+            <Button icon={<ArrowLeftOutlined />}>返回</Button>
+          </Link>
+          <RangePicker
+            value={range}
+            onChange={(v) => setRange(v as [Dayjs, Dayjs] | null)}
+            allowClear={false}
+          />
+        </Space>
+      </Flex>
 
-      {/* KPI cards */}
+      {err && <Alert type="error" showIcon title={err} />}
+
       {loading ? (
-        <DetailKpiSkeleton />
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <Skeleton active paragraph={{ rows: 1 }} />
+            </Card>
+          ))}
+        </div>
       ) : p ? (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          <KpiCard label="接管数" value={p.takeovers} icon={Users} />
-          <KpiCard label="解决数" value={p.resolved} icon={CheckCircle} />
-          <KpiCard label="转派数" value={p.transfers} icon={GitBranch} />
-          <KpiCard
-            label="平均处理时长"
-            value={fmtSeconds(p.avg_handle_seconds)}
-            icon={Clock}
-          />
+          <Card>
+            <Statistic title="接管数" value={p.takeovers} prefix={<TeamOutlined />} />
+          </Card>
+          <Card>
+            <Statistic
+              title="解决数"
+              value={p.resolved}
+              prefix={<CheckCircleOutlined />}
+            />
+          </Card>
+          <Card>
+            <Statistic title="转派数" value={p.transfers} prefix={<ForkOutlined />} />
+          </Card>
+          <Card>
+            <Statistic
+              title="平均处理时长"
+              value={fmtSeconds(p.avg_handle_seconds)}
+              prefix={<ClockCircleOutlined />}
+            />
+          </Card>
         </div>
       ) : null}
 
-      {/* Tabs */}
       {!loading && p && (
-        <Tabs defaultValue="overview" className="mt-6">
-          <TabsList className="mb-3">
-            <TabsTrigger value="overview">总览</TabsTrigger>
-            <TabsTrigger value="conversations">会话明细</TabsTrigger>
-            <TabsTrigger value="qa">质检结果</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview">
-            <OverviewTab p={p} />
-          </TabsContent>
-
-          <TabsContent value="conversations">
-            <DataTable
-              columns={convColumns}
-              data={convs}
-              toolbar={(t) => (
-                <DataTableToolbar
-                  table={t}
-                  searchColumn="id"
-                  placeholder="搜索会话 ID…"
-                />
-              )}
-            />
-          </TabsContent>
-
-          <TabsContent value="qa">
-            <DataTable
-              columns={qaColumns}
-              data={qaReviews}
-              toolbar={(t) => (
-                <DataTableToolbar
-                  table={t}
-                  searchColumn="conv_id"
-                  placeholder="搜索会话 ID…"
-                />
-              )}
-            />
-          </TabsContent>
-        </Tabs>
+        <Card>
+          <Tabs
+            defaultActiveKey="overview"
+            items={[
+              {
+                key: "overview",
+                label: "总览",
+                children: <OverviewTab p={p} />,
+              },
+              {
+                key: "conversations",
+                label: "会话明细",
+                children: (
+                  <Table<StaffConversation>
+                    rowKey="id"
+                    size="small"
+                    columns={convColumns}
+                    dataSource={convs}
+                    pagination={{ pageSize: 20, showSizeChanger: true }}
+                    locale={{ emptyText: "无会话记录" }}
+                  />
+                ),
+              },
+              {
+                key: "qa",
+                label: "质检结果",
+                children: (
+                  <Table<StaffQaReview>
+                    rowKey="review_id"
+                    size="small"
+                    columns={qaColumns}
+                    dataSource={qaReviews}
+                    pagination={{ pageSize: 20, showSizeChanger: true }}
+                    locale={{ emptyText: "无质检记录" }}
+                  />
+                ),
+              },
+            ]}
+          />
+        </Card>
       )}
-    </PageContainer>
+    </div>
   );
 }
-
-// ── Route entry ───────────────────────────────────────────────────────────────
 
 export function StaffPerformanceRoute() {
   const { staffId } = useParams();

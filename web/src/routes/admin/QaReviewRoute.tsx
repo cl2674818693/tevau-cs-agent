@@ -1,9 +1,27 @@
-import type { ColumnDef } from "@tanstack/react-table";
+import { ExportOutlined, ReloadOutlined } from "@ant-design/icons";
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  DatePicker,
+  Drawer,
+  Flex,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Skeleton,
+  Space,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
+import type { Dayjs } from "dayjs";
 import { format } from "date-fns";
-import { ExternalLink, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { toast } from "sonner";
 
 import {
   listReviews,
@@ -12,34 +30,11 @@ import {
   type QaReview,
   type Scorecard,
 } from "../../api/adminQa";
-import { DataTable } from "../../components/admin/data-table/DataTable";
-import { DataTableColumnHeader } from "../../components/admin/data-table/DataTableColumnHeader";
-import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
-import { Alert } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { DatePicker } from "../../components/ui/date-picker";
-import { Input } from "../../components/ui/input";
-import { Label } from "../../components/ui/label";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "../../components/ui/sheet";
-import { Skeleton } from "../../components/ui/skeleton";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const { Title } = Typography;
+const { RangePicker } = DatePicker;
+const { TextArea } = Input;
 
 function formatDateTime(val: string) {
   try {
@@ -49,27 +44,13 @@ function formatDateTime(val: string) {
   }
 }
 
-function ScoreBadge({ score }: { score: number }) {
-  const variant =
-    score >= 90 ? "default" : score >= 70 ? "secondary" : "destructive";
-  return <Badge variant={variant}>{score}</Badge>;
+function scoreColor(score: number): string | undefined {
+  if (score >= 90) return "green";
+  if (score >= 70) return undefined;
+  return "red";
 }
 
-// ── Loading skeleton ──────────────────────────────────────────────────────────
-
-function SkeletonRows() {
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <Skeleton key={i} className="h-10 w-full rounded-md" />
-      ))}
-    </div>
-  );
-}
-
-// ── Submit Review Sheet ───────────────────────────────────────────────────────
-
-interface ReviewSheetProps {
+interface ReviewDrawerProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   scorecards: Scorecard[];
@@ -78,264 +59,117 @@ interface ReviewSheetProps {
   onSuccess: () => void;
 }
 
-function ReviewSheet({
+function ReviewDrawer({
   open,
   onOpenChange,
   scorecards,
   defaultConvId,
   token,
   onSuccess,
-}: ReviewSheetProps) {
-  const [convId, setConvId] = useState(defaultConvId ?? 0);
-  const [scid, setScid] = useState(scorecards[0]?.id ?? 0);
-  const [score, setScore] = useState(80);
-  const [tags, setTags] = useState("");
-  const [comment, setComment] = useState("");
+}: ReviewDrawerProps) {
+  const [form] = Form.useForm<{
+    conversation_id: number;
+    scorecard_id: number;
+    score: number;
+    tags?: string;
+    comment?: string;
+  }>();
+  const { message } = App.useApp();
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setConvId(defaultConvId ?? 0);
-      setScid(scorecards[0]?.id ?? 0);
-      setScore(80);
-      setTags("");
-      setComment("");
+      form.setFieldsValue({
+        conversation_id: defaultConvId ?? 0,
+        scorecard_id: scorecards[0]?.id ?? 0,
+        score: 80,
+        tags: "",
+        comment: "",
+      });
     }
-  }, [open, defaultConvId, scorecards]);
+  }, [open, defaultConvId, scorecards, form]);
 
-  async function handleSubmit() {
-    if (!scid || !convId) {
-      toast.error("请填写会话 ID 并选择评分卡");
-      return;
-    }
+  async function onSubmit(values: {
+    conversation_id: number;
+    scorecard_id: number;
+    score: number;
+    tags?: string;
+    comment?: string;
+  }) {
     setSubmitting(true);
     try {
       await submitReview(token, {
-        conversation_id: convId,
-        scorecard_id: scid,
-        score,
+        conversation_id: values.conversation_id,
+        scorecard_id: values.scorecard_id,
+        score: values.score,
         items_result: {},
-        tags: tags || undefined,
-        comment: comment || undefined,
+        tags: values.tags || undefined,
+        comment: values.comment || undefined,
       });
-      toast.success("质检已提交");
+      message.success("质检已提交");
       onOpenChange(false);
       onSuccess();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "提交失败");
+      message.error(e instanceof Error ? e.message : "提交失败");
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex flex-col gap-0 p-0">
-        <SheetHeader className="border-b px-6 py-4">
-          <SheetTitle>提交质检</SheetTitle>
-        </SheetHeader>
-
-        <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
-          {/* 会话 ID */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="qa-conv-id">会话 ID</Label>
-            <Input
-              id="qa-conv-id"
-              type="number"
-              min={1}
-              value={convId || ""}
-              placeholder="输入会话 ID"
-              onChange={(e) => setConvId(Number(e.target.value))}
-            />
-          </div>
-
-          {/* 评分卡 */}
-          <div className="flex flex-col gap-1.5">
-            <Label>评分卡</Label>
-            <Select
-              value={String(scid)}
-              onValueChange={(v) => setScid(Number(v))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="选择评分卡" />
-              </SelectTrigger>
-              <SelectContent>
-                {scorecards.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* 得分 */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="qa-score">得分（0–100）</Label>
-            <Input
-              id="qa-score"
-              type="number"
-              min={0}
-              max={100}
-              value={score}
-              onChange={(e) => setScore(Number(e.target.value))}
-            />
-          </div>
-
-          {/* 标签 */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="qa-tags">标签</Label>
-            <Input
-              id="qa-tags"
-              placeholder="excellent / violation / …"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-            />
-          </div>
-
-          {/* 备注 */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="qa-comment">备注</Label>
-            <textarea
-              id="qa-comment"
-              className="min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder="可选备注"
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <SheetFooter className="border-t px-6 py-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-          >
-            取消
-          </Button>
-          <Button
-            type="button"
-            disabled={submitting || !scid || !convId}
-            onClick={handleSubmit}
-          >
-            {submitting ? "提交中…" : "提交质检"}
-          </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+    <Drawer
+      title="提交质检"
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="default"
+    >
+      <Form form={form} layout="vertical" onFinish={onSubmit}>
+        <Form.Item
+          name="conversation_id"
+          label="会话 ID"
+          rules={[{ required: true, type: "number", min: 1 }]}
+        >
+          <InputNumber min={1} style={{ width: "100%" }} placeholder="输入会话 ID" />
+        </Form.Item>
+        <Form.Item
+          name="scorecard_id"
+          label="评分卡"
+          rules={[{ required: true, type: "number", min: 1, message: "请选择评分卡" }]}
+        >
+          <Select
+            placeholder="选择评分卡"
+            options={scorecards.map((s) => ({ value: s.id, label: s.name }))}
+          />
+        </Form.Item>
+        <Form.Item
+          name="score"
+          label="得分（0–100）"
+          rules={[{ required: true, type: "number", min: 0, max: 100 }]}
+        >
+          <InputNumber min={0} max={100} style={{ width: "100%" }} />
+        </Form.Item>
+        <Form.Item name="tags" label="标签">
+          <Input placeholder="excellent / violation / …" />
+        </Form.Item>
+        <Form.Item name="comment" label="备注">
+          <TextArea rows={3} placeholder="可选备注" />
+        </Form.Item>
+        <Form.Item style={{ marginBottom: 0 }}>
+          <Flex justify="flex-end" gap="small">
+            <Button onClick={() => onOpenChange(false)}>取消</Button>
+            <Button type="primary" htmlType="submit" loading={submitting}>
+              提交质检
+            </Button>
+          </Flex>
+        </Form.Item>
+      </Form>
+    </Drawer>
   );
 }
 
-// ── Columns ───────────────────────────────────────────────────────────────────
-
-function buildColumns(
-  onReview: (row: QaReview) => void,
-): ColumnDef<QaReview>[] {
-  return [
-    {
-      accessorKey: "created_at",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="时间" />
-      ),
-      cell: ({ row }) => (
-        <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-          {formatDateTime(row.original.created_at)}
-        </span>
-      ),
-      enableSorting: true,
-      sortDescFirst: true,
-    },
-    {
-      accessorKey: "conversation_id",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="会话" />
-      ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs text-foreground">
-          #{row.original.conversation_id}
-        </span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "reviewer_staff_id",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="质检员" />
-      ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs">{row.original.reviewer_staff_id}</span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "score",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="得分" />
-      ),
-      cell: ({ row }) => <ScoreBadge score={row.original.score} />,
-      enableSorting: true,
-    },
-    {
-      accessorKey: "tags",
-      header: "标签",
-      cell: ({ row }) =>
-        row.original.tags ? (
-          <span className="text-xs text-muted-foreground">{row.original.tags}</span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        ),
-      enableSorting: false,
-    },
-    {
-      accessorKey: "comment",
-      header: "备注",
-      cell: ({ row }) =>
-        row.original.comment ? (
-          <span className="text-xs text-muted-foreground">{row.original.comment}</span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        ),
-      enableSorting: false,
-    },
-    {
-      id: "actions",
-      header: "",
-      cell: ({ row }) => {
-        const convId = row.original.conversation_id;
-        return (
-          <div className="flex items-center gap-2">
-            <Link
-              to={`/staff/conversations/${convId}/logs`}
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              <ExternalLink className="h-3 w-3" />
-              查看
-            </Link>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2 text-xs"
-              onClick={() => onReview(row.original)}
-            >
-              重新质检
-            </Button>
-          </div>
-        );
-      },
-      enableSorting: false,
-    },
-  ];
-}
-
-// ── Filter state ──────────────────────────────────────────────────────────────
-
 interface FilterState {
-  dateFrom: Date | undefined;
-  dateTo: Date | undefined;
+  dateRange: [Dayjs | null, Dayjs | null] | null;
 }
-
-// ── Route ─────────────────────────────────────────────────────────────────────
 
 export function QaReviewRoute() {
   const { token, role } = useStaffSession();
@@ -345,12 +179,10 @@ export function QaReviewRoute() {
   const [scorecards, setScorecards] = useState<Scorecard[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [filter, setFilter] = useState<FilterState>({
-    dateFrom: undefined,
-    dateTo: undefined,
-  });
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetConvId, setSheetConvId] = useState<number | undefined>(undefined);
+  const [filter, setFilter] = useState<FilterState>({ dateRange: null });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerConvId, setDrawerConvId] = useState<number | undefined>(undefined);
+  const [search, setSearch] = useState("");
 
   function reload(f: FilterState = filter) {
     if (!token) return;
@@ -359,19 +191,8 @@ export function QaReviewRoute() {
     Promise.all([listScorecards(token, true), listReviews(token)])
       .then(([sc, rv]) => {
         setScorecards(sc);
-        // Client-side date filter
-        const from = f.dateFrom ? f.dateFrom.getTime() : null;
-        const to = f.dateTo
-          ? new Date(
-              f.dateTo.getFullYear(),
-              f.dateTo.getMonth(),
-              f.dateTo.getDate(),
-              23,
-              59,
-              59,
-              999,
-            ).getTime()
-          : null;
+        const from = f.dateRange?.[0]?.startOf("day").valueOf() ?? null;
+        const to = f.dateRange?.[1]?.endOf("day").valueOf() ?? null;
         const filtered =
           from != null || to != null
             ? rv.filter((r) => {
@@ -402,73 +223,161 @@ export function QaReviewRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, role]);
 
-  function openReviewSheet(row?: QaReview) {
-    setSheetConvId(row?.conversation_id);
-    setSheetOpen(true);
+  function openReviewDrawer(row?: QaReview) {
+    setDrawerConvId(row?.conversation_id);
+    setDrawerOpen(true);
   }
 
-  const columns = buildColumns((row) => openReviewSheet(row));
+  const columns: ColumnsType<QaReview> = useMemo(
+    () => [
+      {
+        title: "时间",
+        dataIndex: "created_at",
+        width: 180,
+        defaultSortOrder: "descend",
+        sorter: (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        render: (v: string) => (
+          <span
+            style={{
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 12,
+              color: "rgba(0,0,0,0.65)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {formatDateTime(v)}
+          </span>
+        ),
+      },
+      {
+        title: "会话",
+        dataIndex: "conversation_id",
+        width: 100,
+        sorter: (a, b) => a.conversation_id - b.conversation_id,
+        render: (id: number) => (
+          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+            #{id}
+          </span>
+        ),
+      },
+      {
+        title: "质检员",
+        dataIndex: "reviewer_staff_id",
+        width: 120,
+        render: (v: string) => (
+          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+            {v}
+          </span>
+        ),
+      },
+      {
+        title: "得分",
+        dataIndex: "score",
+        width: 100,
+        sorter: (a, b) => a.score - b.score,
+        render: (s: number) => <Tag color={scoreColor(s)}>{s}</Tag>,
+      },
+      {
+        title: "标签",
+        dataIndex: "tags",
+        render: (v: string | null) =>
+          v ? (
+            <span style={{ fontSize: 12, color: "rgba(0,0,0,0.65)" }}>{v}</span>
+          ) : (
+            <span style={{ color: "rgba(0,0,0,0.45)" }}>—</span>
+          ),
+      },
+      {
+        title: "备注",
+        dataIndex: "comment",
+        render: (v: string | null) =>
+          v ? (
+            <span style={{ fontSize: 12, color: "rgba(0,0,0,0.65)" }}>{v}</span>
+          ) : (
+            <span style={{ color: "rgba(0,0,0,0.45)" }}>—</span>
+          ),
+      },
+      {
+        title: "",
+        key: "actions",
+        width: 180,
+        render: (_: unknown, row: QaReview) => (
+          <Space size="middle">
+            <Link to={`/staff/conversations/${row.conversation_id}/logs`}>
+              <Button type="link" size="small" icon={<ExportOutlined />} style={{ padding: 0 }}>
+                查看
+              </Button>
+            </Link>
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0 }}
+              onClick={() => openReviewDrawer(row)}
+            >
+              重新质检
+            </Button>
+          </Space>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const filteredRows = useMemo(() => {
+    const kw = search.trim();
+    return kw
+      ? reviews.filter((r) => String(r.conversation_id).includes(kw))
+      : reviews;
+  }, [reviews, search]);
 
   return (
-    <PageContainer width="wide">
-      <PageHeader
-        title="会话质检"
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => reload()}
-              disabled={loading}
-            >
-              <RefreshCw
-                className={`mr-1.5 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-              />
-              刷新
+    <div className="space-y-4 p-6">
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          会话质检
+        </Title>
+        <Space>
+          <Button
+            icon={<ReloadOutlined spin={loading} />}
+            onClick={() => reload()}
+            disabled={loading}
+          >
+            刷新
+          </Button>
+          {allowed && (
+            <Button type="primary" onClick={() => openReviewDrawer()}>
+              新建质检
             </Button>
-            {allowed && (
-              <Button size="sm" onClick={() => openReviewSheet()}>
-                新建质检
-              </Button>
-            )}
-          </div>
-        }
-      />
+          )}
+        </Space>
+      </Flex>
 
-      {err && (
-        <Alert variant="destructive" className="mb-4">
-          {err}
-        </Alert>
-      )}
+      {err && <Alert type="error" showIcon title={err} />}
 
       {allowed && (
-        <>
-          {/* Date range filter */}
-          <div className="mb-3 flex flex-wrap items-end gap-2">
-            <DatePicker
-              date={filter.dateFrom}
-              onChange={(d) => setFilter((f) => ({ ...f, dateFrom: d }))}
-              placeholder="开始日期"
+        <Card>
+          <Space wrap style={{ marginBottom: 12 }}>
+            <Input.Search
+              placeholder="搜索会话 ID…"
+              allowClear
+              style={{ width: 200 }}
+              onChange={(e) => setSearch(e.target.value)}
             />
-            <DatePicker
-              date={filter.dateTo}
-              onChange={(d) => setFilter((f) => ({ ...f, dateTo: d }))}
-              placeholder="结束日期"
+            <RangePicker
+              value={filter.dateRange}
+              onChange={(v) =>
+                setFilter({ dateRange: v as [Dayjs | null, Dayjs | null] | null })
+              }
             />
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => reload(filter)}
-              disabled={loading}
-            >
+            <Button type="primary" onClick={() => reload(filter)} disabled={loading}>
               筛选
             </Button>
-            {(filter.dateFrom || filter.dateTo) && (
+            {filter.dateRange && (
               <Button
-                variant="ghost"
-                size="sm"
+                type="text"
                 onClick={() => {
-                  const next = { ...filter, dateFrom: undefined, dateTo: undefined };
+                  const next = { dateRange: null };
                   setFilter(next);
                   reload(next);
                 }}
@@ -476,37 +385,35 @@ export function QaReviewRoute() {
                 清除日期
               </Button>
             )}
-          </div>
+          </Space>
 
           {loading ? (
-            <SkeletonRows />
+            <Skeleton active paragraph={{ rows: 8 }} />
           ) : (
-            <DataTable
+            <Table<QaReview>
+              rowKey={(r) =>
+                `${r.conversation_id}-${r.reviewer_staff_id}-${r.created_at}`
+              }
+              size="small"
               columns={columns}
-              data={reviews}
-              toolbar={(t) => (
-                <DataTableToolbar
-                  table={t}
-                  searchColumn="conversation_id"
-                  placeholder="搜索会话 ID…"
-                />
-              )}
-              empty="暂无质检记录"
+              dataSource={filteredRows}
+              pagination={{ pageSize: 20, showSizeChanger: true }}
+              locale={{ emptyText: "暂无质检记录" }}
             />
           )}
-        </>
+        </Card>
       )}
 
       {token && (
-        <ReviewSheet
-          open={sheetOpen}
-          onOpenChange={setSheetOpen}
+        <ReviewDrawer
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
           scorecards={scorecards}
-          defaultConvId={sheetConvId}
+          defaultConvId={drawerConvId}
           token={token}
           onSuccess={() => reload()}
         />
       )}
-    </PageContainer>
+    </div>
   );
 }
