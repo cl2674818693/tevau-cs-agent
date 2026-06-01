@@ -20,23 +20,23 @@ const PAGE_SIZE = 50;
 
 const STATUS_META: Record<
   TicketStatus,
-  { label: string; variant: "pending" | "info" | "success" | "neutral" }
+  { label: string; variant: "secondary" | "info" | "success" | "outline" }
 > = {
-  pending: { label: "待处理", variant: "pending" },
+  pending: { label: "待处理", variant: "secondary" },
   in_progress: { label: "进行中", variant: "info" },
   resolved: { label: "已解决", variant: "success" },
-  closed: { label: "已关闭", variant: "neutral" },
+  closed: { label: "已关闭", variant: "outline" },
 };
 
 // ── Severity badge ─────────────────────────────────────────────────────────────
 
 const SEVERITY_VARIANT: Record<
   string,
-  "destructive" | "error" | "pending" | "secondary"
+  "destructive" | "secondary"
 > = {
   p0: "destructive",
-  p1: "error",
-  p2: "pending",
+  p1: "destructive",
+  p2: "secondary",
   p3: "secondary",
 };
 

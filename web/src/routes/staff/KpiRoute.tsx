@@ -73,7 +73,7 @@ export function KpiRoute() {
       />
 
       {error && (
-        <Alert variant="error" className="mb-4">
+        <Alert variant="destructive" className="mb-4">
           {error}
         </Alert>
       )}

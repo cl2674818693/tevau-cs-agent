@@ -110,7 +110,7 @@ export function PromptsRoute() {
   return (
     <PageContainer width="wide">
       <PageHeader title="Prompt 灰度" actions={windowToggle} />
-      {loadError && <Alert variant="error" className="mb-4">{loadError}</Alert>}
+      {loadError && <Alert variant="destructive" className="mb-4">{loadError}</Alert>}
       {loading ? (
         <TableSkeleton />
       ) : (

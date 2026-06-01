@@ -72,7 +72,7 @@ export function SpectateRoute() {
       {/* Content */}
       <div className="flex flex-1 flex-col overflow-hidden px-4 py-3">
         {err && (
-          <Alert variant="error" className="mb-2">
+          <Alert variant="destructive" className="mb-2">
             {err}
           </Alert>
         )}

@@ -287,12 +287,12 @@ export function SlaRoute() {
       />
 
       {err && (
-        <Alert variant="error" className="mb-4">
+        <Alert variant="destructive" className="mb-4">
           {err}
         </Alert>
       )}
       {actionErr && (
-        <Alert variant="error" className="mb-4">
+        <Alert variant="destructive" className="mb-4">
           {actionErr}
         </Alert>
       )}
@@ -324,7 +324,7 @@ export function SlaRoute() {
 
       {/* 当前超时告警 */}
       {!loading && breaches.length > 0 && (
-        <Alert variant="error" className="mt-4">
+        <Alert variant="destructive" className="mt-4">
           当前 {breaches.length} 个会话超时未处理
         </Alert>
       )}

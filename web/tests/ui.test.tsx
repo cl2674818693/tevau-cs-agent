@@ -8,14 +8,13 @@ import { Input } from "../src/components/ui/input";
 
 describe("ui primitives", () => {
   it("Badge 渲染内容并按 variant 上色", () => {
-    const { getByText } = render(<Badge variant="pending">待人工</Badge>);
+    const { getByText } = render(<Badge variant="secondary">待人工</Badge>);
     const el = getByText("待人工");
-    // TODO(phase-0): rewrite for shadcn badge API — old token "status-warning" replaced with Tailwind yellow classes
-    expect(el.className).toContain("yellow");
+    expect(el.className).toContain("bg-secondary");
   });
 
   it("Alert 渲染内容", () => {
-    const { getByText } = render(<Alert variant="error">出错了</Alert>);
+    const { getByText } = render(<Alert variant="destructive">出错了</Alert>);
     expect(getByText("出错了").textContent).toBe("出错了");
   });
 

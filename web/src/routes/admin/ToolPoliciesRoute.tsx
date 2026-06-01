@@ -84,7 +84,7 @@ function buildColumns(
       accessorKey: "role",
       header: "角色",
       cell: ({ row }) => (
-        <Badge variant="neutral">{row.original.role}</Badge>
+        <Badge variant="secondary">{row.original.role}</Badge>
       ),
       enableSorting: false,
     },

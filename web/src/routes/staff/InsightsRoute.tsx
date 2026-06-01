@@ -172,7 +172,7 @@ function DrillPanel({
         {label} · {rangeLabel} · 最近 50 个会话
       </div>
       {error && (
-        <Alert variant="error" className="mb-2">
+        <Alert variant="destructive" className="mb-2">
           {error}
         </Alert>
       )}
@@ -249,7 +249,7 @@ export function InsightsRoute() {
       </div>
 
       {error && (
-        <Alert variant="error" className="mb-3">
+        <Alert variant="destructive" className="mb-3">
           {error}
         </Alert>
       )}

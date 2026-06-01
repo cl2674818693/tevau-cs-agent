@@ -265,7 +265,7 @@ export function CostRoute() {
       />
 
       {err && (
-        <Alert variant="error" className="mb-4">
+        <Alert variant="destructive" className="mb-4">
           {err}
         </Alert>
       )}

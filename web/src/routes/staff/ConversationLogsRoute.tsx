@@ -38,17 +38,17 @@ function MsgBadges({ m }: { m: StaffMessage }) {
   return (
     <>
       {m.status === "failed" && (
-        <Badge variant="error" className="ml-2">
+        <Badge variant="destructive" className="ml-2">
           failed:{m.error_code ?? "-"}
         </Badge>
       )}
       {m.status === "processing" && (
-        <Badge variant="pending" className="ml-2">
+        <Badge variant="secondary" className="ml-2">
           processing
         </Badge>
       )}
       {m.topic_verdict && m.topic_verdict !== "yes" && (
-        <Badge variant="neutral" className="ml-2">
+        <Badge variant="secondary" className="ml-2">
           verdict:{m.topic_verdict}
         </Badge>
       )}
@@ -233,7 +233,7 @@ function AuditsTab({ audits, loading }: { audits: ToolAudit[]; loading: boolean 
               <span className="text-muted-foreground">身份 {a.subject_id}</span>
             ) : null}
             {a.rejected ? (
-              <Badge variant="error">被拒：{a.reject_reason ?? "-"}</Badge>
+              <Badge variant="destructive">被拒：{a.reject_reason ?? "-"}</Badge>
             ) : (
               <Badge variant="success">ok</Badge>
             )}
@@ -334,7 +334,7 @@ export function ConversationLogsRoute() {
       />
 
       {msgErr && (
-        <Alert variant="error" className="mb-3">
+        <Alert variant="destructive" className="mb-3">
           {msgErr}
         </Alert>
       )}

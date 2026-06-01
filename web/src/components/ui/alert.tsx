@@ -11,10 +11,10 @@ const alertVariants = cva(
         default: "bg-background text-foreground",
         destructive:
           "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
-        // ── Backwards-compat aliases (old self-written Alert API) ───────────
-        error: "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
-        success: "border-green-500/50 text-green-700 dark:border-green-500 dark:text-green-400 bg-green-50 dark:bg-green-900/10",
-        info: "border-blue-500/50 text-blue-700 dark:border-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/10",
+        success:
+          "border-emerald-500/50 text-emerald-700 dark:text-emerald-400 dark:border-emerald-500 [&>svg]:text-emerald-600",
+        info:
+          "border-sky-500/50 text-sky-700 dark:text-sky-400 dark:border-sky-500 [&>svg]:text-sky-600",
       },
     },
     defaultVariants: {

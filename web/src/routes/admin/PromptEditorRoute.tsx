@@ -52,7 +52,7 @@ function VersionSidebar({
           <span className="font-mono">{v}</span>
           <span className="flex gap-1">
             {draftVersions.has(v) && (
-              <Badge variant="pending" className="text-[10px] px-1.5 py-0">草稿</Badge>
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">草稿</Badge>
             )}
             {publishedVersions.has(v) && (
               <Badge variant="success" className="text-[10px] px-1.5 py-0">已发布</Badge>
@@ -155,11 +155,11 @@ function EditorPanel({
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-mono text-sm font-semibold">{version}</span>
           {selectedDraft ? (
-            <Badge variant={selectedDraft.status === "draft" ? "pending" : "success"}>
+            <Badge variant={selectedDraft.status === "draft" ? "secondary" : "success"}>
               {selectedDraft.status === "draft" ? "草稿" : "已发布"}
             </Badge>
           ) : (
-            <Badge variant="neutral">新草稿</Badge>
+            <Badge variant="secondary">新草稿</Badge>
           )}
           <span className="flex-1" />
           <Input
@@ -244,7 +244,7 @@ function EditorPanel({
                 <TableCell className="font-mono">{d.id}</TableCell>
                 <TableCell>{d.file_name}</TableCell>
                 <TableCell>
-                  <Badge variant={d.status === "draft" ? "pending" : "success"}>
+                  <Badge variant={d.status === "draft" ? "secondary" : "success"}>
                     {d.status === "draft" ? "草稿" : "已发布"}
                   </Badge>
                 </TableCell>

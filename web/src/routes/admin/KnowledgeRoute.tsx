@@ -228,7 +228,7 @@ function buildColumns(
       accessorKey: "type",
       header: "类型",
       cell: ({ row }) => (
-        <Badge variant="neutral" className="font-mono text-xs">
+        <Badge variant="secondary" className="font-mono text-xs">
           {row.original.type}
         </Badge>
       ),
@@ -257,7 +257,7 @@ function buildColumns(
         return s === "published" ? (
           <Badge variant="success">已发布</Badge>
         ) : (
-          <Badge variant="neutral">草稿</Badge>
+          <Badge variant="secondary">草稿</Badge>
         );
       },
       enableSorting: false,

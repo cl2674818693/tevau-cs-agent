@@ -27,13 +27,13 @@ const FILTER_OPTIONS: { value: string; label: string }[] = [
 const RISK_BADGES: {
   key: keyof StaffConversation;
   label: string;
-  variant: "error" | "pending";
+  variant: "destructive" | "secondary";
 }[] = [
-  { key: "has_failed", label: "失败", variant: "error" },
-  { key: "has_downvote", label: "差评", variant: "error" },
-  { key: "has_out_of_scope", label: "范围外", variant: "pending" },
-  { key: "has_empty_tool", label: "空结果", variant: "pending" },
-  { key: "needs_review", label: "待复核", variant: "pending" },
+  { key: "has_failed", label: "失败", variant: "destructive" },
+  { key: "has_downvote", label: "差评", variant: "destructive" },
+  { key: "has_out_of_scope", label: "范围外", variant: "secondary" },
+  { key: "has_empty_tool", label: "空结果", variant: "secondary" },
+  { key: "needs_review", label: "待复核", variant: "secondary" },
 ];
 
 function buildColumns(
@@ -74,7 +74,7 @@ function buildColumns(
       accessorKey: "mode",
       header: "模式",
       cell: ({ row }) => (
-        <Badge variant="neutral">{row.original.mode}</Badge>
+        <Badge variant="secondary">{row.original.mode}</Badge>
       ),
     },
     {
@@ -161,7 +161,7 @@ export function ConversationsListRoute() {
       </div>
 
       {error && (
-        <Alert variant="error" className="mb-3">
+        <Alert variant="destructive" className="mb-3">
           {error}
         </Alert>
       )}

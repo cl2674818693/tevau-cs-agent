@@ -62,7 +62,7 @@ export function AiToolsPanel({ token, convId }: Props) {
         {running ? "查询中…" : "运行"}
       </Button>
       {err && (
-        <Alert variant="error" className="mt-2">
+        <Alert variant="destructive" className="mt-2">
           {err}
         </Alert>
       )}

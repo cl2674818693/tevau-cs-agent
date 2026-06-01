@@ -61,7 +61,7 @@ export function buildPromptColumns(
       cell: ({ row }) =>
         row.original.isDefault
           ? <Badge variant="info">default</Badge>
-          : <Badge variant="neutral">灰度</Badge>,
+          : <Badge variant="secondary">灰度</Badge>,
       enableSorting: false,
     },
     {

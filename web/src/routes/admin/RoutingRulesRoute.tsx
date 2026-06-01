@@ -477,7 +477,7 @@ function buildColumns(
         row.original.active ? (
           <Badge variant="success">启用</Badge>
         ) : (
-          <Badge variant="neutral">停用</Badge>
+          <Badge variant="secondary">停用</Badge>
         ),
       enableSorting: false,
     },

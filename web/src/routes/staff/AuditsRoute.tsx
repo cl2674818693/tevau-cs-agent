@@ -100,7 +100,7 @@ const columns: ColumnDef<ToolAudit>[] = [
     header: "状态",
     cell: ({ row }) =>
       row.original.rejected ? (
-        <Badge variant="error">被拒：{row.original.reject_reason ?? "-"}</Badge>
+        <Badge variant="destructive">被拒：{row.original.reject_reason ?? "-"}</Badge>
       ) : (
         <Badge variant="success">ok</Badge>
       ),
@@ -208,7 +208,7 @@ export function AuditsRoute() {
       </div>
 
       {error && (
-        <Alert variant="error" className="mb-3">
+        <Alert variant="destructive" className="mb-3">
           {error}
         </Alert>
       )}

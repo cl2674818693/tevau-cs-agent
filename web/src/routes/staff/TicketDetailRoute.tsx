@@ -210,7 +210,7 @@ export function TicketDetailRoute() {
       />
 
       {error && (
-        <Alert variant="error" className="mb-3">
+        <Alert variant="destructive" className="mb-3">
           {error}
         </Alert>
       )}
