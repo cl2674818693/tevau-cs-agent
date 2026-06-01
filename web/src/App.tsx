@@ -1,7 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { StaffLayout } from "./components/StaffLayout";
+import { AppShell } from "./components/app-shell/AppShell";
+import { ForbiddenRoute } from "./routes/ForbiddenRoute";
 import { AuditCenterRoute } from "./routes/admin/AuditCenterRoute";
 import { CostRoute } from "./routes/admin/CostRoute";
 import { DashboardRoute } from "./routes/admin/DashboardRoute";
@@ -44,7 +45,7 @@ export default function App() {
           <Route path="/staff/login" element={<StaffLoginRoute />} />
           {/* 旁观为全屏只读视图，不套后台布局 */}
           <Route path="/staff/conversations/:id/spectate" element={<SpectateRoute />} />
-          <Route element={<StaffLayout />}>
+          <Route element={<AppShell />}>
             <Route path="/staff/conversations" element={<ConversationsListRoute />} />
             <Route path="/staff/conversations/:id" element={<ConversationDetailRoute />} />
             <Route path="/staff/conversations/:id/logs" element={<ConversationLogsRoute />} />
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="/admin/knowledge" element={<KnowledgeRoute />} />
             <Route path="/admin/guardrails" element={<GuardrailsRoute />} />
             <Route path="/admin/reports" element={<ReportsRoute />} />
+            <Route path="/403" element={<ForbiddenRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
