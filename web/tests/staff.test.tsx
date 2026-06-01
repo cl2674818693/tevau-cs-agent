@@ -106,14 +106,15 @@ describe("StaffLoginRoute", () => {
       "fetch",
       vi.fn(async () => new Response(JSON.stringify({ token: "t", staff: {} }), { status: 200 })),
     );
-    render(
+    const { container } = render(
       <MemoryRouter>
         <StaffLoginRoute />
       </MemoryRouter>,
     );
     fireEvent.change(screen.getByPlaceholderText("工号"), { target: { value: "S100" } });
     fireEvent.change(screen.getByPlaceholderText("密码"), { target: { value: "pw" } });
-    fireEvent.click(screen.getByText("登录"));
+    // antd Button 文本被 span 包裹，用 form.submit 触发 onFinish 更稳
+    fireEvent.submit(container.querySelector("form")!);
     await waitFor(() => expect(localStorage.getItem("staff_jwt")).toBe("t"));
   });
 });
