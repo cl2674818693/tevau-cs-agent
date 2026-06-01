@@ -1,3 +1,5 @@
+import { staffFetch } from "./staffFetch";
+
 export type StaffConversation = {
   id: number;
   user_type: string;
@@ -23,6 +25,7 @@ export async function staffLogin(
   staffId: string,
   password: string,
 ): Promise<{ token: string; staff: StaffInfo }> {
+  // 登录用裸 fetch：此处 401 表示账号/密码错误，不能走 staffFetch 的会话过期跳转。
   const r = await fetch("/staff/api/v1/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -39,7 +42,7 @@ export async function listStaffConversations(
 ): Promise<StaffConversation[]> {
   const qs = new URLSearchParams({ status });
   if (riskOnly) qs.set("risk_only", "true");
-  const r = await fetch(`/staff/api/v1/conversations?${qs.toString()}`, {
+  const r = await staffFetch(`/staff/api/v1/conversations?${qs.toString()}`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`list failed ${r.status}`);
@@ -48,7 +51,7 @@ export async function listStaffConversations(
 
 /** 接管：成功 true；被他人抢占（409）返回 false。 */
 export async function takeConversation(token: string, id: number): Promise<boolean> {
-  const r = await fetch(`/staff/api/v1/conversations/${id}/take`, {
+  const r = await staffFetch(`/staff/api/v1/conversations/${id}/take`, {
     method: "POST",
     headers: authHeaders(token),
   });
@@ -57,7 +60,7 @@ export async function takeConversation(token: string, id: number): Promise<boole
 
 /** 客服写操作统一 POST：失败抛错，调用方据此提示，不再静默乐观更新。 */
 async function postStaff(token: string, path: string, body?: unknown): Promise<void> {
-  const r = await fetch(path, {
+  const r = await staffFetch(path, {
     method: "POST",
     headers: authHeaders(token),
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -106,7 +109,7 @@ export async function runAiTool(
   toolName: string,
   params: Record<string, unknown>,
 ): Promise<AiToolResult> {
-  const r = await fetch(`/staff/api/v1/conversations/${id}/ai-tools/${toolName}`, {
+  const r = await staffFetch(`/staff/api/v1/conversations/${id}/ai-tools/${toolName}`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({ params }),
@@ -120,7 +123,7 @@ export async function transferConversation(
   id: number,
   targetStaffId: string,
 ): Promise<boolean> {
-  const r = await fetch(`/staff/api/v1/conversations/${id}/transfer-to/${targetStaffId}`, {
+  const r = await staffFetch(`/staff/api/v1/conversations/${id}/transfer-to/${targetStaffId}`, {
     method: "POST",
     headers: authHeaders(token),
   });
@@ -168,7 +171,7 @@ export async function getKpi(token: string, opts?: { from?: string; to?: string 
   const qs = new URLSearchParams();
   if (opts?.from) qs.set("from", opts.from);
   if (opts?.to) qs.set("to", opts.to);
-  const r = await fetch(`/staff/api/v1/kpi?${qs.toString()}`, { headers: authHeaders(token) });
+  const r = await staffFetch(`/staff/api/v1/kpi?${qs.toString()}`, { headers: authHeaders(token) });
   if (!r.ok) throw new Error(`kpi failed ${r.status}`);
   const body = await r.json();
   return body as KpiResult;
@@ -192,7 +195,7 @@ export async function getKnowledgeGaps(
   const qs = new URLSearchParams();
   if (range.from) qs.set("from", range.from);
   if (range.to) qs.set("to", range.to);
-  const r = await fetch(`/staff/api/v1/insights/knowledge-gaps?${qs.toString()}`, {
+  const r = await staffFetch(`/staff/api/v1/insights/knowledge-gaps?${qs.toString()}`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`insights failed ${r.status}`);
@@ -214,7 +217,7 @@ export async function getToolHealth(
   const qs = new URLSearchParams();
   if (range.from) qs.set("from", range.from);
   if (range.to) qs.set("to", range.to);
-  const r = await fetch(`/staff/api/v1/insights/tool-health?${qs.toString()}`, {
+  const r = await staffFetch(`/staff/api/v1/insights/tool-health?${qs.toString()}`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`tool-health failed ${r.status}`);
@@ -237,7 +240,7 @@ export async function getGapConversations(
   if (range.from) qs.set("from", range.from);
   if (range.to) qs.set("to", range.to);
   if (range.limit != null) qs.set("limit", String(range.limit));
-  const r = await fetch(`/staff/api/v1/insights/gap-conversations?${qs.toString()}`, {
+  const r = await staffFetch(`/staff/api/v1/insights/gap-conversations?${qs.toString()}`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`gap-conversations failed ${r.status}`);
@@ -265,7 +268,7 @@ export async function getConversationMessages(
 ): Promise<MessagesPage> {
   const qs = new URLSearchParams({ limit: String(opts.limit ?? 50) });
   if (opts.beforeId != null) qs.set("before_id", String(opts.beforeId));
-  const r = await fetch(`/staff/api/v1/conversations/${id}/messages?${qs.toString()}`, {
+  const r = await staffFetch(`/staff/api/v1/conversations/${id}/messages?${qs.toString()}`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`messages failed ${r.status}`);
@@ -290,7 +293,7 @@ export type ToolAudit = {
 };
 
 export async function getConversationAudits(token: string, id: number): Promise<ToolAudit[]> {
-  const r = await fetch(`/staff/api/v1/conversations/${id}/tool-audits`, {
+  const r = await staffFetch(`/staff/api/v1/conversations/${id}/tool-audits`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`audits failed ${r.status}`);
@@ -309,7 +312,7 @@ export async function getConversationFeedback(
   token: string,
   id: number,
 ): Promise<MessageFeedback[]> {
-  const r = await fetch(`/staff/api/v1/conversations/${id}/feedback`, {
+  const r = await staffFetch(`/staff/api/v1/conversations/${id}/feedback`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`feedback failed ${r.status}`);
@@ -348,7 +351,7 @@ export async function getRecentAudits(
   filter: RecentAuditsFilter = {},
 ): Promise<RecentAuditsPage> {
   const qs = buildRecentAuditsQuery(filter);
-  const r = await fetch(`/staff/api/v1/audits/recent?${qs.toString()}`, {
+  const r = await staffFetch(`/staff/api/v1/audits/recent?${qs.toString()}`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`recent audits failed ${r.status}`);
@@ -393,7 +396,7 @@ export async function listTickets(
   if (severity) qs.set("severity", severity);
   if (category) qs.set("category", category);
   if (beforeId) qs.set("before_id", beforeId);
-  const r = await fetch(`/staff/api/v1/tickets?${qs.toString()}`, {
+  const r = await staffFetch(`/staff/api/v1/tickets?${qs.toString()}`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`list tickets failed ${r.status}`);
@@ -417,7 +420,7 @@ export type StaffStreamEvent = {
 
 /** 取单个会话当前状态（mode/assigned_staff_id），用于详情页初始化接管态。 */
 export async function getStaffConversation(token: string, id: number): Promise<StaffConversation> {
-  const r = await fetch(`/staff/api/v1/conversations/${id}`, { headers: authHeaders(token) });
+  const r = await staffFetch(`/staff/api/v1/conversations/${id}`, { headers: authHeaders(token) });
   if (!r.ok) throw new Error(`get conversation failed ${r.status}`);
   return r.json();
 }
@@ -445,7 +448,7 @@ async function* streamSse(
   token: string,
   signal?: AbortSignal,
 ): AsyncGenerator<StaffStreamEvent> {
-  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal });
+  const resp = await staffFetch(url, { headers: { Authorization: `Bearer ${token}` }, signal });
   if (!resp.ok || !resp.body) throw new Error(`stream failed ${resp.status}`);
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();

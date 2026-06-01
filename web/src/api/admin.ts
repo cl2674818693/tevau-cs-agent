@@ -1,3 +1,5 @@
+import { staffFetch } from "./staffFetch";
+
 function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
@@ -9,7 +11,7 @@ export type PromptVersions = {
 };
 
 export async function getPromptVersions(token: string): Promise<PromptVersions> {
-  const r = await fetch("/admin/api/v1/prompts/versions", { headers: authHeaders(token) });
+  const r = await staffFetch("/admin/api/v1/prompts/versions", { headers: authHeaders(token) });
   if (!r.ok) throw new Error(`versions failed ${r.status}`);
   return r.json();
 }
@@ -36,7 +38,7 @@ export async function getPromptAbStats(
   const qs = new URLSearchParams();
   if (opts?.from) qs.set("from", opts.from);
   if (opts?.to) qs.set("to", opts.to);
-  const r = await fetch(`/admin/api/v1/prompts/ab-stats?${qs.toString()}`, {
+  const r = await staffFetch(`/admin/api/v1/prompts/ab-stats?${qs.toString()}`, {
     headers: authHeaders(token),
   });
   if (!r.ok) throw new Error(`ab-stats failed ${r.status}`);
@@ -49,7 +51,7 @@ export async function setRollout(
   token: string,
   rollout: Record<string, number>,
 ): Promise<Record<string, number>> {
-  const r = await fetch("/admin/api/v1/prompts/rollout", {
+  const r = await staffFetch("/admin/api/v1/prompts/rollout", {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({ rollout }),

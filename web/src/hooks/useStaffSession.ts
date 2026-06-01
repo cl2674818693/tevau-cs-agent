@@ -1,6 +1,11 @@
 import { useState } from "react";
 
-const KEY = "staff_jwt";
+export const STAFF_TOKEN_KEY = "staff_jwt";
+
+/** 清除本地客服 token（登出 / token 失效时复用，避免散落 localStorage key）。 */
+export function clearStaffToken() {
+  localStorage.removeItem(STAFF_TOKEN_KEY);
+}
 
 /** 从 JWT payload 取一个 string 字段（仅用于前端 UI；权限以后端为准）。 */
 function claimFromToken(token: string | null, key: string): string | null {
@@ -14,15 +19,15 @@ function claimFromToken(token: string | null, key: string): string | null {
 }
 
 export function useStaffSession() {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(KEY));
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem(STAFF_TOKEN_KEY));
 
   function login(t: string) {
-    localStorage.setItem(KEY, t);
+    localStorage.setItem(STAFF_TOKEN_KEY, t);
     setToken(t);
   }
 
   function logout() {
-    localStorage.removeItem(KEY);
+    clearStaffToken();
     setToken(null);
   }
 
