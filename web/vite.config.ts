@@ -1,4 +1,5 @@
 import react from "@vitejs/plugin-react";
+import path from "path";
 import { defineConfig, loadEnv } from "vite";
 
 // dev 代理后端地址：默认本地 8000，可用 VITE_API_PROXY 指向远端联调环境，无需改源码。
@@ -8,6 +9,11 @@ export default defineConfig(({ mode }) => {
   const target = env.VITE_API_PROXY || "http://localhost:8000";
   return {
     plugins: [react()],
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
+    },
     server: {
       host: true, // 监听 0.0.0.0，允许局域网 IP（手机/其他设备）访问
       port: 5173,
