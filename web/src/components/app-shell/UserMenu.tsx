@@ -1,40 +1,42 @@
-import { LogOut, User } from "lucide-react";
+import { LogoutOutlined, UserOutlined } from "@ant-design/icons";
+import { Avatar, Dropdown, type MenuProps } from "antd";
 import { useNavigate } from "react-router-dom";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+
 import { useStaffSession } from "@/hooks/useStaffSession";
 
 export function UserMenu() {
   const { role, logout } = useStaffSession();
   const nav = useNavigate();
   const initial = role ? role[0].toUpperCase() : "?";
+
+  const items: MenuProps["items"] = [
+    {
+      key: "role",
+      icon: <UserOutlined />,
+      label: <span className="text-xs text-gray-500">角色：{role ?? "(未登录)"}</span>,
+      disabled: true,
+    },
+    { type: "divider" },
+    {
+      key: "logout",
+      icon: <LogoutOutlined />,
+      label: "退出",
+      onClick: () => {
+        logout();
+        nav("/staff/login");
+      },
+    },
+  ];
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="账号菜单">
-          <Avatar className="h-7 w-7">
-            <AvatarFallback className="text-xs">{initial}</AvatarFallback>
-          </Avatar>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">
-          <User className="mr-2 inline h-3 w-3" />角色：{role ?? "(未登录)"}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={() => {
-            logout();
-            nav("/staff/login");
-          }}
-        >
-          <LogOut className="mr-2 h-4 w-4" /> 退出
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Dropdown menu={{ items }} placement="bottomRight" trigger={["click"]}>
+      <Avatar
+        size="small"
+        style={{ backgroundColor: "#4f46e5", cursor: "pointer" }}
+        aria-label="账号菜单"
+      >
+        {initial}
+      </Avatar>
+    </Dropdown>
   );
 }

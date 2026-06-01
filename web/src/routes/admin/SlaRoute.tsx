@@ -113,9 +113,74 @@ function PolicyForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
+// ─── KPI section ─────────────────────────────────────────────────────────────
+
+function KpiCards({ kpi, loading }: { kpi: KpiSnapshot; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="grid gap-3 md:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Card key={i}>
+            <Skeleton active paragraph={{ rows: 1 }} />
+          </Card>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      <Card>
+        <Statistic
+          title="达标率"
+          value={kpi.complianceRate === null ? "—" : kpi.complianceRate}
+          precision={kpi.complianceRate === null ? undefined : 1}
+          suffix={kpi.complianceRate === null ? "" : "%"}
+          valueStyle={{
+            color:
+              kpi.complianceRate === null
+                ? undefined
+                : kpi.complianceRate >= 80
+                  ? "#059669"
+                  : "#dc2626",
+          }}
+          prefix={<CheckCircleOutlined />}
+        />
+      </Card>
+      <Card>
+        <Statistic
+          title="平均响应阈值"
+          value={kpi.avgThreshold === null ? "—" : kpi.avgThreshold}
+          suffix={kpi.avgThreshold === null ? "" : "s"}
+          prefix={<ClockCircleOutlined />}
+        />
+      </Card>
+      <Card>
+        <Statistic
+          title="未达标数"
+          value={kpi.breachCount}
+          valueStyle={{ color: kpi.breachCount > 0 ? "#dc2626" : undefined }}
+          prefix={
+            kpi.breachCount > 0 ? (
+              <ExclamationCircleOutlined />
+            ) : (
+              <SafetyCertificateOutlined />
+            )
+          }
+        />
+      </Card>
+    </div>
+  );
+}
+
 // ─── KPI derivation ──────────────────────────────────────────────────────────
 
-function deriveKpi(policies: SlaPolicy[], breaches: SlaBreach[]) {
+type KpiSnapshot = {
+  complianceRate: number | null;
+  avgThreshold: number | null;
+  breachCount: number;
+};
+
+function deriveKpi(policies: SlaPolicy[], breaches: SlaBreach[]): KpiSnapshot {
   const active = policies.filter((p) => p.active);
   const breachCount = breaches.length;
   // compliance rate: 无 active 策略时返回 null（UI 显示 "—"），避免 0/0 误读为 100%
@@ -319,59 +384,7 @@ export function SlaRoute() {
       {err && <Alert type="error" showIcon title={err} />}
 
       {/* KPI 卡片 */}
-      {loading ? (
-        <div className="grid gap-3 md:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i}>
-              <Skeleton active paragraph={{ rows: 1 }} />
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="grid gap-3 md:grid-cols-3">
-          <Card>
-            <Statistic
-              title="达标率"
-              value={kpi.complianceRate === null ? "—" : kpi.complianceRate}
-              precision={kpi.complianceRate === null ? undefined : 1}
-              suffix={kpi.complianceRate === null ? "" : "%"}
-              valueStyle={{
-                color:
-                  kpi.complianceRate === null
-                    ? undefined
-                    : kpi.complianceRate >= 80
-                      ? "#059669"
-                      : "#dc2626",
-              }}
-              prefix={<CheckCircleOutlined />}
-            />
-          </Card>
-          <Card>
-            <Statistic
-              title="平均响应阈值"
-              value={kpi.avgThreshold === null ? "—" : kpi.avgThreshold}
-              suffix={kpi.avgThreshold === null ? "" : "s"}
-              prefix={<ClockCircleOutlined />}
-            />
-          </Card>
-          <Card>
-            <Statistic
-              title="未达标数"
-              value={kpi.breachCount}
-              valueStyle={{
-                color: kpi.breachCount > 0 ? "#dc2626" : undefined,
-              }}
-              prefix={
-                kpi.breachCount > 0 ? (
-                  <ExclamationCircleOutlined />
-                ) : (
-                  <SafetyCertificateOutlined />
-                )
-              }
-            />
-          </Card>
-        </div>
-      )}
+      <KpiCards kpi={kpi} loading={loading} />
 
       {/* 当前超时告警 */}
       {!loading && breaches.length > 0 && (

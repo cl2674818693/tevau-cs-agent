@@ -1,27 +1,33 @@
-import { Menu } from "lucide-react";
+import { MenuOutlined } from "@ant-design/icons";
+import { Button, Drawer } from "antd";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+
 import { AppSidebar } from "./AppSidebar";
 
-/** < md 时显示。点汉堡按钮打开 Sheet，Sheet 内复用 AppSidebar（强制显示）。 */
+/** < md 时显示。点汉堡按钮打开 Drawer，Drawer 内复用 AppSidebar。 */
 export function MobileSidebar() {
   const [open, setOpen] = useState(false);
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="md:hidden" aria-label="打开菜单">
-          <Menu className="h-5 w-5" />
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="left" className="w-72 p-0">
-        <div className="!flex h-full" onClick={() => setOpen(false)}>
-          {/* AppSidebar 自带 hidden md:flex，这里包一层强制显示 */}
-          <div className="flex h-full w-full [&_aside]:!flex">
-            <AppSidebar />
-          </div>
+    <>
+      <Button
+        type="text"
+        icon={<MenuOutlined />}
+        className="md:!hidden"
+        onClick={() => setOpen(true)}
+        aria-label="打开菜单"
+      />
+      <Drawer
+        open={open}
+        placement="left"
+        width={280}
+        onClose={() => setOpen(false)}
+        styles={{ body: { padding: 0 } }}
+        closable={false}
+      >
+        <div onClick={() => setOpen(false)} className="h-full">
+          <AppSidebar />
         </div>
-      </SheetContent>
-    </Sheet>
+      </Drawer>
+    </>
   );
 }

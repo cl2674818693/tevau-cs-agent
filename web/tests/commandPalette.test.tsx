@@ -1,31 +1,31 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi, beforeAll } from "vitest";
+import { App as AntdApp, ConfigProvider } from "antd";
 import { MemoryRouter } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
+
 import { CommandPalette } from "@/components/app-shell/CommandPalette";
 
 vi.mock("@/hooks/useStaffSession", () => ({
   useStaffSession: () => ({ role: "admin" }),
 }));
-vi.mock("@/hooks/useDynamicMenu", () => ({ useDynamicMenu: () => ({ matrix: null }) }));
-
-beforeAll(() => {
-  // jsdom 缺 ResizeObserver / scrollIntoView，cmdk 内部会用
-  (globalThis as unknown as Record<string, unknown>).ResizeObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
-  Element.prototype.scrollIntoView = vi.fn();
-});
+vi.mock("@/hooks/useDynamicMenu", () => ({
+  useDynamicMenu: () => ({ matrix: null }),
+}));
 
 describe("CommandPalette", () => {
-  it("⌘K 打开面板", () => {
+  it("⌘K 打开面板", async () => {
     render(
-      <MemoryRouter>
-        <CommandPalette />
-      </MemoryRouter>,
+      <ConfigProvider>
+        <AntdApp>
+          <MemoryRouter>
+            <CommandPalette />
+          </MemoryRouter>
+        </AntdApp>
+      </ConfigProvider>,
     );
     fireEvent.keyDown(window, { key: "k", metaKey: true });
-    expect(screen.getByPlaceholderText(/搜索菜单/)).toBeInTheDocument();
+    // antd v6 AutoComplete 的 placeholder 是独立 div，而非 input[placeholder] 属性，
+    // 用 findByText 等 Modal Portal 渲染就绪后再断言。
+    expect(await screen.findByText(/搜索菜单/)).toBeInTheDocument();
   });
 });

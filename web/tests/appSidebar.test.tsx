@@ -42,9 +42,10 @@ describe("AppSidebar", () => {
         <AppSidebar />
       </MemoryRouter>,
     );
-    expect(screen.getByText("数据大盘")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("运营看板"));
-    // Radix Collapsible removes content from DOM when closed in jsdom (no animation)
-    expect(screen.queryByText("数据大盘")).not.toBeInTheDocument();
+    // antd Menu inline mode 下，SubMenu 标题渲染为 role=button，aria-expanded 反映开合
+    const groupTrigger = screen.getByText("运营看板").closest('[role="menuitem"]')!;
+    expect(groupTrigger).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(groupTrigger);
+    expect(groupTrigger).toHaveAttribute("aria-expanded", "false");
   });
 });
