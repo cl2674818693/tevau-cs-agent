@@ -1,7 +1,40 @@
+/**
+ * SLA 策略与告警 —— antd v6 迁移参考模板。
+ *
+ * 后续 admin 路由请参考此文件的几个约定：
+ *  1) 顶部用 `Flex` 排标题 + 右侧操作区，禁止再用旧的 PageContainer/PageHeader 组合。
+ *  2) Card 包每个语义区块（KPI、表格、表单）。块间垂直间距用 Tailwind `space-y-*` 或 antd `Space`。
+ *  3) Toast/通知统一从 `App.useApp().message` 取，禁止再 import sonner。
+ *  4) 危险操作（停用/删除）用 `Popconfirm` 包，不再写 window.confirm。
+ *  5) 加载态用 antd `Skeleton`，不要把 shadcn `<Skeleton/>` 留下。
+ *  6) Tailwind 仅做布局（flex/gap/grid/spacing/text-color），所有"组件级"样式让 antd token 接管。
+ */
+import {
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  ExclamationCircleOutlined,
+  InfoCircleOutlined,
+  SafetyCertificateOutlined,
+} from "@ant-design/icons";
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Flex,
+  Form,
+  InputNumber,
+  Popconfirm,
+  Select,
+  Skeleton,
+  Statistic,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { ColumnDef } from "@tanstack/react-table";
-import { CheckCircle, XCircle, ShieldAlert, Clock } from "lucide-react";
 
 import {
   createPolicy,
@@ -12,90 +45,71 @@ import {
   type SlaBreach,
   type SlaPolicy,
 } from "../../api/adminSla";
-import { KpiCard } from "../../components/admin/KpiCard";
-import { DataTable } from "../../components/admin/data-table/DataTable";
-import { Alert } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import { Skeleton } from "../../components/ui/skeleton";
 import { useStaffSession } from "../../hooks/useStaffSession";
+
+const { Title, Text } = Typography;
 
 const METRIC_LABEL: Record<string, string> = {
   take_time: "接管时长",
   resolve_time: "解决时长",
 };
 
-// ─── Skeletons ──────────────────────────────────────────────────────────────
-
-function KpiSkeleton() {
-  return (
-    <div className="grid gap-3 md:grid-cols-3">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <Skeleton key={i} className="h-[100px] rounded-xl" />
-      ))}
-    </div>
-  );
-}
-
-function TableSkeleton() {
-  return <Skeleton className="h-[220px] rounded-xl" />;
-}
-
 // ─── Policy form ─────────────────────────────────────────────────────────────
 
-function PolicyForm({
-  onCreated,
-  onError,
-}: {
-  onCreated: () => void;
-  onError: (m: string) => void;
-}) {
+function PolicyForm({ onCreated }: { onCreated: () => void }) {
   const { token } = useStaffSession();
-  const [form, setForm] = useState({ metric: "take_time", threshold_seconds: 300 });
+  const { message } = App.useApp();
+  const [form] = Form.useForm<{ metric: string; threshold_seconds: number }>();
   const [saving, setSaving] = useState(false);
 
-  async function submit() {
+  async function submit(values: { metric: string; threshold_seconds: number }) {
     if (!token) return;
     setSaving(true);
     try {
       await createPolicy(token, {
-        metric: form.metric,
-        threshold_seconds: Number(form.threshold_seconds),
+        metric: values.metric,
+        threshold_seconds: values.threshold_seconds,
         scope: "all",
       });
+      message.success("策略已新增");
       onCreated();
     } catch (e) {
-      onError(e instanceof Error ? e.message : "创建失败");
+      message.error(e instanceof Error ? e.message : "创建失败");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-2">
-      <select
-        value={form.metric}
-        onChange={(e) => setForm({ ...form, metric: e.target.value })}
-        className="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+    <Form
+      form={form}
+      layout="inline"
+      initialValues={{ metric: "take_time", threshold_seconds: 300 }}
+      onFinish={submit}
+    >
+      <Form.Item name="metric" label="指标" style={{ marginBottom: 0 }}>
+        <Select
+          style={{ width: 140 }}
+          options={[
+            { value: "take_time", label: "接管时长" },
+            { value: "resolve_time", label: "解决时长" },
+          ]}
+        />
+      </Form.Item>
+      <Form.Item
+        name="threshold_seconds"
+        label="阈值（秒）"
+        rules={[{ required: true, type: "number", min: 1 }]}
+        style={{ marginBottom: 0 }}
       >
-        <option value="take_time">接管时长</option>
-        <option value="resolve_time">解决时长</option>
-      </select>
-      <Input
-        type="number"
-        min={1}
-        value={form.threshold_seconds}
-        onChange={(e) => setForm({ ...form, threshold_seconds: Number(e.target.value) })}
-        className="w-28"
-        aria-label="阈值秒数"
-      />
-      <span className="text-sm text-muted-foreground">秒</span>
-      <Button size="sm" onClick={submit} disabled={saving}>
-        {saving ? "保存中…" : "新增策略"}
-      </Button>
-    </div>
+        <InputNumber min={1} style={{ width: 110 }} />
+      </Form.Item>
+      <Form.Item style={{ marginBottom: 0 }}>
+        <Button type="primary" htmlType="submit" loading={saving}>
+          新增策略
+        </Button>
+      </Form.Item>
+    </Form>
   );
 }
 
@@ -122,13 +136,13 @@ function deriveKpi(policies: SlaPolicy[], breaches: SlaBreach[]) {
 
 export function SlaRoute() {
   const { token, role } = useStaffSession();
+  const { message } = App.useApp();
   const allowed = role === "supervisor" || role === "admin";
 
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
   const [breaches, setBreaches] = useState<SlaBreach[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [actionErr, setActionErr] = useState("");
 
   function reload() {
     if (!token) return;
@@ -157,72 +171,69 @@ export function SlaRoute() {
 
   // ── Policy table columns ──────────────────────────────────────────────────
 
-  const policyCols: ColumnDef<SlaPolicy>[] = useMemo(
+  const policyCols: ColumnsType<SlaPolicy> = useMemo(
     () => [
       {
-        accessorKey: "metric",
-        header: "指标",
-        cell: ({ row }) => METRIC_LABEL[row.original.metric] ?? row.original.metric,
+        title: "指标",
+        dataIndex: "metric",
+        render: (v: string) => METRIC_LABEL[v] ?? v,
       },
       {
-        accessorKey: "threshold_seconds",
-        header: "阈值（秒）",
-        cell: ({ row }) => row.original.threshold_seconds,
+        title: "阈值（秒）",
+        dataIndex: "threshold_seconds",
+        width: 120,
       },
       {
-        accessorKey: "active",
-        header: "状态",
-        cell: ({ row }) =>
-          row.original.active ? (
-            <Badge variant="outline" className="text-emerald-600 border-emerald-400">
-              启用
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="text-muted-foreground">
-              停用
-            </Badge>
-          ),
+        title: "状态",
+        dataIndex: "active",
+        width: 100,
+        render: (v: number) =>
+          v ? <Tag color="success">启用</Tag> : <Tag>停用</Tag>,
       },
       {
-        id: "actions",
-        header: "操作",
-        cell: ({ row }) => {
-          const p = row.original;
-          async function toggle() {
-            if (!token) return;
-            try {
-              await setPolicyActive(token, p.id, p.active ? 0 : 1);
-              reload();
-            } catch (e) {
-              setActionErr(e instanceof Error ? e.message : "操作失败");
-            }
-          }
-          async function remove() {
-            if (!token) return;
-            try {
-              await deletePolicy(token, p.id);
-              reload();
-            } catch (e) {
-              setActionErr(e instanceof Error ? e.message : "删除失败");
-            }
-          }
-          return (
-            <div className="flex gap-3 text-sm">
-              <button
-                className="text-primary hover:underline"
-                onClick={toggle}
-              >
-                {p.active ? "停用" : "启用"}
-              </button>
-              <button
-                className="text-destructive hover:underline"
-                onClick={remove}
-              >
+        title: "操作",
+        key: "actions",
+        width: 160,
+        render: (_: unknown, p: SlaPolicy) => (
+          <Flex gap="middle">
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0 }}
+              onClick={async () => {
+                if (!token) return;
+                try {
+                  await setPolicyActive(token, p.id, p.active ? 0 : 1);
+                  reload();
+                } catch (e) {
+                  message.error(e instanceof Error ? e.message : "操作失败");
+                }
+              }}
+            >
+              {p.active ? "停用" : "启用"}
+            </Button>
+            <Popconfirm
+              title="删除该策略？"
+              description="删除后告警立即消失，可重新新增。"
+              okText="确定删除"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+              onConfirm={async () => {
+                if (!token) return;
+                try {
+                  await deletePolicy(token, p.id);
+                  reload();
+                } catch (e) {
+                  message.error(e instanceof Error ? e.message : "删除失败");
+                }
+              }}
+            >
+              <Button type="link" size="small" danger style={{ padding: 0 }}>
                 删除
-              </button>
-            </div>
-          );
-        },
+              </Button>
+            </Popconfirm>
+          </Flex>
+        ),
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -231,42 +242,30 @@ export function SlaRoute() {
 
   // ── Breach table columns ──────────────────────────────────────────────────
 
-  const breachCols: ColumnDef<SlaBreach>[] = useMemo(
+  const breachCols: ColumnsType<SlaBreach> = useMemo(
     () => [
       {
-        accessorKey: "conversation_id",
-        header: "会话",
-        cell: ({ row }) => (
-          <Link
-            className="text-primary hover:underline"
-            to={`/staff/conversations/${row.original.conversation_id}`}
-          >
-            #{row.original.conversation_id}
-          </Link>
+        title: "会话",
+        dataIndex: "conversation_id",
+        render: (id: number) => (
+          <Link to={`/staff/conversations/${id}`}>#{id}</Link>
         ),
       },
       {
-        accessorKey: "metric",
-        header: "指标",
-        cell: ({ row }) => METRIC_LABEL[row.original.metric] ?? row.original.metric,
+        title: "指标",
+        dataIndex: "metric",
+        render: (v: string) => METRIC_LABEL[v] ?? v,
       },
+      { title: "已用时（秒）", dataIndex: "elapsed_seconds", width: 130 },
+      { title: "阈值（秒）", dataIndex: "threshold_seconds", width: 120 },
       {
-        accessorKey: "elapsed_seconds",
-        header: "已用时（秒）",
-        cell: ({ row }) => row.original.elapsed_seconds,
-      },
-      {
-        accessorKey: "threshold_seconds",
-        header: "阈值（秒）",
-        cell: ({ row }) => row.original.threshold_seconds,
-      },
-      {
-        id: "overrun",
-        header: "超出（秒）",
-        cell: ({ row }) => (
-          <span className="text-destructive font-medium">
-            +{row.original.elapsed_seconds - row.original.threshold_seconds}
-          </span>
+        title: "超出（秒）",
+        key: "overrun",
+        width: 120,
+        render: (_: unknown, b: SlaBreach) => (
+          <Text type="danger" strong>
+            +{b.elapsed_seconds - b.threshold_seconds}
+          </Text>
         ),
       },
     ],
@@ -276,88 +275,138 @@ export function SlaRoute() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <PageContainer width="wide">
-      <PageHeader
-        title="SLA"
-        actions={
-          allowed && !loading ? (
-            <PolicyForm onCreated={reload} onError={setActionErr} />
-          ) : undefined
+    <div className="space-y-4 p-6">
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          SLA
+        </Title>
+        {allowed && !loading && <PolicyForm onCreated={reload} />}
+      </Flex>
+
+      {/* 操作说明：常驻展示，让首次进入此页的运营快速理解功能 */}
+      <Alert
+        type="info"
+        showIcon
+        icon={<InfoCircleOutlined />}
+        title="SLA（服务水平协议）是什么"
+        description={
+          <div className="space-y-2">
+            <p>
+              为客服响应时长设定阈值。超时的会话会出现在下方
+              <Text strong>"当前超时会话"</Text>列表里，
+              并拉低<Text strong>"达标率"</Text>。判定是实时计算的——
+              停用或删除策略后告警会立刻消失。
+            </p>
+            <ul className="ml-4 list-disc space-y-0.5">
+              <li>
+                <Text strong>接管时长（take_time）</Text>：
+                会话进入"待人工接管"状态后，多少秒内必须有人 take。
+              </li>
+              <li>
+                <Text strong>解决时长（resolve_time）</Text>：
+                客服 take 后，多少秒内必须结案（resolved / release / transfer_out）。
+              </li>
+            </ul>
+            <p>
+              <Text strong>设置方式：</Text>
+              右上角下拉选择指标 → 填阈值秒数 → 点"新增策略"。
+              同一指标可建多条策略，<Text strong>按最严格阈值（最小值）判定</Text>。
+            </p>
+          </div>
         }
       />
 
-      {err && (
-        <Alert variant="destructive" className="mb-4">
-          {err}
-        </Alert>
-      )}
-      {actionErr && (
-        <Alert variant="destructive" className="mb-4">
-          {actionErr}
-        </Alert>
-      )}
+      {err && <Alert type="error" showIcon title={err} />}
 
       {/* KPI 卡片 */}
       {loading ? (
-        <KpiSkeleton />
+        <div className="grid gap-3 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i}>
+              <Skeleton active paragraph={{ rows: 1 }} />
+            </Card>
+          ))}
+        </div>
       ) : (
         <div className="grid gap-3 md:grid-cols-3">
-          <KpiCard
-            label="达标率"
-            value={kpi.complianceRate === null ? "—" : `${kpi.complianceRate.toFixed(1)}%`}
-            trend={kpi.complianceRate === null ? "flat" : kpi.complianceRate >= 80 ? "up" : "down"}
-            icon={CheckCircle}
-          />
-          <KpiCard
-            label="平均响应阈值"
-            value={kpi.avgThreshold === null ? "—" : `${kpi.avgThreshold}s`}
-            icon={Clock}
-          />
-          <KpiCard
-            label="未达标数"
-            value={kpi.breachCount}
-            trend={kpi.breachCount > 0 ? "down" : "flat"}
-            icon={kpi.breachCount > 0 ? XCircle : ShieldAlert}
-          />
+          <Card>
+            <Statistic
+              title="达标率"
+              value={kpi.complianceRate === null ? "—" : kpi.complianceRate}
+              precision={kpi.complianceRate === null ? undefined : 1}
+              suffix={kpi.complianceRate === null ? "" : "%"}
+              valueStyle={{
+                color:
+                  kpi.complianceRate === null
+                    ? undefined
+                    : kpi.complianceRate >= 80
+                      ? "#059669"
+                      : "#dc2626",
+              }}
+              prefix={<CheckCircleOutlined />}
+            />
+          </Card>
+          <Card>
+            <Statistic
+              title="平均响应阈值"
+              value={kpi.avgThreshold === null ? "—" : kpi.avgThreshold}
+              suffix={kpi.avgThreshold === null ? "" : "s"}
+              prefix={<ClockCircleOutlined />}
+            />
+          </Card>
+          <Card>
+            <Statistic
+              title="未达标数"
+              value={kpi.breachCount}
+              valueStyle={{
+                color: kpi.breachCount > 0 ? "#dc2626" : undefined,
+              }}
+              prefix={
+                kpi.breachCount > 0 ? (
+                  <ExclamationCircleOutlined />
+                ) : (
+                  <SafetyCertificateOutlined />
+                )
+              }
+            />
+          </Card>
         </div>
       )}
 
       {/* 当前超时告警 */}
       {!loading && breaches.length > 0 && (
-        <Alert variant="destructive" className="mt-4">
-          当前 {breaches.length} 个会话超时未处理
-        </Alert>
+        <Alert
+          type="error"
+          showIcon
+          title={`当前 ${breaches.length} 个会话超时未处理`}
+        />
       )}
 
       {/* 策略列表 */}
-      <div className="mt-6">
-        <p className="mb-3 text-sm font-medium text-muted-foreground">SLA 策略</p>
-        {loading ? (
-          <TableSkeleton />
-        ) : (
-          <DataTable
-            columns={policyCols}
-            data={policies}
-            empty="暂无策略，请在右上角新增"
-          />
-        )}
-      </div>
+      <Card title="SLA 策略" size="small">
+        <Table<SlaPolicy>
+          rowKey="id"
+          size="middle"
+          columns={policyCols}
+          dataSource={policies}
+          loading={loading}
+          pagination={false}
+          locale={{ emptyText: "暂无策略，请在右上角新增" }}
+        />
+      </Card>
 
       {/* 超时会话列表 */}
-      {(!loading && (breaches.length > 0 || !loading)) && (
-        <div className="mt-6">
-          <p className="mb-3 text-sm font-medium text-muted-foreground">当前超时会话</p>
-          {loading ? (
-            <TableSkeleton />
-          ) : (
-            <DataTable
-              columns={breachCols}
-              data={breaches}
-              empty="无超时会话"
-            />
-          )}
-        </div>
-      )}
-    </PageContainer>
+      <Card title="当前超时会话" size="small">
+        <Table<SlaBreach>
+          rowKey={(r) => `${r.conversation_id}-${r.metric}`}
+          size="middle"
+          columns={breachCols}
+          dataSource={breaches}
+          loading={loading}
+          pagination={false}
+          locale={{ emptyText: "无超时会话" }}
+        />
+      </Card>
+    </div>
   );
 }

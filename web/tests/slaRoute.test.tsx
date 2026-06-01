@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { App as AntdApp, ConfigProvider } from "antd";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -62,13 +63,19 @@ afterEach(() => {
 });
 
 function renderRoute() {
+  // antd v6: App.useApp() 需要 <AntdApp> 包裹才能拿到 message/notification context，
+  // 否则 form 提交流里的 message.success() 会跳过 onCreated()。
   return render(
-    <MemoryRouter initialEntries={["/admin/sla"]}>
-      <Routes>
-        <Route path="/admin/sla" element={<SlaRoute />} />
-        <Route path="/staff/conversations/:id" element={<div>conv</div>} />
-      </Routes>
-    </MemoryRouter>,
+    <ConfigProvider>
+      <AntdApp>
+        <MemoryRouter initialEntries={["/admin/sla"]}>
+          <Routes>
+            <Route path="/admin/sla" element={<SlaRoute />} />
+            <Route path="/staff/conversations/:id" element={<div>conv</div>} />
+          </Routes>
+        </MemoryRouter>
+      </AntdApp>
+    </ConfigProvider>,
   );
 }
 
@@ -163,8 +170,9 @@ describe("SlaRoute", () => {
 
     renderRoute();
 
-    await waitFor(() => expect(screen.getByText("新增策略")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("新增策略"));
+    // antd Form 的提交按钮 — 用 role 取，避免点到 "新增策略" 标题文字
+    const submitBtn = await screen.findByRole("button", { name: "新增策略" });
+    fireEvent.click(submitBtn);
 
     await waitFor(() => expect(createPolicy).toHaveBeenCalledTimes(1));
     // reload triggers 2nd call
@@ -199,8 +207,13 @@ describe("SlaRoute", () => {
     renderRoute();
 
     await waitFor(() => expect(screen.getByText("SLA 策略")).toBeInTheDocument());
-    const deleteBtns = screen.getAllByRole("button", { name: "删除" });
-    fireEvent.click(deleteBtns[0]);
+    // 表格里的"删除"按钮 → 触发 antd Popconfirm 弹出
+    const rowDeleteBtn = screen.getAllByRole("button", { name: "删除" })[0];
+    fireEvent.click(rowDeleteBtn);
+
+    // Popconfirm 弹层里的确认按钮（与触发器异名，定位明确）
+    const confirmBtn = await screen.findByRole("button", { name: "确定删除" });
+    fireEvent.click(confirmBtn);
 
     await waitFor(() =>
       expect(deletePolicy).toHaveBeenCalledWith(expect.any(String), 1),
@@ -212,10 +225,14 @@ describe("SlaRoute", () => {
     vi.mocked(listPolicies).mockResolvedValue(MOCK_POLICIES);
     vi.mocked(listBreaches).mockResolvedValue([]);
 
-    renderRoute();
+    const { container } = renderRoute();
 
     // active policy = 1 (id=1, active=1), no breach → 100%
-    await waitFor(() => expect(screen.getByText("100.0%")).toBeInTheDocument());
+    // antd Statistic 把数字/小数/后缀拆成 3 个 span，整 div 的 textContent = "100.0%"
+    await waitFor(() => {
+      const valueEl = container.querySelector(".ant-statistic-content");
+      expect(valueEl?.textContent?.replace(/\s/g, "")).toContain("100.0%");
+    });
   });
 
   it("无 active 策略时达标率显示 — 而非 100%", async () => {
