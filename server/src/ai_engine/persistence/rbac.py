@@ -12,7 +12,6 @@ PERMISSION_KEYS: list[str] = [
     "admin.staff",
     "admin.sla",
     "admin.tools",
-    "admin.audit",
     "admin.prompts",
     "admin.rbac",
     "admin.staff_groups",
@@ -33,7 +32,7 @@ _DEFAULT_MATRIX: dict[str, set[str]] = {
         "admin.knowledge",
     },
     "engineer": {
-        "admin.tools", "admin.audit",
+        "admin.tools",
         "admin.prompt_editor", "admin.knowledge", "admin.guardrails",
     },
     "manager": {"admin.dashboard"},

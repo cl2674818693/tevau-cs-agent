@@ -1,4 +1,4 @@
-"""SLA 配置与告警（supervisor/admin）。写操作落审计。"""
+"""SLA 配置与告警（supervisor/admin）。"""
 
 from typing import Any
 
@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ai_engine.auth.staff_session import require_roles
-from ai_engine.persistence import admin_audit, admin_sla
+from ai_engine.persistence import admin_sla
 
 router = APIRouter()
 _sup = require_roles("supervisor", "admin")
@@ -32,10 +32,6 @@ async def create_policy(body: PolicyIn, staff: dict[str, Any] = Depends(_sup)) -
         )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    await admin_audit.log_admin_action(
-        actor=staff.get("sub", "unknown"), action="sla.create",
-        target_type="sla_policy", target_id=str(pid), detail=body.model_dump(),
-    )
     return {"ok": True, "id": pid}
 
 
@@ -48,20 +44,12 @@ async def patch_policy(
     policy_id: int, body: PolicyPatchIn, staff: dict[str, Any] = Depends(_sup)
 ) -> dict[str, Any]:
     await admin_sla.set_policy_active(policy_id, body.active)
-    await admin_audit.log_admin_action(
-        actor=staff.get("sub", "unknown"), action="sla.update",
-        target_type="sla_policy", target_id=str(policy_id), detail={"active": body.active},
-    )
     return {"ok": True}
 
 
 @router.delete("/admin/api/v1/sla/policies/{policy_id}")
 async def delete_policy(policy_id: int, staff: dict[str, Any] = Depends(_sup)) -> dict[str, Any]:
     await admin_sla.delete_policy(policy_id)
-    await admin_audit.log_admin_action(
-        actor=staff.get("sub", "unknown"), action="sla.delete",
-        target_type="sla_policy", target_id=str(policy_id),
-    )
     return {"ok": True}
 
 

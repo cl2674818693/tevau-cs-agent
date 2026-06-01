@@ -1,4 +1,4 @@
-"""客服账号管理（admin only）。所有写操作落 admin_audit_log。"""
+"""客服账号管理（admin only）。"""
 
 from typing import Any
 
@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ai_engine.auth.staff_session import require_roles
-from ai_engine.persistence import admin_audit
 from ai_engine.persistence import staff as staff_mod
 
 router = APIRouter()
@@ -35,10 +34,6 @@ async def create_staff(
         )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    await admin_audit.log_admin_action(
-        actor=admin.get("sub", "unknown"), action="staff.create",
-        target_type="staff", target_id=body.staff_id, detail={"role": body.role},
-    )
     return {"ok": True, "id": new_id}
 
 
@@ -65,11 +60,6 @@ async def patch_staff(
             await staff_mod.set_staff_skills(staff_id, body.skills)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    await admin_audit.log_admin_action(
-        actor=admin.get("sub", "unknown"), action="staff.update",
-        target_type="staff", target_id=staff_id,
-        detail=body.model_dump(exclude_none=True),
-    )
     return {"ok": True}
 
 
@@ -82,8 +72,4 @@ async def reset_password(
     staff_id: str, body: ResetPwIn, admin: dict[str, Any] = Depends(_admin)
 ) -> dict[str, Any]:
     await staff_mod.reset_staff_password(staff_id, body.password)
-    await admin_audit.log_admin_action(
-        actor=admin.get("sub", "unknown"), action="staff.reset_password",
-        target_type="staff", target_id=staff_id,
-    )
     return {"ok": True}

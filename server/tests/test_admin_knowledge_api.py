@@ -36,7 +36,6 @@ async def test_agent_forbidden(env):
 
 
 async def test_create_publish_list(env):
-    from ai_engine.persistence import admin_audit
     async with await _c() as c:
         r = await c.post(
             "/admin/api/v1/knowledge",
@@ -51,8 +50,6 @@ async def test_create_publish_list(env):
         listed = (await c.get("/admin/api/v1/knowledge?type=faq",
                               headers=_h(env["sup"]))).json()["entries"]
     assert any(e["id"] == eid and e["status"] == "published" for e in listed)
-    audits = await admin_audit.list_admin_actions(action="knowledge.publish", limit=10)
-    assert any(a["actor"] == "SUP1" for a in audits)
 
 
 async def test_from_gap_endpoint(env):

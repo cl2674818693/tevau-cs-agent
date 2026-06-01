@@ -3,7 +3,6 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppShell } from "./components/app-shell/AppShell";
 import { ForbiddenRoute } from "./routes/ForbiddenRoute";
-import { AuditCenterRoute } from "./routes/admin/AuditCenterRoute";
 import { DashboardRoute } from "./routes/admin/DashboardRoute";
 import { GuardrailsRoute } from "./routes/admin/GuardrailsRoute";
 import { KnowledgeRoute } from "./routes/admin/KnowledgeRoute";
@@ -53,7 +52,6 @@ export default function App() {
             <Route path="/admin/prompts" element={<PromptsRoute />} />
             <Route path="/admin/staff" element={<StaffAccountsRoute />} />
             <Route path="/admin/sla" element={<SlaRoute />} />
-            <Route path="/admin/audit" element={<AuditCenterRoute />} />
             <Route path="/admin/dashboard" element={<DashboardRoute />} />
             <Route path="/admin/tools" element={<ToolPoliciesRoute />} />
             <Route path="/admin/rbac" element={<RbacRoute />} />

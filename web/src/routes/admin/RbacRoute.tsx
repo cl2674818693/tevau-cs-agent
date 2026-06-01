@@ -15,7 +15,6 @@ const PERM_LABELS: Record<string, string> = {
   "admin.staff": "客服账号",
   "admin.sla": "SLA 策略",
   "admin.tools": "工具策略",
-  "admin.audit": "操作审计",
   "admin.prompts": "Prompt 灰度",
   "admin.rbac": "角色权限",
   "admin.staff_groups": "客服分组",

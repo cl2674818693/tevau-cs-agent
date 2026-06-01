@@ -72,13 +72,3 @@ async def test_patch_and_reset(env):
     assert next(s for s in listed if s["staff_id"] == "AG1")["role"] == "senior"
 
 
-async def test_create_writes_audit(env):
-    from ai_engine.persistence import admin_audit
-    async with await _client() as c:
-        await c.post(
-            "/admin/api/v1/staff",
-            json={"staff_id": "AG9", "display_name": "x", "role": "agent", "password": "pw"},
-            headers=_h(env["admin"]),
-        )
-    rows = await admin_audit.list_admin_actions(action="staff.create", limit=10)
-    assert any(r["target_id"] == "AG9" and r["actor"] == "AD1" for r in rows)

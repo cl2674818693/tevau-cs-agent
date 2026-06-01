@@ -36,7 +36,6 @@ async def test_agent_forbidden(env):
 
 
 async def test_create_list_delete_shift(env):
-    from ai_engine.persistence import admin_audit
     async with await _c() as c:
         r = await c.post(
             "/admin/api/v1/shifts",
@@ -54,5 +53,3 @@ async def test_create_list_delete_shift(env):
         listed_after = (await c.get("/admin/api/v1/shifts?staff_id=AG1",
                                     headers=_h(env["sup"]))).json()["shifts"]
         assert all(s["id"] != sid for s in listed_after)
-    audits = await admin_audit.list_admin_actions(action="shift.create", limit=10)
-    assert any(a["actor"] == "SUP1" for a in audits)

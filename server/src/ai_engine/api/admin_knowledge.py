@@ -1,4 +1,4 @@
-"""知识库管理（supervisor/engineer/admin）。写操作落审计。"""
+"""知识库管理（supervisor/engineer/admin）。"""
 
 from typing import Any
 
@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ai_engine.auth.staff_session import require_roles
-from ai_engine.persistence import admin_audit, knowledge
+from ai_engine.persistence import knowledge
 
 router = APIRouter()
 _sup = require_roles("supervisor", "engineer", "admin")
@@ -49,11 +49,6 @@ async def create_entry(
         type_=body.type, key=body.key, title=body.title,
         content=body.content, locale=body.locale, created_by=actor,
     )
-    await admin_audit.log_admin_action(
-        actor=actor, action="knowledge.upsert",
-        target_type="knowledge_entry", target_id=str(eid),
-        detail={"type": body.type, "key": body.key},
-    )
     return {"ok": True, "id": eid}
 
 
@@ -63,20 +58,12 @@ async def submit_for_review(
 ) -> dict[str, Any]:
     """M4: draft → pending_review。"""
     await knowledge.submit_for_review(entry_id)
-    await admin_audit.log_admin_action(
-        actor=str(staff.get("sub", "unknown")), action="knowledge.submit_for_review",
-        target_type="knowledge_entry", target_id=str(entry_id),
-    )
     return {"ok": True}
 
 
 @router.post("/admin/api/v1/knowledge/{entry_id}/publish")
 async def publish(entry_id: int, staff: dict[str, Any] = Depends(_sup)) -> dict[str, Any]:
     await knowledge.publish(entry_id)
-    await admin_audit.log_admin_action(
-        actor=str(staff.get("sub", "unknown")), action="knowledge.publish",
-        target_type="knowledge_entry", target_id=str(entry_id),
-    )
     return {"ok": True}
 
 
@@ -85,10 +72,6 @@ async def delete_entry(
     entry_id: int, staff: dict[str, Any] = Depends(_sup)
 ) -> dict[str, Any]:
     await knowledge.delete_entry(entry_id)
-    await admin_audit.log_admin_action(
-        actor=str(staff.get("sub", "unknown")), action="knowledge.delete",
-        target_type="knowledge_entry", target_id=str(entry_id),
-    )
     return {"ok": True}
 
 
@@ -103,10 +86,5 @@ async def from_gap(
         type_=body.type, key=body.key, title=body.title,
         content=body.content, locale=body.locale,
         created_by=actor, source_gap_signal=body.signal_key,
-    )
-    await admin_audit.log_admin_action(
-        actor=actor, action="knowledge.from_gap",
-        target_type="knowledge_entry", target_id=str(eid),
-        detail={"signal": body.signal_key, "type": body.type, "key": body.key},
     )
     return {"ok": True, "id": eid}

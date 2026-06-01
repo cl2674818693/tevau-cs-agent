@@ -49,7 +49,6 @@ async def test_admin_get_matrix(env):
 
 
 async def test_admin_upsert_then_visible(env):
-    from ai_engine.persistence import admin_audit
     async with await _c() as c:
         r = await c.put(
             "/admin/api/v1/rbac/matrix",
@@ -62,5 +61,3 @@ async def test_admin_upsert_then_visible(env):
         matrix = (await c.get("/admin/api/v1/rbac/matrix",
                               headers=_h(env["admin"]))).json()["matrix"]
     assert matrix["agent"]["admin.dashboard"] is True
-    audits = await admin_audit.list_admin_actions(action="rbac.upsert", limit=10)
-    assert any(a["actor"] == "AD1" for a in audits)

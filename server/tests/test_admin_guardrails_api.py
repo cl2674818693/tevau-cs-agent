@@ -38,8 +38,7 @@ async def test_agent_forbidden(env):
     assert r.status_code == 403
 
 
-async def test_crud_with_audit(env):
-    from ai_engine.persistence import admin_audit
+async def test_crud(env):
     async with await _c() as c:
         r = await c.post(
             "/admin/api/v1/guardrails",
@@ -53,8 +52,6 @@ async def test_crud_with_audit(env):
         await c.patch(f"/admin/api/v1/guardrails/{rid}",
                       json={"active": 0}, headers=_h(env["eng"]))
         await c.delete(f"/admin/api/v1/guardrails/{rid}", headers=_h(env["eng"]))
-    audits = await admin_audit.list_admin_actions(action="guardrail.create", limit=10)
-    assert any(a["actor"] == "EN1" for a in audits)
 
 
 async def test_create_bad_type_400(env):

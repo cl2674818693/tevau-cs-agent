@@ -1,4 +1,4 @@
-"""排班管理（supervisor/admin）。写操作落审计。"""
+"""排班管理（supervisor/admin）。"""
 
 from typing import Any
 
@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ai_engine.auth.staff_session import require_roles
-from ai_engine.persistence import admin_audit, admin_shifts
+from ai_engine.persistence import admin_shifts
 
 router = APIRouter()
 _sup = require_roles("supervisor", "admin")
@@ -36,13 +36,6 @@ class ShiftIn(BaseModel):
 @router.post("/admin/api/v1/shifts")
 async def create_shift(body: ShiftIn, staff: dict[str, Any] = Depends(_sup)) -> dict[str, Any]:
     sid = await admin_shifts.create_shift(body.staff_id, body.start_at, body.end_at)
-    await admin_audit.log_admin_action(
-        actor=staff.get("sub", "unknown"),
-        action="shift.create",
-        target_type="shift",
-        target_id=str(sid),
-        detail=body.model_dump(),
-    )
     return {"ok": True, "id": sid}
 
 
@@ -67,23 +60,10 @@ async def patch_shift(
         raise HTTPException(400, str(e)) from e
     if row is None:
         raise HTTPException(404, "shift not found")
-    await admin_audit.log_admin_action(
-        actor=staff.get("sub", "unknown"),
-        action="shift.update",
-        target_type="shift",
-        target_id=str(shift_id),
-        detail=update_fields,
-    )
     return row
 
 
 @router.delete("/admin/api/v1/shifts/{shift_id}")
 async def delete_shift(shift_id: int, staff: dict[str, Any] = Depends(_sup)) -> dict[str, Any]:
     await admin_shifts.delete_shift(shift_id)
-    await admin_audit.log_admin_action(
-        actor=staff.get("sub", "unknown"),
-        action="shift.delete",
-        target_type="shift",
-        target_id=str(shift_id),
-    )
     return {"ok": True}

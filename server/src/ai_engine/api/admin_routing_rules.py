@@ -1,4 +1,4 @@
-"""会话路由规则（supervisor/admin）。写操作落审计 + 清缓存。"""
+"""会话路由规则（supervisor/admin）。写操作清缓存。"""
 
 from typing import Any
 
@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ai_engine.auth.staff_session import require_roles
-from ai_engine.persistence import admin_audit, routing_rules
+from ai_engine.persistence import routing_rules
 
 router = APIRouter()
 _sup = require_roles("supervisor", "admin")
@@ -32,13 +32,6 @@ async def create_rule(body: RuleIn, staff: dict[str, Any] = Depends(_sup)) -> di
         )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    await admin_audit.log_admin_action(
-        actor=staff.get("sub", "unknown"),
-        action="routing_rule.create",
-        target_type="routing_rule",
-        target_id=str(rid),
-        detail=body.model_dump(),
-    )
     return {"ok": True, "id": rid}
 
 
@@ -59,17 +52,9 @@ async def patch_rule(
     set_fields = body.model_dump(exclude_unset=True)
     if not set_fields:
         raise HTTPException(400, "no fields to update")
-    actor = staff.get("sub", "unknown")
     # handle active toggle separately (existing behaviour)
     if "active" in set_fields and len(set_fields) == 1:
         await routing_rules.set_active(rule_id, set_fields["active"])
-        await admin_audit.log_admin_action(
-            actor=actor,
-            action="routing_rule.update",
-            target_type="routing_rule",
-            target_id=str(rule_id),
-            detail={"active": set_fields["active"]},
-        )
         return {"ok": True}
     # content edit (excludes active)
     content_fields = {k: v for k, v in set_fields.items() if k != "active"}
@@ -82,13 +67,6 @@ async def patch_rule(
     # also handle active if present alongside content fields
     if "active" in set_fields:
         await routing_rules.set_active(rule_id, set_fields["active"])
-    await admin_audit.log_admin_action(
-        actor=actor,
-        action="routing_rule.update",
-        target_type="routing_rule",
-        target_id=str(rule_id),
-        detail=set_fields,
-    )
     return row
 
 
@@ -97,10 +75,4 @@ async def delete_rule(
     rule_id: int, staff: dict[str, Any] = Depends(_sup)
 ) -> dict[str, Any]:
     await routing_rules.delete_rule(rule_id)
-    await admin_audit.log_admin_action(
-        actor=staff.get("sub", "unknown"),
-        action="routing_rule.delete",
-        target_type="routing_rule",
-        target_id=str(rule_id),
-    )
     return {"ok": True}

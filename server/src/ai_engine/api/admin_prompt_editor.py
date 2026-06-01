@@ -1,4 +1,4 @@
-"""Prompt 编辑/发布（engineer/admin）。所有写操作落审计。"""
+"""Prompt 编辑/发布（engineer/admin）。"""
 
 from typing import Any
 
@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from ai_engine.auth.staff_session import require_roles
-from ai_engine.persistence import admin_audit, prompt_drafts
+from ai_engine.persistence import prompt_drafts
 
 router = APIRouter()
 _eng = require_roles("engineer", "admin")
@@ -32,13 +32,6 @@ async def create_draft(
 ) -> dict[str, Any]:
     actor = str(staff.get("sub", "unknown"))
     did = await prompt_drafts.create_draft(body.version, body.file_name, body.content, actor)
-    await admin_audit.log_admin_action(
-        actor=actor,
-        action="prompt.draft.create",
-        target_type="prompt_draft",
-        target_id=str(did),
-        detail={"version": body.version, "file_name": body.file_name},
-    )
     return {"ok": True, "id": did}
 
 
@@ -48,12 +41,6 @@ async def publish_draft(
 ) -> dict[str, Any]:
     actor = str(staff.get("sub", "unknown"))
     await prompt_drafts.publish(draft_id, actor)
-    await admin_audit.log_admin_action(
-        actor=actor,
-        action="prompt.publish",
-        target_type="prompt_draft",
-        target_id=str(draft_id),
-    )
     return {"ok": True}
 
 
@@ -62,10 +49,4 @@ async def delete_draft(
     draft_id: int, staff: dict[str, Any] = Depends(_eng)
 ) -> dict[str, Any]:
     await prompt_drafts.delete_draft(draft_id)
-    await admin_audit.log_admin_action(
-        actor=str(staff.get("sub", "unknown")),
-        action="prompt.draft.delete",
-        target_type="prompt_draft",
-        target_id=str(draft_id),
-    )
     return {"ok": True}

@@ -38,7 +38,6 @@ async def test_agent_forbidden(env):
 
 
 async def test_create_list_group(env):
-    from ai_engine.persistence import admin_audit
     async with await _c() as c:
         r = await c.post(
             "/admin/api/v1/staff-groups",
@@ -50,8 +49,6 @@ async def test_create_list_group(env):
             await c.get("/admin/api/v1/staff-groups", headers=_h(env["sup"]))
         ).json()["groups"]
     assert any(g["name"] == "证券组" for g in listed)
-    audits = await admin_audit.list_admin_actions(action="staff_group.create", limit=10)
-    assert any(a["actor"] == "SUP1" for a in audits)
 
 
 async def test_patch_staff_group_and_skills(env):

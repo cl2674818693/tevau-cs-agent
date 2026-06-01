@@ -42,8 +42,6 @@ async def test_agent_forbidden(env):
 
 
 async def test_engineer_list_and_upsert(env):
-    from ai_engine.persistence import admin_audit
-
     async with await _c() as c:
         r0 = await c.get("/admin/api/v1/tool-policies", headers=_h(env["eng"]))
         assert r0.status_code == 200
@@ -69,5 +67,3 @@ async def test_engineer_list_and_upsert(env):
         i["tool_name"] == "query_user" and i["role"] == "senior" and int(i["unmask_allowed"]) == 1
         for i in listed
     )
-    audits = await admin_audit.list_admin_actions(action="tool_policies.upsert", limit=10)
-    assert any(a["actor"] == "EN1" for a in audits)

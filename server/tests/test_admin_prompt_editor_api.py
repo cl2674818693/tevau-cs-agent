@@ -37,7 +37,6 @@ async def test_agent_forbidden(env):
 
 
 async def test_create_publish_get(env):
-    from ai_engine.persistence import admin_audit
     async with await _c() as c:
         r = await c.post(
             "/admin/api/v1/prompt-editor",
@@ -54,8 +53,6 @@ async def test_create_publish_get(env):
         listed = (await c.get("/admin/api/v1/prompt-editor?version=v2.0.0",
                               headers=_h(env["eng"]))).json()["drafts"]
     assert any(d["id"] == did and d["status"] == "published" for d in listed)
-    audits = await admin_audit.list_admin_actions(action="prompt.publish", limit=10)
-    assert any(a["actor"] == "EN1" for a in audits)
 
 
 async def test_delete_draft(env):

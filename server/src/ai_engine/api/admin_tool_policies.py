@@ -1,4 +1,4 @@
-"""AI 工具权限矩阵（engineer/admin）。写操作落审计 + 清缓存。"""
+"""AI 工具权限矩阵（engineer/admin）。写操作清缓存。"""
 
 from typing import Any
 
@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from ai_engine.auth.staff_session import require_roles
-from ai_engine.persistence import admin_audit, tool_policies
+from ai_engine.persistence import tool_policies
 
 router = APIRouter()
 _eng = require_roles("engineer", "admin")
@@ -33,12 +33,5 @@ async def upsert(body: UpsertIn, staff: dict[str, Any] = Depends(_eng)) -> dict[
     n = await tool_policies.upsert_many(
         actor=staff.get("sub", "unknown"),
         items=[it.model_dump() for it in body.items],
-    )
-    await admin_audit.log_admin_action(
-        actor=staff.get("sub", "unknown"),
-        action="tool_policies.upsert",
-        target_type="tool_policies",
-        target_id=None,
-        detail={"count": n},
     )
     return {"ok": True, "count": n}

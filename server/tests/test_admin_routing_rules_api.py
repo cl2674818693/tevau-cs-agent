@@ -39,7 +39,6 @@ async def test_agent_forbidden(env):
 
 
 async def test_create_list_set_active_delete(env):
-    from ai_engine.persistence import admin_audit
     async with await _c() as c:
         r = await c.post(
             "/admin/api/v1/routing-rules",
@@ -58,8 +57,6 @@ async def test_create_list_set_active_delete(env):
         listed_after = (await c.get("/admin/api/v1/routing-rules",
                                     headers=_h(env["sup"]))).json()["rules"]
         assert all(rr["id"] != rid for rr in listed_after)
-    audits = await admin_audit.list_admin_actions(action="routing_rule.create", limit=10)
-    assert any(a["actor"] == "SUP1" for a in audits)
 
 
 async def test_create_bad_match_type_400(env):

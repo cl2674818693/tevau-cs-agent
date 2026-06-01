@@ -1,7 +1,7 @@
 import {
   Activity, BarChart3, BookOpen, CalendarClock,
   FileEdit, Headphones, Inbox, KeySquare,
-  LayoutDashboard, Lightbulb, type LucideIcon, Route, ScrollText,
+  LayoutDashboard, Lightbulb, type LucideIcon, Route,
   Shield, ShieldAlert, ShieldCheck, SlidersHorizontal, Ticket,
   Timer, Users, Users2,
 } from "lucide-react";
@@ -38,13 +38,6 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/admin/dashboard", label: "数据大盘", icon: LayoutDashboard, roles: ["supervisor", "manager", "admin"] },
       { to: "/admin/sla", label: "SLA", icon: Timer, roles: ["supervisor", "admin"] },
-    ],
-  },
-  {
-    id: "audit",
-    label: "审计",
-    items: [
-      { to: "/admin/audit", label: "操作审计", icon: ScrollText, roles: ["engineer", "admin"] },
     ],
   },
   {

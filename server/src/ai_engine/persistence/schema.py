@@ -184,20 +184,6 @@ prompt_changes = Table(
     Column("created_at", String(32), nullable=False),
 )
 
-# 后台统一操作审计：所有 admin/管理后台写操作落此表（账号/SLA/工具策略...）。
-admin_audit_log = Table(
-    "admin_audit_log",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("actor", String(128), nullable=False),
-    Column("action", String(64), nullable=False),
-    Column("target_type", String(64)),
-    Column("target_id", String(128)),
-    Column("detail_json", Text),
-    Column("created_at", String(32), nullable=False),
-)
-Index("idx_admin_audit_created", admin_audit_log.c.created_at)
-
 # SLA 策略：接管/解决时长阈值，可按全局/user_type 设。违规为运行时计算，不落表。
 sla_policies = Table(
     "sla_policies",

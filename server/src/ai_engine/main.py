@@ -4,7 +4,6 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ai_engine.api.admin_audit import router as admin_audit_router
 from ai_engine.api.admin_dashboard import router as admin_dashboard_router
 from ai_engine.api.admin_guardrails import router as admin_guardrails_router
 from ai_engine.api.admin_knowledge import router as admin_knowledge_router
@@ -65,7 +64,6 @@ app.include_router(staff_conv_router)
 app.include_router(staff_presence_router)
 app.include_router(staff_kpi_router)
 app.include_router(staff_logs_router)
-app.include_router(admin_audit_router)
 app.include_router(admin_dashboard_router)
 app.include_router(admin_guardrails_router)
 app.include_router(admin_knowledge_router)

@@ -17,7 +17,7 @@ from ai_engine.api.staff_conversations import (
 from ai_engine.auth.bu_session import USER_TYPE_GUEST, resolve_identity
 from ai_engine.config import settings
 from ai_engine.governance import rate_limit, token_budget
-from ai_engine.persistence import admin_audit, guardrails
+from ai_engine.persistence import guardrails
 from ai_engine.persistence import attachments as att_dao
 from ai_engine.persistence import conversations as conv_dao
 
@@ -133,19 +133,8 @@ async def _early_block(
 async def _guardrail_check(
     subject_id: str, user_type: str, message: str, conversation_id: int
 ) -> bool:
-    """评估 guardrails；block 返回 True（调用方应中止 stream），flag 异步留痕，allow 返回 False。"""
-    action, reason = await guardrails.evaluate(subject_id, user_type, message)
-    if action == "flag":
-        try:
-            await admin_audit.log_admin_action(
-                actor=subject_id,
-                action="guardrail.flagged",
-                target_type="conversation",
-                target_id=str(conversation_id),
-                detail={"reason": reason},
-            )
-        except Exception:
-            logger.exception("guardrail flag audit log failed")
+    """评估 guardrails；block 返回 True（调用方应中止 stream），allow 返回 False。"""
+    action, _ = await guardrails.evaluate(subject_id, user_type, message)
     return action == "block"
 
 
