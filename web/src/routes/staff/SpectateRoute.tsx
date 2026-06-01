@@ -1,21 +1,21 @@
+import { Alert, Button, Empty, Flex, Tag, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { staffAttachmentUrl } from "../../api/attachments";
 import { streamSpectateEvents, type StaffStreamEvent } from "../../api/staff";
 import { ImageThumb } from "../../components/ImageThumb";
-import { Alert } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { EmptyState } from "../../components/ui/empty-state";
 import { useStaffSession } from "../../hooks/useStaffSession";
+
+const { Text } = Typography;
 
 // 旁观流事件 → 可读文案。后端旁观流发的是 tool_use（带 name/input），不是 tool_call/content。
 const LABELERS: Record<string, (ev: StaffStreamEvent) => string> = {
   assistant_text: (ev) => `AI：${ev.content ?? ""}`,
   user_message: (ev) => `用户：${ev.content ?? ""}`,
   human_message: (ev) => `客服：${ev.content ?? ""}`,
-  tool_use: (ev) => `调用工具：${ev.name ?? ""}${ev.input ? ` ${JSON.stringify(ev.input)}` : ""}`,
+  tool_use: (ev) =>
+    `调用工具：${ev.name ?? ""}${ev.input ? ` ${JSON.stringify(ev.input)}` : ""}`,
   tool_result: (ev) => {
     if (ev.ok === false) return `工具返回：${ev.name ?? ""}（失败）`;
     const count = ev.result_count ?? 0;
@@ -59,43 +59,70 @@ export function SpectateRoute() {
   }, [token, convId, nav]);
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      {/* Top bar */}
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b bg-background px-4">
-        <Button variant="ghost" size="sm" asChild>
-          <Link to="/staff/conversations">返回工作台</Link>
-        </Button>
-        <span className="flex-1 text-sm font-semibold text-foreground">旁观 #{convId}</span>
-        <Badge variant="secondary">只读{role ? ` · ${role}` : ""}</Badge>
-      </div>
+    <div className="flex h-screen flex-col" style={{ background: "#fff" }}>
+      <Flex
+        align="center"
+        gap="middle"
+        style={{
+          height: 48,
+          padding: "0 16px",
+          borderBottom: "1px solid #f0f0f0",
+        }}
+      >
+        <Link to="/staff/conversations">
+          <Button type="text" size="small">
+            返回工作台
+          </Button>
+        </Link>
+        <Text strong style={{ flex: 1 }}>
+          旁观 #{convId}
+        </Text>
+        <Tag>只读{role ? ` · ${role}` : ""}</Tag>
+      </Flex>
 
-      {/* Content */}
-      <div className="flex flex-1 flex-col overflow-hidden px-4 py-3">
+      <div
+        className="flex flex-1 flex-col overflow-hidden"
+        style={{ padding: "12px 16px" }}
+      >
         {err && (
-          <Alert variant="destructive" className="mb-2">
-            {err}
-          </Alert>
+          <Alert
+            type="error"
+            showIcon
+            title={err}
+            style={{ marginBottom: 8 }}
+          />
         )}
-        <ul className="flex flex-1 flex-col gap-1 overflow-y-auto">
+        <ul
+          className="flex flex-1 flex-col gap-1 overflow-y-auto"
+          style={{ margin: 0, padding: 0, listStyle: "none" }}
+        >
           {events.map((ev, i) => {
             const alert = ev.type === "tool_result" && (ev.empty || ev.ok === false);
             return (
               <li
                 key={i}
-                className={`text-sm ${alert ? "text-status-error" : "text-foreground"}`}
+                style={{
+                  fontSize: 13,
+                  color: alert ? "#dc2626" : "rgba(0,0,0,0.85)",
+                }}
               >
                 {label(ev)}
                 {ev.attachments?.length ? (
                   <div className="mt-1 flex flex-wrap gap-2">
                     {ev.attachments.map((a) => (
-                      <ImageThumb key={a.id} src={staffAttachmentUrl(convId, a.id)} />
+                      <ImageThumb
+                        key={a.id}
+                        src={staffAttachmentUrl(convId, a.id)}
+                      />
                     ))}
                   </div>
                 ) : null}
               </li>
             );
           })}
-          {events.length === 0 && !err && <EmptyState>等待会话活动…</EmptyState>}
+          {events.length === 0 && !err && (
+            <Empty description="等待会话活动…" />
+          )}
         </ul>
       </div>
     </div>

@@ -1,17 +1,31 @@
+import {
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  SwapOutlined,
+  UserSwitchOutlined,
+} from "@ant-design/icons";
+import {
+  Alert,
+  Card,
+  DatePicker,
+  Empty,
+  Flex,
+  Skeleton,
+  Statistic,
+  Typography,
+} from "antd";
+import type { Dayjs } from "dayjs";
+import dayjs from "dayjs";
 import { useEffect, useState } from "react";
-import { ArrowLeftRight, CheckCircle, Clock, UserCheck } from "lucide-react";
 
 import { getKpi, type StaffKpi } from "../../api/staff";
-import { KpiCard } from "../../components/admin/KpiCard";
-import { Alert } from "../../components/ui/alert";
-import { DatePicker } from "../../components/ui/date-picker";
-import { EmptyState } from "../../components/ui/empty-state";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import { Skeleton } from "../../components/ui/skeleton";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-function toUtcParam(d: Date): string {
-  return d.toISOString().slice(0, 19).replace("T", " ");
+const { Title } = Typography;
+const { RangePicker } = DatePicker;
+
+function toUtcParam(d: Dayjs): string {
+  return d.toDate().toISOString().slice(0, 19).replace("T", " ");
 }
 
 function fmtDuration(seconds: number): string {
@@ -21,24 +35,13 @@ function fmtDuration(seconds: number): string {
   return m > 0 ? `${m}分${s}秒` : `${s}秒`;
 }
 
-function KpiSkeleton() {
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <Skeleton key={i} className="h-[100px] rounded-xl" />
-      ))}
-    </div>
-  );
-}
-
 export function KpiRoute() {
   const { token, staffId } = useStaffSession();
 
-  const defaultFrom = new Date(Date.now() - 7 * 24 * 3600 * 1000);
-  const defaultTo = new Date();
-
-  const [fromDate, setFromDate] = useState<Date | undefined>(defaultFrom);
-  const [toDate, setToDate] = useState<Date | undefined>(defaultTo);
+  const [range, setRange] = useState<[Dayjs, Dayjs] | null>([
+    dayjs().subtract(7, "day"),
+    dayjs(),
+  ]);
   const [kpi, setKpi] = useState<StaffKpi | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -48,78 +51,95 @@ export function KpiRoute() {
     setLoading(true);
     setError("");
     const opts: { from?: string; to?: string } = {};
-    if (fromDate) opts.from = toUtcParam(fromDate);
-    if (toDate) opts.to = toUtcParam(toDate);
+    if (range?.[0]) opts.from = toUtcParam(range[0]);
+    if (range?.[1]) opts.to = toUtcParam(range[1]);
     getKpi(token, opts)
       .then((res) => {
-        const mine = staffId ? res.staff.find((r) => r.staff_id === staffId) ?? null : null;
+        const mine = staffId
+          ? res.staff.find((r) => r.staff_id === staffId) ?? null
+          : null;
         setKpi(mine);
       })
       .catch(() => setError("加载失败"))
       .finally(() => setLoading(false));
-  }, [token, staffId, fromDate, toDate]);
+  }, [token, staffId, range]);
 
   return (
-    <PageContainer width="wide">
-      <PageHeader
-        title="我的 KPI"
-        actions={
-          <div className="flex items-center gap-2">
-            <DatePicker date={fromDate} onChange={setFromDate} placeholder="开始日期" />
-            <span className="text-sm text-muted-foreground">至</span>
-            <DatePicker date={toDate} onChange={setToDate} placeholder="结束日期" />
-          </div>
-        }
-      />
+    <div className="space-y-4 p-6">
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          我的 KPI
+        </Title>
+        <RangePicker
+          value={range}
+          onChange={(v) => setRange(v as [Dayjs, Dayjs] | null)}
+          allowClear={false}
+        />
+      </Flex>
 
-      {error && (
-        <Alert variant="destructive" className="mb-4">
-          {error}
-        </Alert>
-      )}
+      {error && <Alert type="error" showIcon title={error} />}
 
       {loading ? (
-        <KpiSkeleton />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <Skeleton active paragraph={{ rows: 1 }} />
+            </Card>
+          ))}
+        </div>
       ) : kpi ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiCard
-            label="接管数"
-            value={kpi.takeovers.toLocaleString()}
-            icon={UserCheck}
-          />
-          <KpiCard
-            label="解决数"
-            value={kpi.resolved.toLocaleString()}
-            delta={`解决率 ${(kpi.resolved_ratio * 100).toFixed(0)}%`}
-            trend={kpi.resolved_ratio >= 0.7 ? "up" : "down"}
-            icon={CheckCircle}
-          />
-          <KpiCard
-            label="转派数"
-            value={(kpi.transfers ?? 0).toLocaleString()}
-            delta={
-              kpi.transfer_ratio != null
-                ? `转派率 ${(kpi.transfer_ratio * 100).toFixed(0)}%`
-                : undefined
-            }
-            trend={
-              kpi.transfer_ratio != null
-                ? kpi.transfer_ratio > 0.3
-                  ? "down"
-                  : "flat"
-                : "flat"
-            }
-            icon={ArrowLeftRight}
-          />
-          <KpiCard
-            label="平均处理时长"
-            value={fmtDuration(kpi.avg_handle_seconds)}
-            icon={Clock}
-          />
+          <Card>
+            <Statistic
+              title="接管数"
+              value={kpi.takeovers}
+              prefix={<UserSwitchOutlined />}
+            />
+          </Card>
+          <Card>
+            <Statistic
+              title="解决数"
+              value={kpi.resolved}
+              valueStyle={{
+                color: kpi.resolved_ratio >= 0.7 ? "#059669" : "#dc2626",
+              }}
+              prefix={<CheckCircleOutlined />}
+            />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              解决率 {(kpi.resolved_ratio * 100).toFixed(0)}%
+            </Typography.Text>
+          </Card>
+          <Card>
+            <Statistic
+              title="转派数"
+              value={kpi.transfers ?? 0}
+              valueStyle={{
+                color:
+                  kpi.transfer_ratio != null && kpi.transfer_ratio > 0.3
+                    ? "#dc2626"
+                    : undefined,
+              }}
+              prefix={<SwapOutlined />}
+            />
+            {kpi.transfer_ratio != null && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                转派率 {(kpi.transfer_ratio * 100).toFixed(0)}%
+              </Typography.Text>
+            )}
+          </Card>
+          <Card>
+            <Statistic
+              title="平均处理时长"
+              value={fmtDuration(kpi.avg_handle_seconds)}
+              prefix={<ClockCircleOutlined />}
+            />
+          </Card>
         </div>
       ) : (
-        <EmptyState>该时间段内暂无数据</EmptyState>
+        <Card>
+          <Empty description="该时间段内暂无数据" />
+        </Card>
       )}
-    </PageContainer>
+    </div>
   );
 }
