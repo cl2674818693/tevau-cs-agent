@@ -53,23 +53,25 @@ export function ChatHeader({
  * 空状态与已开始对话两种状态下都常驻可见，避免「只在 APP 内登录」误导 B 端。
  */
 export function GuestLoginBar() {
+  const { t } = useTranslation();
   return (
     <div className="px-page py-2 bg-soft-brand border-b border-line text-footnote text-ink-secondary text-center leading-relaxed">
-      查询账户、卡片或交易需登录：APP 用户请在 APP 内登录；合作伙伴可
+      {t("chat.guestBarText")}
       <a href="/bu/login" className="ml-1 font-bold text-brand hover:underline">
-        主账户登录
+        {t("chat.guestBarLink")}
       </a>
     </div>
   );
 }
 
 export function EmptyState({ greeting }: { greeting: string }) {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-3">
       <div className="h-14 w-14 rounded-xl grid place-items-center bg-soft-brand">
         <span className="text-brand font-bold text-h2">T</span>
       </div>
-      <div className="text-sh1 font-bold text-ink-primary">你好，我是 Tevau 助手</div>
+      <div className="text-sh1 font-bold text-ink-primary">{t("chat.emptyTitle")}</div>
       <p className="text-body2 text-ink-secondary leading-relaxed max-w-[320px]">{greeting}</p>
     </div>
   );

@@ -1,23 +1,9 @@
 import { Check, ChevronRight, Loader2, Wrench, X } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "../lib/utils";
 import type { ToolCallShown } from "../types";
-
-// C 端语言化：不暴露内部工具名/JSON（spec §6.2）。
-const C_LABELS: Record<string, string> = {
-  query_user: "正在查询账户信息…",
-  query_card: "正在查询卡片状态…",
-  query_balance: "正在查询余额…",
-  query_kyc: "正在查询认证状态…",
-  query_transaction: "正在查询交易记录…",
-  query_bu_order: "正在查询订单…",
-  query_bu_request_log: "正在查询接口调用记录…",
-  search_code: "正在排查问题…",
-  read_file: "正在排查问题…",
-  lookup_api_doc: "正在查阅接口文档…",
-  create_ticket: "正在为您创建工单…",
-};
 
 function statusIcon(ok: boolean | undefined) {
   return ok === undefined ? Loader2 : ok ? Check : X;
@@ -25,11 +11,12 @@ function statusIcon(ok: boolean | undefined) {
 
 /** C 端：仅显示语言化进度，不暴露工具名/JSON（spec §6.2）。 */
 function CToolChip({ tc }: { tc: ToolCallShown }) {
+  const { t } = useTranslation();
   const Icon = statusIcon(tc.ok);
   return (
     <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm bg-soft-brand border border-brand/20 text-brand text-body3">
       <Icon className={cn("h-3 w-3", tc.ok === undefined && "animate-spin")} />
-      <span>{C_LABELS[tc.name] ?? "正在为您处理…"}</span>
+      <span>{t(`chat.toolChip.${tc.name}`, { defaultValue: t("chat.toolChip.default") })}</span>
     </div>
   );
 }
