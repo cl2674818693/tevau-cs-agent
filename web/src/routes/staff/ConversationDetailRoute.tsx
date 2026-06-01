@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { staffAttachmentUrl } from "../../api/attachments";
 import {
@@ -14,8 +14,16 @@ import { ImageThumb } from "../../components/ImageThumb";
 import { AiToolsPanel } from "../../components/AiToolsPanel";
 import { TakeoverFooter } from "../../components/TakeoverFooter";
 import { Alert } from "../../components/ui/alert";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "../../components/ui/breadcrumb";
 import { Button } from "../../components/ui/button";
-import { PageContainer, PageHeader } from "../../components/ui/page";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { useAiDraft } from "../../hooks/useAiDraft";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
@@ -72,10 +80,10 @@ function useInitialTaken(
 
 function EventLog({ events, convId }: { events: StaffStreamEvent[]; convId: number }) {
   return (
-    <ul className="mb-3 flex flex-1 flex-col gap-1 overflow-y-auto">
+    <ul className="flex flex-1 flex-col gap-1.5 overflow-y-auto">
       {events.map((ev, i) => (
-        <li key={i} className="text-body2 text-ink-primary">
-          <span className="mr-1 text-footnote text-ink-secondary">[{ev.type}]</span>
+        <li key={i} className="text-sm text-foreground leading-relaxed">
+          <span className="mr-1.5 text-xs font-mono text-muted-foreground">[{ev.type}]</span>
           {ev.content ?? ev.to ?? ""}
           {ev.attachments?.length ? (
             <div className="mt-1 flex flex-wrap gap-2">
@@ -131,46 +139,75 @@ export function ConversationDetailRoute() {
   }
 
   return (
-    <PageContainer fullHeight>
-      <PageHeader
-        title={`会话 #${convId}`}
-        actions={
-          <>
-            <Button size="sm" variant="ghost" onClick={onToggleDraftMode}>
-              {draftMode ? "关闭草稿模式" : "AI 草稿模式"}
+    <div className="flex h-full flex-col gap-4 px-4 py-5 md:px-8 md:py-6">
+      {/* Breadcrumb */}
+      <div className="flex items-center justify-between gap-4">
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link to="/staff/conversations">会话列表</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>会话 #{convId}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+
+        {/* Header actions */}
+        <div className="flex shrink-0 items-center gap-2">
+          <Button size="sm" variant="outline" onClick={onToggleDraftMode}>
+            {draftMode ? "关闭草稿模式" : "AI 草稿模式"}
+          </Button>
+          {taken ? (
+            <Button size="sm" variant="outline" onClick={onRelease}>
+              释放回 AI
             </Button>
-            {taken ? (
-              <Button size="sm" variant="ghost" onClick={onRelease}>
-                释放回 AI
-              </Button>
-            ) : (
-              <Button size="sm" onClick={onTake}>
-                接管
-              </Button>
-            )}
-          </>
-        }
-      />
+          ) : (
+            <Button size="sm" onClick={onTake}>
+              接管
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Notice banner */}
       {notice && (
-        <Alert variant="info" className="mb-2">
+        <Alert variant="info" className="py-2 text-sm">
           {notice}
         </Alert>
       )}
-      <AiDraftPanel draft={aiDraft} onApprove={approve} onReject={reject} />
-      {canUseTools && token && (
-        <div className="mb-3">
-          <AiToolsPanel token={token} convId={convId} />
+
+      {/* Two-column layout: left = event stream, right = panels */}
+      <div className="flex min-h-0 flex-1 gap-4">
+        {/* Left: event log + takeover footer */}
+        <Card className="flex min-h-0 flex-1 flex-col">
+          <CardHeader className="shrink-0 border-b border-border px-4 py-3">
+            <CardTitle className="text-sm font-semibold text-foreground">事件流</CardTitle>
+          </CardHeader>
+          <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
+            <EventLog events={events} convId={convId} />
+            {taken && token && (
+              <div className="shrink-0 border-t border-border pt-3">
+                <TakeoverFooter
+                  token={token}
+                  convId={convId}
+                  onNotice={setNotice}
+                  onReleased={() => setTaken(false)}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Right: AI draft + AI tools panels */}
+        <div className="flex w-80 shrink-0 flex-col gap-4">
+          <AiDraftPanel draft={aiDraft} onApprove={approve} onReject={reject} />
+          {canUseTools && token && <AiToolsPanel token={token} convId={convId} />}
         </div>
-      )}
-      <EventLog events={events} convId={convId} />
-      {taken && token && (
-        <TakeoverFooter
-          token={token}
-          convId={convId}
-          onNotice={setNotice}
-          onReleased={() => setTaken(false)}
-        />
-      )}
-    </PageContainer>
+      </div>
+    </div>
   );
 }

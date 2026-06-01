@@ -38,12 +38,12 @@ export function AiToolsPanel({ token, convId }: Props) {
   }
 
   return (
-    <div className="rounded border border-line bg-surface-card p-3">
-      <div className="mb-2 text-footnote text-ink-secondary">代查工具（结果仅你可见）</div>
+    <div className="rounded-lg border border-border bg-card p-3">
+      <div className="mb-2 text-xs font-medium text-muted-foreground">代查工具（结果仅你可见）</div>
       <select
         value={tool}
         onChange={(e) => setTool(e.target.value)}
-        className="focus-glow mb-2 w-full rounded border border-line bg-surface-card px-2 py-2 text-body2 outline-none transition-all duration-250"
+        className="mb-2 w-full rounded-md border border-input bg-background px-2 py-2 text-sm outline-none transition-colors focus:border-ring focus:ring-1 focus:ring-ring"
       >
         {TOOLS.map((t) => (
           <option key={t} value={t}>
@@ -56,7 +56,7 @@ export function AiToolsPanel({ token, convId }: Props) {
         onChange={(e) => setParamsText(e.target.value)}
         rows={3}
         aria-label="工具参数 JSON"
-        className="mb-2 px-2 py-1 text-body3 font-mono"
+        className="mb-2 px-2 py-1 text-xs font-mono"
       />
       <Button size="sm" onClick={run} disabled={running}>
         {running ? "查询中…" : "运行"}
@@ -67,7 +67,7 @@ export function AiToolsPanel({ token, convId }: Props) {
         </Alert>
       )}
       {result && (
-        <pre className="mt-2 max-h-60 overflow-auto rounded bg-surface-subtle p-2 text-footnote">
+        <pre className="mt-2 max-h-60 overflow-auto rounded-md bg-muted p-2 text-xs">
           {result.ok ? JSON.stringify(result.data, null, 2) : `错误：${result.error}`}
         </pre>
       )}

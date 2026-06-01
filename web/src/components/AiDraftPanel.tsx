@@ -22,17 +22,17 @@ export function AiDraftPanel({ draft, onApprove, onReject }: Props) {
   if (draft === null) return null;
 
   return (
-    <div className="mb-3 rounded border border-line bg-surface-subtle p-3">
-      <div className="mb-1 text-footnote text-ink-secondary">AI 草稿（未发送）</div>
+    <div className="rounded-lg border border-border bg-muted/40 p-3">
+      <div className="mb-1.5 text-xs font-medium text-muted-foreground">AI 草稿（未发送）</div>
       {editing ? (
         <Textarea
           value={rewrite}
           onChange={(e) => setRewrite(e.target.value)}
           rows={4}
-          className="text-body2"
+          className="text-sm"
         />
       ) : (
-        <div className="whitespace-pre-wrap text-body2 text-ink-primary">{draft}</div>
+        <div className="whitespace-pre-wrap text-sm text-foreground">{draft}</div>
       )}
       <div className="mt-2 flex gap-2">
         {editing ? (
