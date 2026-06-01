@@ -5,8 +5,9 @@ import { staffAttachmentUrl } from "../../api/attachments";
 import { streamSpectateEvents, type StaffStreamEvent } from "../../api/staff";
 import { ImageThumb } from "../../components/ImageThumb";
 import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { EmptyState } from "../../components/ui/empty-state";
-import { PageContainer } from "../../components/ui/page";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 // 旁观流事件 → 可读文案。后端旁观流发的是 tool_use（带 name/input），不是 tool_call/content。
@@ -58,42 +59,45 @@ export function SpectateRoute() {
   }, [token, convId, nav]);
 
   return (
-    <PageContainer fullHeight>
-      <div className="mb-1 flex items-center gap-2">
-        <h2 className="flex-1 text-sh2 text-ink-primary">旁观会话 #{convId}</h2>
-        <Link to="/staff/conversations" className="text-body3 text-brand hover:underline">
-          返回工作台
-        </Link>
+    <div className="flex h-screen flex-col bg-background">
+      {/* Top bar */}
+      <div className="flex h-12 shrink-0 items-center gap-3 border-b bg-background px-4">
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/staff/conversations">返回工作台</Link>
+        </Button>
+        <span className="flex-1 text-sm font-semibold text-foreground">旁观 #{convId}</span>
+        <Badge variant="secondary">只读{role ? ` · ${role}` : ""}</Badge>
       </div>
-      <div className="mb-3 text-footnote text-ink-secondary">
-        只读模式{role ? `（${role}）` : ""} · 不接管、不发消息
+
+      {/* Content */}
+      <div className="flex flex-1 flex-col overflow-hidden px-4 py-3">
+        {err && (
+          <Alert variant="error" className="mb-2">
+            {err}
+          </Alert>
+        )}
+        <ul className="flex flex-1 flex-col gap-1 overflow-y-auto">
+          {events.map((ev, i) => {
+            const alert = ev.type === "tool_result" && (ev.empty || ev.ok === false);
+            return (
+              <li
+                key={i}
+                className={`text-body2 ${alert ? "text-status-error" : "text-ink-primary"}`}
+              >
+                {label(ev)}
+                {ev.attachments?.length ? (
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {ev.attachments.map((a) => (
+                      <ImageThumb key={a.id} src={staffAttachmentUrl(convId, a.id)} />
+                    ))}
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+          {events.length === 0 && !err && <EmptyState>等待会话活动…</EmptyState>}
+        </ul>
       </div>
-      {err && (
-        <Alert variant="error" className="mb-2">
-          {err}
-        </Alert>
-      )}
-      <ul className="flex flex-1 flex-col gap-1 overflow-y-auto">
-        {events.map((ev, i) => {
-          const alert = ev.type === "tool_result" && (ev.empty || ev.ok === false);
-          return (
-            <li
-              key={i}
-              className={`text-body2 ${alert ? "text-status-error" : "text-ink-primary"}`}
-            >
-              {label(ev)}
-              {ev.attachments?.length ? (
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {ev.attachments.map((a) => (
-                    <ImageThumb key={a.id} src={staffAttachmentUrl(convId, a.id)} />
-                  ))}
-                </div>
-              ) : null}
-            </li>
-          );
-        })}
-        {events.length === 0 && !err && <EmptyState>等待会话活动…</EmptyState>}
-      </ul>
-    </PageContainer>
+    </div>
   );
 }
