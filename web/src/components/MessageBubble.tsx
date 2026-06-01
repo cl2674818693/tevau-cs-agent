@@ -1,3 +1,4 @@
+import { Avatar } from "antd";
 import { BadgeCheck } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -5,9 +6,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import type { Attachment, Message } from "../types";
+
 import { ImageThumb } from "./ImageThumb";
 import { ToolCallChip } from "./ToolCallChip";
-import { Avatar, AvatarFallback } from "./ui/avatar";
 
 /** 消息附件图片网格；urlFor 缺省时不渲染（无法拼出看图 URL）。 */
 function Attachments({
@@ -74,10 +75,12 @@ function HumanAgentBubble({ m, urlFor }: { m: HumanAgentMsg; urlFor: UrlFor }) {
   const { t } = useTranslation();
   return (
     <div className="flex gap-3 items-start">
-      <Avatar className="rounded-sm h-7 w-7">
-        <AvatarFallback className="rounded-sm bg-soft-warning text-status-warning font-bold">
-          {t("chat.agentAvatar")}
-        </AvatarFallback>
+      <Avatar
+        shape="square"
+        size={28}
+        style={{ background: "var(--soft-warning, #fff7ed)", color: "var(--status-warning, #d97706)", fontWeight: 700 }}
+      >
+        {t("chat.agentAvatar")}
       </Avatar>
       <div className="flex-1 max-w-[85%]">
         <div className="flex items-center gap-1.5 mb-1 px-1">
@@ -129,10 +132,12 @@ export function MessageBubble({
   // assistant
   return (
     <div className="flex gap-3 items-start">
-      <Avatar className="rounded-sm h-7 w-7">
-        <AvatarFallback className="rounded-sm bg-brand text-ink-onbrand font-bold">
-          T
-        </AvatarFallback>
+      <Avatar
+        shape="square"
+        size={28}
+        style={{ background: "var(--brand, #4f46e5)", color: "#fff", fontWeight: 700 }}
+      >
+        T
       </Avatar>
       <div className="flex-1 max-w-[85%] bg-surface-card border border-line shadow-sm rounded-lg rounded-tl-sm px-4 py-3 space-y-2">
         {(m.tool_calls ?? []).map((tc, i) => (

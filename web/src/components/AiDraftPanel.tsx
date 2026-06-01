@@ -1,7 +1,8 @@
+import { Button, Card, Flex, Input, Typography } from "antd";
 import { useEffect, useState } from "react";
 
-import { Button } from "./ui/button";
-import { Textarea } from "./ui/input";
+const { TextArea } = Input;
+const { Text } = Typography;
 
 type Props = {
   draft: string | null;
@@ -22,34 +23,46 @@ export function AiDraftPanel({ draft, onApprove, onReject }: Props) {
   if (draft === null) return null;
 
   return (
-    <div className="rounded-lg border border-border bg-muted/40 p-3">
-      <div className="mb-1.5 text-xs font-medium text-muted-foreground">AI 草稿（未发送）</div>
+    <Card
+      size="small"
+      style={{ background: "rgba(0, 0, 0, 0.02)" }}
+      title={
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          AI 草稿（未发送）
+        </Text>
+      }
+    >
       {editing ? (
-        <Textarea
+        <TextArea
           value={rewrite}
           onChange={(e) => setRewrite(e.target.value)}
           rows={4}
-          className="text-sm"
+          style={{ fontSize: 13 }}
         />
       ) : (
-        <div className="whitespace-pre-wrap text-sm text-foreground">{draft}</div>
+        <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{draft}</div>
       )}
-      <div className="mt-2 flex gap-2">
+      <Flex gap="small" style={{ marginTop: 8 }}>
         {editing ? (
-          <Button size="sm" onClick={() => onReject(rewrite.trim())} disabled={!rewrite.trim()}>
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => onReject(rewrite.trim())}
+            disabled={!rewrite.trim()}
+          >
             改写后发送
           </Button>
         ) : (
           <>
-            <Button size="sm" onClick={() => onApprove()}>
+            <Button type="primary" size="small" onClick={() => onApprove()}>
               直接发出
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+            <Button type="text" size="small" onClick={() => setEditing(true)}>
               改写
             </Button>
           </>
         )}
-      </div>
-    </div>
+      </Flex>
+    </Card>
   );
 }

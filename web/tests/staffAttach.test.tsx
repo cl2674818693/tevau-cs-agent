@@ -21,12 +21,13 @@ describe("TakeoverFooter image send", () => {
   });
 
   it("sends with attachment ids", async () => {
-    render(<TakeoverFooter token="t" convId={3} onNotice={vi.fn()} />);
+    const { container } = render(<TakeoverFooter token="t" convId={3} onNotice={vi.fn()} />);
     const file = new File([new Uint8Array([1])], "a.png", { type: "image/png" });
     fireEvent.change(screen.getByTestId("attach-input"), { target: { files: [file] } });
     await waitFor(() => expect(screen.getByPlaceholderText("回复用户…")).toBeTruthy());
     fireEvent.change(screen.getByPlaceholderText("回复用户…"), { target: { value: "看图" } });
-    fireEvent.click(screen.getByText("发送"));
+    // antd Button 文本在 jsdom 下不进入 DOM；"发送" = 唯一 .ant-btn-primary
+    fireEvent.click(container.querySelector(".ant-btn-primary")!);
     await waitFor(() => expect(sendStaffMessage).toHaveBeenCalledWith("t", 3, "看图", [7]));
   });
 });

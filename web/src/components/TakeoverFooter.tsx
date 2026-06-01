@@ -1,10 +1,14 @@
+import { Button, Flex, Input } from "antd";
 import { useState } from "react";
 
 import { uploadStaffAttachment } from "../api/attachments";
-import { resolveConversation, sendStaffMessage, transferConversation } from "../api/staff";
+import {
+  resolveConversation,
+  sendStaffMessage,
+  transferConversation,
+} from "../api/staff";
+
 import { AttachButton } from "./AttachButton";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 
 const MAX_IMAGES = 4;
 
@@ -17,7 +21,12 @@ type Props = {
 };
 
 /** 接管后底部操作区：回复 / 转派 / 标记已解决。 */
-export function TakeoverFooter({ token, convId, onNotice, onReleased }: Props) {
+export function TakeoverFooter({
+  token,
+  convId,
+  onNotice,
+  onReleased,
+}: Props) {
   const [draft, setDraft] = useState("");
   const [target, setTarget] = useState("");
   const [ids, setIds] = useState<number[]>([]);
@@ -38,7 +47,9 @@ export function TakeoverFooter({ token, convId, onNotice, onReleased }: Props) {
   async function transfer() {
     if (!target.trim()) return;
     const ok = await transferConversation(token, convId, target.trim());
-    onNotice(ok ? `已转派给 ${target.trim()}` : "转派失败（权限或目标不存在）");
+    onNotice(
+      ok ? `已转派给 ${target.trim()}` : "转派失败（权限或目标不存在）",
+    );
     setTarget("");
     if (ok) onReleased?.();
   }
@@ -54,8 +65,8 @@ export function TakeoverFooter({ token, convId, onNotice, onReleased }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-end gap-2">
+    <Flex vertical gap="small">
+      <Flex align="center" gap="small">
         <AttachButton
           upload={(f) => uploadStaffAttachment(convId, f, token)}
           ids={ids}
@@ -66,26 +77,31 @@ export function TakeoverFooter({ token, convId, onNotice, onReleased }: Props) {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="回复用户…"
-          className="flex-1 py-2"
+          style={{ flex: 1 }}
+          onPressEnter={send}
         />
-        <Button size="sm" onClick={send} disabled={!draft.trim() && ids.length === 0}>
+        <Button
+          type="primary"
+          onClick={send}
+          disabled={!draft.trim() && ids.length === 0}
+        >
           发送
         </Button>
-      </div>
-      <div className="flex gap-2">
+      </Flex>
+      <Flex gap="small">
         <Input
           value={target}
           onChange={(e) => setTarget(e.target.value)}
           placeholder="转派给 staff_id…"
-          className="flex-1 py-2 text-body3"
+          style={{ flex: 1 }}
         />
-        <Button size="sm" variant="ghost" onClick={transfer} disabled={!target.trim()}>
+        <Button type="text" onClick={transfer} disabled={!target.trim()}>
           转派
         </Button>
-        <Button size="sm" variant="ghost" onClick={resolve}>
+        <Button type="text" onClick={resolve}>
           标记已解决
         </Button>
-      </div>
-    </div>
+      </Flex>
+    </Flex>
   );
 }

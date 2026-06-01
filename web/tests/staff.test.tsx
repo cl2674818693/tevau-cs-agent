@@ -165,9 +165,9 @@ describe("ConversationDetailRoute", () => {
         </Routes>
       </MemoryRouter>,
     );
-    // antd Button 在 jsdom 下文本不进入可访问 name，按 css 类定位"接管"按钮
-    // （路由头部唯一一个 .ant-btn-primary）。TakeoverFooter 仍是 shadcn Button，
-    // 其"发送"是普通 DOM text，可走 getByText。
+    // antd Button 在 jsdom 下文本不进入可访问 name，按 css 类定位。
+    // - 路由头部"接管" 是初始唯一一个 .ant-btn-primary
+    // - 接管后头部 primary 消失，TakeoverFooter 的"发送"是新的唯一 .ant-btn-primary
     const container = document.body;
     await waitFor(() => {
       const btn = container.querySelector(".ant-btn-primary");
@@ -177,7 +177,11 @@ describe("ConversationDetailRoute", () => {
     await waitFor(() => expect(screen.getByText("已接管")).toBeTruthy());
     const input = screen.getByPlaceholderText("回复用户…");
     fireEvent.change(input, { target: { value: "您好" } });
-    fireEvent.click(screen.getByText("发送"));
+    await waitFor(() => {
+      const btn = container.querySelector(".ant-btn-primary");
+      if (!btn) throw new Error("send button not mounted");
+    });
+    fireEvent.click(container.querySelector(".ant-btn-primary")!);
     // 不再本地乐观回显（避免与 SSE 回推重复）：验证发送 API 被调用 + 输入框清空，
     // 消息显示交由会话事件流（/stream）统一驱动。
     await waitFor(() =>

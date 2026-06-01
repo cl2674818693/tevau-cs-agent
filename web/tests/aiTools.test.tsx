@@ -40,17 +40,24 @@ describe("runAiTool", () => {
 });
 
 describe("AiToolsPanel", () => {
+  // antd Button 在 jsdom 下文本不进入 accessible name；统一按 css 类拿"运行" primary 按钮
+  const clickRun = (container: HTMLElement) => {
+    const btn = container.querySelector(".ant-btn-primary");
+    if (!btn) throw new Error("run button not found");
+    fireEvent.click(btn);
+  };
+
   it("runs tool and shows masked result", async () => {
-    render(<AiToolsPanel token="t" convId={4} />);
-    fireEvent.click(screen.getByText("运行"));
+    const { container } = render(<AiToolsPanel token="t" convId={4} />);
+    clickRun(container);
     await waitFor(() => expect(screen.getByText(/138\*\*\*\*78/)).toBeTruthy());
   });
 
   it("rejects invalid JSON params without calling fetch", () => {
-    render(<AiToolsPanel token="t" convId={4} />);
+    const { container } = render(<AiToolsPanel token="t" convId={4} />);
     const ta = screen.getByLabelText("工具参数 JSON") as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: "{不是json" } });
-    fireEvent.click(screen.getByText("运行"));
+    clickRun(container);
     expect(screen.getByText("参数不是合法 JSON")).toBeTruthy();
     expect(fetch as unknown as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
   });
