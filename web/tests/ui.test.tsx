@@ -10,7 +10,8 @@ describe("ui primitives", () => {
   it("Badge 渲染内容并按 variant 上色", () => {
     const { getByText } = render(<Badge variant="pending">待人工</Badge>);
     const el = getByText("待人工");
-    expect(el.className).toContain("status-warning");
+    // TODO(phase-0): rewrite for shadcn badge API — old token "status-warning" replaced with Tailwind yellow classes
+    expect(el.className).toContain("yellow");
   });
 
   it("Alert 渲染内容", () => {
