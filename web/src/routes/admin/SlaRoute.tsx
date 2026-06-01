@@ -104,16 +104,16 @@ function PolicyForm({
 function deriveKpi(policies: SlaPolicy[], breaches: SlaBreach[]) {
   const active = policies.filter((p) => p.active);
   const breachCount = breaches.length;
-  // compliance rate = fraction of active policies with no breach
+  // compliance rate: 无 active 策略时返回 null（UI 显示 "—"），避免 0/0 误读为 100%
   const breachedMetrics = new Set(breaches.map((b) => b.metric));
   const compliantCount = active.filter((p) => !breachedMetrics.has(p.metric)).length;
   const complianceRate =
-    active.length > 0 ? (compliantCount / active.length) * 100 : 100;
+    active.length > 0 ? (compliantCount / active.length) * 100 : null;
 
   const avgThreshold =
     active.length > 0
       ? Math.round(active.reduce((s, p) => s + p.threshold_seconds, 0) / active.length)
-      : 0;
+      : null;
 
   return { complianceRate, avgThreshold, breachCount };
 }
@@ -304,13 +304,13 @@ export function SlaRoute() {
         <div className="grid gap-3 md:grid-cols-3">
           <KpiCard
             label="达标率"
-            value={`${kpi.complianceRate.toFixed(1)}%`}
-            trend={kpi.complianceRate >= 80 ? "up" : "down"}
+            value={kpi.complianceRate === null ? "—" : `${kpi.complianceRate.toFixed(1)}%`}
+            trend={kpi.complianceRate === null ? "flat" : kpi.complianceRate >= 80 ? "up" : "down"}
             icon={CheckCircle}
           />
           <KpiCard
             label="平均响应阈值"
-            value={`${kpi.avgThreshold}s`}
+            value={kpi.avgThreshold === null ? "—" : `${kpi.avgThreshold}s`}
             icon={Clock}
           />
           <KpiCard

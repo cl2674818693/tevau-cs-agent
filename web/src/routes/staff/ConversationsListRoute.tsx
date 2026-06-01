@@ -24,16 +24,17 @@ const FILTER_OPTIONS: { value: string; label: string }[] = [
 ];
 
 // 风险角标：变量驱动，按真值显示（兼容 boolean / 0|1）
+// 统一用 outline + 语义色：列表里风险只是提示，不是 alert，不实色填充避免喧宾夺主
 const RISK_BADGES: {
   key: keyof StaffConversation;
   label: string;
-  variant: "destructive" | "secondary";
+  className: string;
 }[] = [
-  { key: "has_failed", label: "失败", variant: "destructive" },
-  { key: "has_downvote", label: "差评", variant: "destructive" },
-  { key: "has_out_of_scope", label: "范围外", variant: "secondary" },
-  { key: "has_empty_tool", label: "空结果", variant: "secondary" },
-  { key: "needs_review", label: "待复核", variant: "secondary" },
+  { key: "has_failed", label: "失败", className: "border-destructive/40 text-destructive" },
+  { key: "has_downvote", label: "差评", className: "border-destructive/40 text-destructive" },
+  { key: "has_out_of_scope", label: "范围外", className: "border-amber-500/40 text-amber-600 dark:text-amber-500" },
+  { key: "has_empty_tool", label: "空结果", className: "border-muted-foreground/40 text-muted-foreground" },
+  { key: "needs_review", label: "待复核", className: "border-sky-500/40 text-sky-600 dark:text-sky-500" },
 ];
 
 function buildColumns(
@@ -95,7 +96,7 @@ function buildColumns(
         return (
           <div className="flex flex-wrap gap-1">
             {badges.map((b) => (
-              <Badge key={b.key} variant={b.variant}>
+              <Badge key={b.key} variant="outline" className={b.className}>
                 {b.label}
               </Badge>
             ))}

@@ -217,4 +217,17 @@ describe("SlaRoute", () => {
     // active policy = 1 (id=1, active=1), no breach → 100%
     await waitFor(() => expect(screen.getByText("100.0%")).toBeInTheDocument());
   });
+
+  it("无 active 策略时达标率显示 — 而非 100%", async () => {
+    localStorage.setItem("staff_jwt", fakeJwt("admin"));
+    vi.mocked(listPolicies).mockResolvedValue([]);
+    vi.mocked(listBreaches).mockResolvedValue([]);
+
+    renderRoute();
+
+    await waitFor(() => expect(screen.getByText("达标率")).toBeInTheDocument());
+    // 0/0 不能展示为 100%；应展示 "—"
+    expect(screen.queryByText("100.0%")).not.toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
 });
