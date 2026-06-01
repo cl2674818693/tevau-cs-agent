@@ -80,6 +80,46 @@ async def list_reviews(
     )
 
 
+async def list_conversations_by_staff(
+    staff_id: str,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """指定客服处理过的会话列表（assigned_staff_id）。"""
+    return await db.fetch_all(
+        "SELECT id, user_type, mode, status, assigned_staff_id, created_at, assigned_at "
+        "FROM conversations "
+        "WHERE assigned_staff_id = :sid "
+        "AND (CAST(:df AS TEXT) IS NULL OR created_at >= :df) "
+        "AND (CAST(:dt AS TEXT) IS NULL OR created_at <= :dt) "
+        "ORDER BY id DESC LIMIT :lim",
+        {"sid": staff_id, "df": date_from, "dt": date_to, "lim": limit},
+    )
+
+
+async def list_qa_reviews_by_staff(
+    staff_id: str,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """指定客服的质检记录（JOIN conversations 过滤 assigned_staff_id）。"""
+    return await db.fetch_all(
+        "SELECT r.id AS review_id, r.conversation_id AS conv_id, "
+        "s.name AS scorecard_name, r.score AS total_score, "
+        "r.tags AS verdict, r.reviewer_staff_id, r.created_at "
+        "FROM qa_reviews r "
+        "JOIN conversations c ON c.id = r.conversation_id "
+        "LEFT JOIN qa_scorecards s ON s.id = r.scorecard_id "
+        "WHERE c.assigned_staff_id = :sid "
+        "AND (CAST(:df AS TEXT) IS NULL OR r.created_at >= :df) "
+        "AND (CAST(:dt AS TEXT) IS NULL OR r.created_at <= :dt) "
+        "ORDER BY r.id DESC LIMIT :lim",
+        {"sid": staff_id, "df": date_from, "dt": date_to, "lim": limit},
+    )
+
+
 async def avg_score_by_reviewer(
     reviewer_staff_id: str, date_from: str | None = None, date_to: str | None = None
 ) -> dict[str, Any]:

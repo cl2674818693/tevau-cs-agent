@@ -1,10 +1,11 @@
-"""客服绩效（supervisor/admin）：团队列表 + 单人详情。"""
+"""客服绩效（supervisor/admin）：团队列表 + 单人详情 + 会话明细 + 质检结果。"""
 
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 
 from ai_engine.auth.staff_session import require_roles
+from ai_engine.persistence import admin_qa
 from ai_engine.persistence.staff_metrics import compute_kpi
 from ai_engine.persistence.staff_performance import compute_performance
 
@@ -49,3 +50,27 @@ async def get_performance(
     staff: dict[str, Any] = Depends(_sup),
 ) -> dict[str, Any]:
     return await compute_performance(staff_id, date_from, date_to)
+
+
+@router.get("/admin/api/v1/staff/{staff_id}/conversations")
+async def list_staff_conversations(
+    staff_id: str,
+    date_from: str | None = Query(default=None, alias="from"),
+    date_to: str | None = Query(default=None, alias="to"),
+    staff: dict[str, Any] = Depends(_sup),
+) -> dict[str, Any]:
+    """指定客服处理过的会话列表。"""
+    rows = await admin_qa.list_conversations_by_staff(staff_id, date_from, date_to)
+    return {"conversations": rows}
+
+
+@router.get("/admin/api/v1/staff/{staff_id}/qa-reviews")
+async def list_staff_qa(
+    staff_id: str,
+    date_from: str | None = Query(default=None, alias="from"),
+    date_to: str | None = Query(default=None, alias="to"),
+    staff: dict[str, Any] = Depends(_sup),
+) -> dict[str, Any]:
+    """指定客服的所有质检结果（通过 conversations.assigned_staff_id 关联）。"""
+    rows = await admin_qa.list_qa_reviews_by_staff(staff_id, date_from, date_to)
+    return {"reviews": rows}

@@ -6,8 +6,12 @@ import { Link, useParams } from "react-router-dom";
 import {
   listPerformance,
   getPerformance,
+  listStaffConversations,
+  listStaffQaReviews,
   type StaffKpiRow,
   type StaffPerformance,
+  type StaffConversation,
+  type StaffQaReview,
 } from "../../api/adminStaffPerformance";
 import { KpiCard } from "../../components/admin/KpiCard";
 import { DataTable } from "../../components/admin/data-table/DataTable";
@@ -235,15 +239,7 @@ function DetailKpiSkeleton() {
   );
 }
 
-// 会话明细列：只用 StaffPerformance 中已有字段，无需新后端接口
-type ConvRow = {
-  id: number;
-  start_at: string;
-  duration_seconds: number;
-  outcome: string;
-};
-
-function buildConvColumns(): ColumnDef<ConvRow>[] {
+function buildConvColumns(): ColumnDef<StaffConversation>[] {
   return [
     {
       accessorKey: "id",
@@ -251,52 +247,77 @@ function buildConvColumns(): ColumnDef<ConvRow>[] {
         <DataTableColumnHeader column={column} title="会话 ID" />
       ),
       cell: ({ row }) => (
-        <span className="font-mono text-xs">#{row.original.id}</span>
+        <Link
+          to={`/admin/conversations/${row.original.id}`}
+          className="font-mono text-xs text-primary hover:underline"
+        >
+          #{row.original.id}
+        </Link>
       ),
       enableSorting: true,
     },
     {
-      accessorKey: "start_at",
+      accessorKey: "user_type",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="开始时间" />
+        <DataTableColumnHeader column={column} title="用户类型" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs">{row.original.user_type}</span>
       ),
       enableSorting: true,
     },
     {
-      accessorKey: "duration_seconds",
+      accessorKey: "status",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="处理时长" />
+        <DataTableColumnHeader column={column} title="状态" />
       ),
-      cell: ({ row }) => fmtSeconds(row.original.duration_seconds),
+      cell: ({ row }) => (
+        <span className="text-xs">{row.original.status}</span>
+      ),
       enableSorting: true,
     },
     {
-      accessorKey: "outcome",
+      accessorKey: "mode",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="结果" />
+        <DataTableColumnHeader column={column} title="模式" />
+      ),
+      cell: ({ row }) => (
+        <span className="text-xs">{row.original.mode}</span>
+      ),
+      enableSorting: true,
+    },
+    {
+      accessorKey: "created_at",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="创建时间" />
+      ),
+      cell: ({ row }) => (
+        <span className="text-xs">{row.original.created_at}</span>
+      ),
+      enableSorting: true,
+    },
+    {
+      accessorKey: "assigned_at",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="接管时间" />
+      ),
+      cell: ({ row }) => (
+        <span className="text-xs">{row.original.assigned_at ?? "—"}</span>
       ),
       enableSorting: true,
     },
   ];
 }
 
-type QaRow = {
-  id: number;
-  conv_id: number;
-  score: number;
-  reviewed_at: string;
-  reviewer: string;
-};
-
-function buildQaColumns(): ColumnDef<QaRow>[] {
+function buildQaColumns(): ColumnDef<StaffQaReview>[] {
   return [
     {
-      accessorKey: "id",
+      accessorKey: "review_id",
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="记录 ID" />
       ),
       cell: ({ row }) => (
-        <span className="font-mono text-xs">#{row.original.id}</span>
+        <span className="font-mono text-xs">#{row.original.review_id}</span>
       ),
       enableSorting: true,
     },
@@ -306,28 +327,59 @@ function buildQaColumns(): ColumnDef<QaRow>[] {
         <DataTableColumnHeader column={column} title="会话 ID" />
       ),
       cell: ({ row }) => (
-        <span className="font-mono text-xs">#{row.original.conv_id}</span>
+        <Link
+          to={`/admin/conversations/${row.original.conv_id}`}
+          className="font-mono text-xs text-primary hover:underline"
+        >
+          #{row.original.conv_id}
+        </Link>
       ),
       enableSorting: true,
     },
     {
-      accessorKey: "score",
+      accessorKey: "scorecard_name",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="分数" />
+        <DataTableColumnHeader column={column} title="评分卡" />
+      ),
+      cell: ({ row }) => (
+        <span className="text-xs">{row.original.scorecard_name ?? "—"}</span>
       ),
       enableSorting: true,
     },
     {
-      accessorKey: "reviewer",
+      accessorKey: "total_score",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="总分" />
+      ),
+      enableSorting: true,
+    },
+    {
+      accessorKey: "verdict",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="标签" />
+      ),
+      cell: ({ row }) => (
+        <span className="text-xs">{row.original.verdict ?? "—"}</span>
+      ),
+      enableSorting: true,
+    },
+    {
+      accessorKey: "reviewer_staff_id",
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="质检员" />
       ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs">{row.original.reviewer_staff_id}</span>
+      ),
       enableSorting: true,
     },
     {
-      accessorKey: "reviewed_at",
+      accessorKey: "created_at",
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="质检时间" />
+      ),
+      cell: ({ row }) => (
+        <span className="text-xs">{row.original.created_at}</span>
       ),
       enableSorting: true,
     },
@@ -385,14 +437,6 @@ function OverviewTab({ p }: { p: StaffPerformance }) {
   );
 }
 
-function EmptyState({ label }: { label: string }) {
-  return (
-    <div className="flex flex-col items-center gap-2 py-12 text-center text-sm text-muted-foreground">
-      <span>{label}</span>
-    </div>
-  );
-}
-
 function StaffPerformanceDetail({ staffId }: { staffId: string }) {
   const { token, role } = useStaffSession();
   const allowed = role === "supervisor" || role === "admin";
@@ -403,6 +447,8 @@ function StaffPerformanceDetail({ staffId }: { staffId: string }) {
   const [fromDate, setFromDate] = useState<Date | undefined>(defaultFrom);
   const [toDate, setToDate] = useState<Date | undefined>(defaultTo);
   const [p, setP] = useState<StaffPerformance | null>(null);
+  const [convs, setConvs] = useState<StaffConversation[]>([]);
+  const [qaReviews, setQaReviews] = useState<StaffQaReview[]>([]);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -418,8 +464,16 @@ function StaffPerformanceDetail({ staffId }: { staffId: string }) {
     const opts: { from?: string; to?: string } = {};
     if (fromDate) opts.from = toUtcParam(fromDate);
     if (toDate) opts.to = toUtcParam(toDate);
-    getPerformance(token, staffId, opts)
-      .then(setP)
+    Promise.all([
+      getPerformance(token, staffId, opts),
+      listStaffConversations(token, staffId, opts),
+      listStaffQaReviews(token, staffId, opts),
+    ])
+      .then(([perf, convRows, qaRows]) => {
+        setP(perf);
+        setConvs(convRows);
+        setQaReviews(qaRows);
+      })
       .catch(() => setErr("加载失败"))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -498,10 +552,9 @@ function StaffPerformanceDetail({ staffId }: { staffId: string }) {
           </TabsContent>
 
           <TabsContent value="conversations">
-            {/* 当前 getPerformance API 不返回会话列表，展示空态占位 */}
             <DataTable
               columns={convColumns}
-              data={[] as ConvRow[]}
+              data={convs}
               toolbar={(t) => (
                 <DataTableToolbar
                   table={t}
@@ -510,14 +563,12 @@ function StaffPerformanceDetail({ staffId }: { staffId: string }) {
                 />
               )}
             />
-            <EmptyState label="暂无会话明细数据（API 待扩展）" />
           </TabsContent>
 
           <TabsContent value="qa">
-            {/* 当前 getPerformance API 不返回质检列表，展示空态占位 */}
             <DataTable
               columns={qaColumns}
-              data={[] as QaRow[]}
+              data={qaReviews}
               toolbar={(t) => (
                 <DataTableToolbar
                   table={t}
@@ -526,7 +577,6 @@ function StaffPerformanceDetail({ staffId }: { staffId: string }) {
                 />
               )}
             />
-            <EmptyState label="暂无质检结果数据（API 待扩展）" />
           </TabsContent>
         </Tabs>
       )}

@@ -1,5 +1,9 @@
 import { staffFetch } from "./staffFetch";
 
+function authHeaders(token: string) {
+  return { Authorization: `Bearer ${token}` };
+}
+
 export type StaffPerformance = {
   staff_id: string;
   takeovers: number;
@@ -48,7 +52,7 @@ export async function listPerformance(
   if (opts?.to) qs.set("to", opts.to);
   const r = await staffFetch(
     `/admin/api/v1/staff/performance?${qs.toString()}`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: authHeaders(token) },
   );
   if (!r.ok) throw new Error(`list performance ${r.status}`);
   return r.json();
@@ -64,8 +68,60 @@ export async function getPerformance(
   if (opts?.to) qs.set("to", opts.to);
   const r = await staffFetch(
     `/admin/api/v1/staff/${staffId}/performance?${qs.toString()}`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: authHeaders(token) },
   );
   if (!r.ok) throw new Error(`performance ${r.status}`);
   return r.json();
+}
+
+export type StaffConversation = {
+  id: number;
+  user_type: string;
+  mode: string;
+  status: string;
+  assigned_staff_id: string | null;
+  created_at: string;
+  assigned_at: string | null;
+};
+
+export async function listStaffConversations(
+  token: string,
+  staffId: string,
+  opts?: { from?: string; to?: string },
+): Promise<StaffConversation[]> {
+  const qs = new URLSearchParams();
+  if (opts?.from) qs.set("from", opts.from);
+  if (opts?.to) qs.set("to", opts.to);
+  const r = await staffFetch(
+    `/admin/api/v1/staff/${staffId}/conversations?${qs.toString()}`,
+    { headers: authHeaders(token) },
+  );
+  if (!r.ok) throw new Error(`list conversations ${r.status}`);
+  return (await r.json()).conversations;
+}
+
+export type StaffQaReview = {
+  review_id: number;
+  conv_id: number;
+  scorecard_name: string | null;
+  total_score: number;
+  verdict: string | null;
+  reviewer_staff_id: string;
+  created_at: string;
+};
+
+export async function listStaffQaReviews(
+  token: string,
+  staffId: string,
+  opts?: { from?: string; to?: string },
+): Promise<StaffQaReview[]> {
+  const qs = new URLSearchParams();
+  if (opts?.from) qs.set("from", opts.from);
+  if (opts?.to) qs.set("to", opts.to);
+  const r = await staffFetch(
+    `/admin/api/v1/staff/${staffId}/qa-reviews?${qs.toString()}`,
+    { headers: authHeaders(token) },
+  );
+  if (!r.ok) throw new Error(`list qa reviews ${r.status}`);
+  return (await r.json()).reviews;
 }
