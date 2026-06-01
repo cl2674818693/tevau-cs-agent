@@ -1,43 +1,231 @@
+import type { ColumnDef } from "@tanstack/react-table";
+import { format } from "date-fns";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { listTickets, type Ticket, type TicketStatus } from "../../api/staff";
+import { DataTable } from "../../components/admin/data-table/DataTable";
+import { DataTableColumnHeader } from "../../components/admin/data-table/DataTableColumnHeader";
+import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
+import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { PageContainer, PageHeader } from "../../components/ui/page";
+import { Skeleton } from "../../components/ui/skeleton";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 const PAGE_SIZE = 50;
-const SEVERITY_OPTIONS = ["p0", "p1", "p2", "p3"];
 
-// 工单状态 -> 标签 + 颜色（外部事项中心事件驱动；pending=已建单未受理）
-const STATUS_META: Record<TicketStatus, { label: string; className: string }> = {
-  pending: { label: "待处理", className: "text-status-warning" },
-  in_progress: { label: "进行中", className: "text-status-success" },
-  resolved: { label: "已解决", className: "text-brand" },
-  closed: { label: "已关闭", className: "text-ink-secondary" },
+// ── Status meta ───────────────────────────────────────────────────────────────
+
+const STATUS_META: Record<
+  TicketStatus,
+  { label: string; variant: "pending" | "info" | "success" | "neutral" }
+> = {
+  pending: { label: "待处理", variant: "pending" },
+  in_progress: { label: "进行中", variant: "info" },
+  resolved: { label: "已解决", variant: "success" },
+  closed: { label: "已关闭", variant: "neutral" },
 };
 
-function TicketStatusCell({ status }: { status: TicketStatus }) {
-  const meta = STATUS_META[status] ?? STATUS_META.in_progress;
-  return <span className={meta.className}>{meta.label}</span>;
+// ── Severity badge ─────────────────────────────────────────────────────────────
+
+const SEVERITY_VARIANT: Record<
+  string,
+  "destructive" | "error" | "pending" | "secondary"
+> = {
+  p0: "destructive",
+  p1: "error",
+  p2: "pending",
+  p3: "secondary",
+};
+
+function SeverityBadge({ value }: { value: string | null }) {
+  if (!value) return <span className="text-muted-foreground">—</span>;
+  const v = value.toLowerCase();
+  return (
+    <Badge variant={SEVERITY_VARIANT[v] ?? "outline"} className="font-mono">
+      {value.toUpperCase()}
+    </Badge>
+  );
 }
 
-// eslint-disable-next-line max-lines-per-function -- 工单列表页：筛选区 + 表格 + 分页
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatDateTime(val: string) {
+  try {
+    return format(new Date(val), "yyyy-MM-dd HH:mm");
+  } catch {
+    return val;
+  }
+}
+
+// ── Columns ───────────────────────────────────────────────────────────────────
+
+const columns: ColumnDef<Ticket>[] = [
+  {
+    accessorKey: "external_id",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="工单号" />
+    ),
+    cell: ({ row }) => (
+      <Link
+        to={`/staff/tickets/${row.original.external_id}`}
+        className="font-mono text-xs text-primary hover:underline"
+      >
+        {row.original.external_id}
+      </Link>
+    ),
+    enableSorting: true,
+  },
+  {
+    accessorKey: "category",
+    header: "分类",
+    cell: ({ row }) =>
+      row.original.category ?? (
+        <span className="text-muted-foreground">—</span>
+      ),
+    enableSorting: false,
+  },
+  {
+    accessorKey: "severity",
+    header: "严重度",
+    cell: ({ row }) => <SeverityBadge value={row.original.severity} />,
+    enableSorting: false,
+  },
+  {
+    accessorKey: "status",
+    header: "状态",
+    cell: ({ row }) => {
+      const meta =
+        STATUS_META[row.original.status] ?? STATUS_META.in_progress;
+      return <Badge variant={meta.variant}>{meta.label}</Badge>;
+    },
+    enableSorting: false,
+  },
+  {
+    accessorKey: "created_at",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="创建时间" />
+    ),
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+        {formatDateTime(row.original.created_at)}
+      </span>
+    ),
+    enableSorting: true,
+    sortDescFirst: true,
+  },
+  {
+    accessorKey: "conversation_id",
+    header: "关联会话",
+    cell: ({ row }) => (
+      <Link
+        to={`/staff/conversations/${row.original.conversation_id}/logs`}
+        className="font-mono text-xs text-primary hover:underline"
+      >
+        #{row.original.conversation_id}
+      </Link>
+    ),
+    enableSorting: false,
+  },
+];
+
+// ── Filter chips ──────────────────────────────────────────────────────────────
+
+const STATUS_OPTIONS: { value: TicketStatus | ""; label: string }[] = [
+  { value: "", label: "全部状态" },
+  { value: "pending", label: "待处理" },
+  { value: "in_progress", label: "进行中" },
+  { value: "resolved", label: "已解决" },
+  { value: "closed", label: "已关闭" },
+];
+
+const SEVERITY_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "全部严重度" },
+  { value: "p0", label: "P0" },
+  { value: "p1", label: "P1" },
+  { value: "p2", label: "P2" },
+  { value: "p3", label: "P3" },
+];
+
+function FilterChips({
+  status,
+  onStatus,
+  severity,
+  onSeverity,
+}: {
+  status: TicketStatus | "";
+  onStatus: (v: TicketStatus | "") => void;
+  severity: string;
+  onSeverity: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1">
+        {STATUS_OPTIONS.map((o) => (
+          <Button
+            key={o.value}
+            size="sm"
+            variant={status === o.value ? "default" : "outline"}
+            onClick={() => onStatus(o.value as TicketStatus | "")}
+            className="h-7 px-2.5 text-xs"
+          >
+            {o.label}
+          </Button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {SEVERITY_FILTER_OPTIONS.map((o) => (
+          <Button
+            key={o.value}
+            size="sm"
+            variant={severity === o.value ? "default" : "outline"}
+            onClick={() => onSeverity(o.value)}
+            className="h-7 px-2.5 text-xs"
+          >
+            {o.label}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+
+function SkeletonRows() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Skeleton key={i} className="h-10 w-full rounded-md" />
+      ))}
+    </div>
+  );
+}
+
+// ── Route ─────────────────────────────────────────────────────────────────────
+
+// eslint-disable-next-line max-lines-per-function -- 工单列表页：筛选区 + 表格 + 加载更多
 export function TicketsRoute() {
   const { token } = useStaffSession();
   const nav = useNavigate();
-  const [openOnly, setOpenOnly] = useState(true);
+
+  const [status, setStatus] = useState<TicketStatus | "">("");
   const [severity, setSeverity] = useState("");
   const [rows, setRows] = useState<Ticket[]>([]);
-  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [hasMore, setHasMore] = useState(false);
 
-  const filter = useCallback(
+  const buildFilter = useCallback(
     (beforeId?: string) => ({
-      open: openOnly,
+      open: status === "" ? undefined : status !== "closed" && status !== "resolved",
       severity: severity || undefined,
       beforeId,
       limit: PAGE_SIZE,
     }),
-    [openOnly, severity],
+    [status, severity],
   );
 
   useEffect(() => {
@@ -45,110 +233,70 @@ export function TicketsRoute() {
       nav("/staff/login");
       return;
     }
-    listTickets(token, filter())
+    setLoading(true);
+    setLoadError("");
+    listTickets(token, buildFilter())
       .then((data) => {
         setRows(data);
         setHasMore(data.length >= PAGE_SIZE);
-        setErr("");
       })
-      .catch(() => setErr("加载失败"));
-  }, [token, filter, nav]);
+      .catch(() => setLoadError("加载失败"))
+      .finally(() => setLoading(false));
+  }, [token, buildFilter, nav]);
 
-  const loadMore = () => {
+  function loadMore() {
     if (!token || rows.length === 0) return;
     const lastId = rows[rows.length - 1].external_id;
-    listTickets(token, filter(lastId))
+    listTickets(token, buildFilter(lastId))
       .then((data) => {
         setRows((prev) => [...prev, ...data]);
         setHasMore(data.length >= PAGE_SIZE);
       })
-      .catch(() => setErr("加载失败"));
-  };
+      .catch(() => setLoadError("加载更多失败"));
+  }
 
   return (
-    <div className="mx-auto max-w-[860px] px-page py-block-lg">
-      <div className="flex items-center mb-3">
-        <h2 className="text-sh2 text-ink-primary flex-1">工单列表</h2>
-        <Link to="/staff/conversations" className="text-body3 text-ink-secondary">
-          返回工作台
-        </Link>
-      </div>
-      <div className="flex flex-wrap items-center gap-3 text-body3 text-ink-secondary mb-3">
-        <select
-          value={severity}
-          onChange={(e) => setSeverity(e.target.value)}
-          className="rounded border border-line bg-surface-card px-2 py-1 text-ink-primary"
-        >
-          <option value="">全部严重度</option>
-          {SEVERITY_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={openOnly}
-            onChange={(e) => setOpenOnly(e.target.checked)}
-          />
-          只看未关闭
-        </label>
-      </div>
-      {err && <div className="text-body3 text-status-error mb-2">{err}</div>}
-      <table className="w-full text-body3">
-        <thead>
-          <tr className="text-ink-secondary text-left">
-            <th className="py-1">工单号</th>
-            <th>分类</th>
-            <th>严重度</th>
-            <th>状态</th>
-            <th>时间</th>
-            <th>会话</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((t) => (
-            <tr key={t.external_id} className="border-t border-line text-ink-primary align-top">
-              <td className="py-1 whitespace-nowrap">
-                <Link to={`/staff/tickets/${t.external_id}`} className="text-brand">
-                  {t.external_id}
-                </Link>
-              </td>
-              <td>{t.category ?? "-"}</td>
-              <td>{t.severity ?? "-"}</td>
-              <td>
-                <TicketStatusCell status={t.status} />
-              </td>
-              <td className="whitespace-nowrap">{t.created_at}</td>
-              <td>
-                <Link
-                  to={`/staff/conversations/${t.conversation_id}/logs`}
-                  className="text-brand"
-                >
-                  #{t.conversation_id}
-                </Link>
-              </td>
-            </tr>
-          ))}
-          {rows.length === 0 && !err && (
-            <tr>
-              <td colSpan={6} className="py-2 text-ink-secondary">
-                暂无工单
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-      {hasMore && rows.length > 0 && (
-        <button
-          type="button"
-          onClick={loadMore}
-          className="mt-3 rounded border border-line px-3 py-1 text-body3 text-ink-secondary"
-        >
-          加载更多
-        </button>
+    <PageContainer width="wide">
+      <PageHeader title="工单" />
+
+      <FilterChips
+        status={status}
+        onStatus={setStatus}
+        severity={severity}
+        onSeverity={setSeverity}
+      />
+
+      {loadError && (
+        <Alert variant="destructive" className="mt-3">
+          {loadError}
+        </Alert>
       )}
-    </div>
+
+      <div className="mt-3">
+        {loading ? (
+          <SkeletonRows />
+        ) : (
+          <DataTable
+            columns={columns}
+            data={rows}
+            toolbar={(t) => (
+              <DataTableToolbar
+                table={t}
+                searchColumn="external_id"
+                placeholder="搜索工单号…"
+              />
+            )}
+          />
+        )}
+      </div>
+
+      {hasMore && !loading && rows.length > 0 && (
+        <div className="mt-3">
+          <Button variant="outline" size="sm" onClick={loadMore}>
+            加载更多
+          </Button>
+        </div>
+      )}
+    </PageContainer>
   );
 }
