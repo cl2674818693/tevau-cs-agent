@@ -165,7 +165,15 @@ describe("ConversationDetailRoute", () => {
         </Routes>
       </MemoryRouter>,
     );
-    fireEvent.click(await screen.findByText("接管"));
+    // antd Button 在 jsdom 下文本不进入可访问 name，按 css 类定位"接管"按钮
+    // （路由头部唯一一个 .ant-btn-primary）。TakeoverFooter 仍是 shadcn Button，
+    // 其"发送"是普通 DOM text，可走 getByText。
+    const container = document.body;
+    await waitFor(() => {
+      const btn = container.querySelector(".ant-btn-primary");
+      if (!btn) throw new Error("take button not mounted");
+    });
+    fireEvent.click(container.querySelector(".ant-btn-primary")!);
     await waitFor(() => expect(screen.getByText("已接管")).toBeTruthy());
     const input = screen.getByPlaceholderText("回复用户…");
     fireEvent.change(input, { target: { value: "您好" } });

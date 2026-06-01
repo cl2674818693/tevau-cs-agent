@@ -1,20 +1,26 @@
-import type { ColumnDef } from "@tanstack/react-table";
-import { useState } from "react";
+import {
+  Alert,
+  Button,
+  Card,
+  Flex,
+  Input,
+  Segmented,
+  Skeleton,
+  Switch,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { listStaffConversations } from "../../api/staff";
 import type { StaffConversation } from "../../api/staff";
-import { DataTable } from "../../components/admin/data-table/DataTable";
-import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
-import { Alert } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { FilterTabs } from "../../components/ui/filter-tabs";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import { Skeleton } from "../../components/ui/skeleton";
-import { Switch } from "../../components/ui/switch";
 import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
+
+const { Title } = Typography;
 
 const FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "human_pending", label: "待人工" },
@@ -24,110 +30,25 @@ const FILTER_OPTIONS: { value: string; label: string }[] = [
 ];
 
 // 风险角标：变量驱动，按真值显示（兼容 boolean / 0|1）
-// 统一用 outline + 语义色：列表里风险只是提示，不是 alert，不实色填充避免喧宾夺主
+// 列表里风险只是提示，不是 alert，用 antd Tag 的色阶传达严重程度。
 const RISK_BADGES: {
   key: keyof StaffConversation;
   label: string;
-  className: string;
+  color: string;
 }[] = [
-  { key: "has_failed", label: "失败", className: "border-destructive/40 text-destructive" },
-  { key: "has_downvote", label: "差评", className: "border-destructive/40 text-destructive" },
-  { key: "has_out_of_scope", label: "范围外", className: "border-amber-500/40 text-amber-600 dark:text-amber-500" },
-  { key: "has_empty_tool", label: "空结果", className: "border-muted-foreground/40 text-muted-foreground" },
-  { key: "needs_review", label: "待复核", className: "border-sky-500/40 text-sky-600 dark:text-sky-500" },
+  { key: "has_failed", label: "失败", color: "red" },
+  { key: "has_downvote", label: "差评", color: "red" },
+  { key: "has_out_of_scope", label: "范围外", color: "orange" },
+  { key: "has_empty_tool", label: "空结果", color: "default" },
+  { key: "needs_review", label: "待复核", color: "blue" },
 ];
-
-function buildColumns(
-  canSpectate: boolean,
-): ColumnDef<StaffConversation>[] {
-  return [
-    {
-      accessorKey: "id",
-      header: "会话 ID",
-      cell: ({ row }) => (
-        <Link
-          to={`/staff/conversations/${row.original.id}`}
-          className="font-mono text-xs text-primary hover:underline"
-        >
-          #{row.original.id}
-        </Link>
-      ),
-    },
-    {
-      accessorKey: "user_type",
-      header: "用户类型",
-      cell: ({ row }) => (
-        <span className="text-xs">
-          {row.original.user_type === "c" ? "C 端用户" : "BU"}
-        </span>
-      ),
-    },
-    {
-      accessorKey: "subject_id",
-      header: "Subject",
-      cell: ({ row }) => (
-        <span className="font-mono text-xs text-muted-foreground">
-          {row.original.subject_id}
-        </span>
-      ),
-    },
-    {
-      accessorKey: "mode",
-      header: "模式",
-      cell: ({ row }) => (
-        <Badge variant="secondary">{row.original.mode}</Badge>
-      ),
-    },
-    {
-      accessorKey: "assigned_staff_id",
-      header: "负责人",
-      cell: ({ row }) => (
-        <span className="font-mono text-xs text-muted-foreground">
-          {row.original.assigned_staff_id ?? "—"}
-        </span>
-      ),
-    },
-    {
-      id: "risk_flags",
-      header: "风险",
-      cell: ({ row }) => {
-        const badges = RISK_BADGES.filter((b) => !!row.original[b.key]);
-        if (badges.length === 0) return <span className="text-muted-foreground">—</span>;
-        return (
-          <div className="flex flex-wrap gap-1">
-            {badges.map((b) => (
-              <Badge key={b.key} variant="outline" className={b.className}>
-                {b.label}
-              </Badge>
-            ))}
-          </div>
-        );
-      },
-    },
-    {
-      id: "actions",
-      header: "",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-1">
-          <Button asChild variant="ghost" size="sm">
-            <Link to={`/staff/conversations/${row.original.id}/logs`}>留痕</Link>
-          </Button>
-          {canSpectate && (
-            <Button asChild variant="ghost" size="sm">
-              <Link to={`/staff/conversations/${row.original.id}/spectate`}>旁观</Link>
-            </Button>
-          )}
-        </div>
-      ),
-    },
-  ];
-}
 
 export function ConversationsListRoute() {
   const { token, role, staffId } = useStaffSession();
   const canSpectate = role === "senior" || role === "engineer";
   const [status, setStatus] = useState<string>("human_pending");
   const [myOnly, setMyOnly] = useState(false);
+  const [search, setSearch] = useState("");
 
   // "有风险信号"：服务端不另设 status，按全部范围 + risk_only 过滤
   const riskOnly = status === "risk";
@@ -143,49 +64,157 @@ export function ConversationsListRoute() {
     ? rawItems.filter((c) => c.assigned_staff_id === staffId)
     : rawItems;
 
-  const columns = buildColumns(canSpectate);
+  const columns: ColumnsType<StaffConversation> = useMemo(
+    () => [
+      {
+        title: "会话 ID",
+        dataIndex: "id",
+        width: 100,
+        sorter: (a, b) => a.id - b.id,
+        render: (id: number) => (
+          <Link
+            to={`/staff/conversations/${id}`}
+            style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+          >
+            #{id}
+          </Link>
+        ),
+      },
+      {
+        title: "用户类型",
+        dataIndex: "user_type",
+        width: 100,
+        render: (v: string) => (
+          <span style={{ fontSize: 12 }}>{v === "c" ? "C 端用户" : "BU"}</span>
+        ),
+      },
+      {
+        title: "Subject",
+        dataIndex: "subject_id",
+        render: (v: string) => (
+          <span
+            style={{
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 12,
+              color: "rgba(0,0,0,0.65)",
+            }}
+          >
+            {v}
+          </span>
+        ),
+      },
+      {
+        title: "模式",
+        dataIndex: "mode",
+        width: 140,
+        render: (v: string) => <Tag>{v}</Tag>,
+      },
+      {
+        title: "负责人",
+        dataIndex: "assigned_staff_id",
+        width: 120,
+        render: (v: string | null) => (
+          <span
+            style={{
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 12,
+              color: "rgba(0,0,0,0.65)",
+            }}
+          >
+            {v ?? "—"}
+          </span>
+        ),
+      },
+      {
+        title: "风险",
+        key: "risk_flags",
+        render: (_: unknown, row: StaffConversation) => {
+          const badges = RISK_BADGES.filter((b) => !!row[b.key]);
+          if (badges.length === 0)
+            return <span style={{ color: "rgba(0,0,0,0.45)" }}>—</span>;
+          return (
+            <Flex wrap="wrap" gap={4}>
+              {badges.map((b) => (
+                <Tag key={b.key} color={b.color}>
+                  {b.label}
+                </Tag>
+              ))}
+            </Flex>
+          );
+        },
+      },
+      {
+        title: "",
+        key: "actions",
+        width: 140,
+        render: (_: unknown, row: StaffConversation) => (
+          <Flex gap="small">
+            <Link to={`/staff/conversations/${row.id}/logs`}>
+              <Button type="link" size="small" style={{ padding: 0 }}>
+                留痕
+              </Button>
+            </Link>
+            {canSpectate && (
+              <Link to={`/staff/conversations/${row.id}/spectate`}>
+                <Button type="link" size="small" style={{ padding: 0 }}>
+                  旁观
+                </Button>
+              </Link>
+            )}
+          </Flex>
+        ),
+      },
+    ],
+    [canSpectate],
+  );
+
+  const filteredItems = useMemo(() => {
+    const kw = search.trim().toLowerCase();
+    return kw
+      ? items.filter((c) => c.subject_id.toLowerCase().includes(kw))
+      : items;
+  }, [items, search]);
 
   return (
-    <PageContainer>
-      <PageHeader title="会话" />
+    <div className="space-y-4 p-6">
+      <Title level={3} style={{ margin: 0 }}>
+        会话
+      </Title>
 
-      {/* Filter bar */}
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <FilterTabs value={status} onChange={setStatus} options={FILTER_OPTIONS} />
-        <label className="flex cursor-pointer items-center gap-1.5 text-sm">
-          <Switch
-            checked={myOnly}
-            onCheckedChange={setMyOnly}
-          />
-          我负责的
-        </label>
-      </div>
+      <Flex wrap="wrap" align="center" gap="middle">
+        <Segmented value={status} onChange={setStatus} options={FILTER_OPTIONS} />
+        <Flex align="center" gap="small">
+          <Switch checked={myOnly} onChange={setMyOnly} />
+          <span style={{ fontSize: 13 }}>我负责的</span>
+        </Flex>
+      </Flex>
 
-      {error && (
-        <Alert variant="destructive" className="mb-3">
-          {error}
-        </Alert>
-      )}
+      {error && <Alert type="error" showIcon title={error} />}
 
       {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-full rounded-md" />
-          ))}
-        </div>
+        <Card>
+          <Skeleton active paragraph={{ rows: 5 }} />
+        </Card>
       ) : (
-        <DataTable
-          columns={columns}
-          data={items}
-          toolbar={(table) => (
-            <DataTableToolbar
-              table={table}
-              searchColumn="subject_id"
+        <Card>
+          <Flex style={{ marginBottom: 12 }}>
+            <Input.Search
               placeholder="搜索 Subject ID…"
+              allowClear
+              style={{ width: 240 }}
+              onChange={(e) => setSearch(e.target.value)}
             />
-          )}
-        />
+          </Flex>
+          <Table<StaffConversation>
+            rowKey="id"
+            size="middle"
+            columns={columns}
+            dataSource={filteredItems}
+            pagination={{ pageSize: 20, showSizeChanger: true }}
+            locale={{ emptyText: "暂无会话" }}
+          />
+        </Card>
       )}
-    </PageContainer>
+    </div>
   );
 }

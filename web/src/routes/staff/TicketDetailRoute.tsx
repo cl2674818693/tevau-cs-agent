@@ -1,54 +1,20 @@
+import {
+  Alert,
+  Breadcrumb,
+  Button,
+  Card,
+  Flex,
+  Skeleton,
+  Tabs,
+  Typography,
+} from "antd";
 import { Link, useParams } from "react-router-dom";
 
 import { getTicketDetail, type TicketDetail } from "../../api/adminTickets";
-import { Alert } from "../../components/ui/alert";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "../../components/ui/breadcrumb";
-import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import { Skeleton } from "../../components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-// ─── skeletons ─────────────────────────────────────────────────────────────────
-
-function OverviewSkeleton() {
-  return (
-    <Card className="px-3 py-3">
-      <div className="flex flex-col gap-2">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="flex gap-3">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-4 w-40" />
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function EventsSkeleton() {
-  return (
-    <div className="flex flex-col gap-2">
-      {[1, 2, 3].map((i) => (
-        <Card key={i} className="px-3 py-2">
-          <Skeleton className="mb-2 h-3 w-32" />
-          <Skeleton className="h-4 w-full" />
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-// ─── tab panels ───────────────────────────────────────────────────────────────
+const { Title, Text } = Typography;
 
 function OverviewTab({
   t,
@@ -57,7 +23,13 @@ function OverviewTab({
   t: TicketDetail | null;
   loading: boolean;
 }) {
-  if (loading) return <OverviewSkeleton />;
+  if (loading) {
+    return (
+      <Card size="small">
+        <Skeleton active paragraph={{ rows: 4 }} />
+      </Card>
+    );
+  }
   if (!t) return null;
 
   let payload: Record<string, unknown> = {};
@@ -71,17 +43,29 @@ function OverviewTab({
     ["严重度", t.current_severity ?? "—"],
     ["创建时间", t.created_at],
     ...(Object.keys(payload).length > 0
-      ? (Object.entries(payload).map(([k, v]) => [k, String(v ?? "—")]) as [string, string][])
+      ? (Object.entries(payload).map(([k, v]) => [k, String(v ?? "—")]) as [
+          string,
+          string,
+        ][])
       : ([["payload", "（空）"]] as [string, string][])),
   ];
 
   return (
-    <Card className="px-3 py-3">
-      <dl className="flex flex-col gap-2 text-xs">
+    <Card size="small">
+      <dl style={{ margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
         {rows.map(([label, value]) => (
-          <div key={label} className="flex flex-wrap gap-x-3">
-            <dt className="w-24 shrink-0 text-muted-foreground">{label}</dt>
-            <dd className="text-foreground">{value}</dd>
+          <div key={label} style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 12 }}>
+            <dt
+              style={{
+                width: 96,
+                flexShrink: 0,
+                color: "rgba(0,0,0,0.45)",
+                margin: 0,
+              }}
+            >
+              {label}
+            </dt>
+            <dd style={{ margin: 0 }}>{value}</dd>
           </div>
         ))}
       </dl>
@@ -96,23 +80,37 @@ function EventsTab({
   events: TicketDetail["events"];
   loading: boolean;
 }) {
-  if (loading) return <EventsSkeleton />;
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-2">
+        {[1, 2, 3].map((i) => (
+          <Card key={i} size="small">
+            <Skeleton active paragraph={{ rows: 1 }} />
+          </Card>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2">
       {events.length === 0 && (
-        <div className="py-4 text-center text-xs text-muted-foreground">暂无事件</div>
+        <Text type="secondary" style={{ display: "block", textAlign: "center", padding: 16, fontSize: 12 }}>
+          暂无事件
+        </Text>
       )}
       {events.map((e, i) => (
-        <Card key={i} className="px-3 py-2">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="font-medium text-foreground">{e.event}</span>
-            <span className="text-[10px] text-muted-foreground">{e.created_at}</span>
-          </div>
+        <Card key={i} size="small">
+          <Flex justify="space-between" wrap="wrap" gap="small" style={{ fontSize: 12 }}>
+            <Text strong>{e.event}</Text>
+            <Text type="secondary" style={{ fontSize: 10 }}>
+              {e.created_at}
+            </Text>
+          </Flex>
           {(e.actor || e.comment) && (
-            <div className="mt-1 text-[10px] text-muted-foreground">
+            <div style={{ marginTop: 4, fontSize: 10, color: "rgba(0,0,0,0.45)" }}>
               {e.actor && <span>执行人：{e.actor}</span>}
-              {e.actor && e.comment && <span className="mx-1">·</span>}
+              {e.actor && e.comment && <span style={{ margin: "0 4px" }}>·</span>}
               {e.comment && <span>{e.comment}</span>}
             </div>
           )}
@@ -131,37 +129,33 @@ function ConversationsTab({
 }) {
   if (loading) {
     return (
-      <Card className="px-3 py-2">
-        <Skeleton className="h-4 w-48" />
+      <Card size="small">
+        <Skeleton active paragraph={{ rows: 1 }} />
       </Card>
     );
   }
   if (!t) return null;
 
   return (
-    <div className="flex flex-col gap-2">
-      <Card className="px-3 py-2">
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-muted-foreground">会话 ID</span>
-          <Link
-            className="font-medium text-primary hover:underline"
-            to={`/staff/conversations/${t.conversation_id}`}
-          >
-            #{t.conversation_id}
-          </Link>
-          <Link
-            className="ml-auto text-[10px] text-muted-foreground hover:text-primary"
-            to={`/staff/conversations/${t.conversation_id}/logs`}
-          >
-            查看日志 →
-          </Link>
-        </div>
-      </Card>
-    </div>
+    <Card size="small">
+      <Flex align="center" wrap="wrap" gap="small" style={{ fontSize: 12 }}>
+        <Text type="secondary">会话 ID</Text>
+        <Link
+          to={`/staff/conversations/${t.conversation_id}`}
+          style={{ fontWeight: 500 }}
+        >
+          #{t.conversation_id}
+        </Link>
+        <Link
+          to={`/staff/conversations/${t.conversation_id}/logs`}
+          style={{ marginLeft: "auto", fontSize: 10, color: "rgba(0,0,0,0.45)" }}
+        >
+          查看日志 →
+        </Link>
+      </Flex>
+    </Card>
   );
 }
-
-// ─── main route ───────────────────────────────────────────────────────────────
 
 export function TicketDetailRoute() {
   const { externalId = "" } = useParams();
@@ -178,62 +172,51 @@ export function TicketDetailRoute() {
   );
 
   return (
-    <PageContainer width="wide">
-      {/* Breadcrumb */}
-      <Breadcrumb className="mb-2">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link to="/staff">工作台</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link to="/staff/tickets">工单</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{externalId}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <PageHeader
-        title={`工单 — ${externalId}`}
-        actions={
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/staff/tickets">返回工单列表</Link>
-          </Button>
-        }
+    <div className="space-y-4 p-6">
+      <Breadcrumb
+        items={[
+          { title: <Link to="/staff">工作台</Link> },
+          { title: <Link to="/staff/tickets">工单</Link> },
+          { title: <span style={{ fontWeight: 500 }}>{externalId}</span> },
+        ]}
       />
 
-      {error && (
-        <Alert variant="destructive" className="mb-3">
-          {error}
-        </Alert>
-      )}
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          工单 — {externalId}
+        </Title>
+        <Link to="/staff/tickets">
+          <Button>返回工单列表</Button>
+        </Link>
+      </Flex>
 
-      <Tabs defaultValue="overview" className="mt-1">
-        <TabsList className="mb-3">
-          <TabsTrigger value="overview">概览</TabsTrigger>
-          <TabsTrigger value="events">事件流</TabsTrigger>
-          <TabsTrigger value="conversations">关联会话</TabsTrigger>
-        </TabsList>
+      {error && <Alert type="error" showIcon title={error} />}
 
-        <TabsContent value="overview">
-          <OverviewTab t={t} loading={loading} />
-        </TabsContent>
-
-        <TabsContent value="events">
-          <EventsTab events={t?.events ?? []} loading={loading} />
-        </TabsContent>
-
-        <TabsContent value="conversations">
-          <ConversationsTab t={t} loading={loading} />
-        </TabsContent>
-      </Tabs>
-    </PageContainer>
+      <Tabs
+        defaultActiveKey="overview"
+        items={[
+          {
+            key: "overview",
+            label: "概览",
+            children: <OverviewTab t={t} loading={loading} />,
+            // 强制渲染：让非激活 tab 也在 DOM，便于一进入页面就完成数据预热 +
+            // 让测试断言能查到 events / conversations 面板内容
+            forceRender: true,
+          },
+          {
+            key: "events",
+            label: "事件流",
+            children: <EventsTab events={t?.events ?? []} loading={loading} />,
+            forceRender: true,
+          },
+          {
+            key: "conversations",
+            label: "关联会话",
+            children: <ConversationsTab t={t} loading={loading} />,
+            forceRender: true,
+          },
+        ]}
+      />
+    </div>
   );
 }

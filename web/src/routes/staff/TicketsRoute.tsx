@@ -1,56 +1,57 @@
-import type { ColumnDef } from "@tanstack/react-table";
+import {
+  Alert,
+  Button,
+  Card,
+  Flex,
+  Input,
+  Segmented,
+  Skeleton,
+  Space,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { format } from "date-fns";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { listTickets, type Ticket, type TicketStatus } from "../../api/staff";
-import { DataTable } from "../../components/admin/data-table/DataTable";
-import { DataTableColumnHeader } from "../../components/admin/data-table/DataTableColumnHeader";
-import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
-import { Alert } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import { Skeleton } from "../../components/ui/skeleton";
 import { useStaffSession } from "../../hooks/useStaffSession";
+
+const { Title } = Typography;
 
 const PAGE_SIZE = 50;
 
-// ── Status meta ───────────────────────────────────────────────────────────────
-
 const STATUS_META: Record<
   TicketStatus,
-  { label: string; variant: "secondary" | "info" | "success" | "outline" }
+  { label: string; color: string }
 > = {
-  pending: { label: "待处理", variant: "secondary" },
-  in_progress: { label: "进行中", variant: "info" },
-  resolved: { label: "已解决", variant: "success" },
-  closed: { label: "已关闭", variant: "outline" },
+  pending: { label: "待处理", color: "default" },
+  in_progress: { label: "进行中", color: "blue" },
+  resolved: { label: "已解决", color: "green" },
+  closed: { label: "已关闭", color: "default" },
 };
 
-// ── Severity badge ─────────────────────────────────────────────────────────────
-
-const SEVERITY_VARIANT: Record<
-  string,
-  "destructive" | "secondary"
-> = {
-  p0: "destructive",
-  p1: "destructive",
-  p2: "secondary",
-  p3: "secondary",
+const SEVERITY_COLOR: Record<string, string> = {
+  p0: "red",
+  p1: "red",
+  p2: "default",
+  p3: "default",
 };
 
-function SeverityBadge({ value }: { value: string | null }) {
-  if (!value) return <span className="text-muted-foreground">—</span>;
+function SeverityTag({ value }: { value: string | null }) {
+  if (!value) return <span style={{ color: "rgba(0,0,0,0.45)" }}>—</span>;
   const v = value.toLowerCase();
   return (
-    <Badge variant={SEVERITY_VARIANT[v] ?? "outline"} className="font-mono">
+    <Tag
+      color={SEVERITY_COLOR[v] ?? "default"}
+      style={{ fontFamily: "ui-monospace, monospace" }}
+    >
       {value.toUpperCase()}
-    </Badge>
+    </Tag>
   );
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDateTime(val: string) {
   try {
@@ -60,80 +61,7 @@ function formatDateTime(val: string) {
   }
 }
 
-// ── Columns ───────────────────────────────────────────────────────────────────
-
-const columns: ColumnDef<Ticket>[] = [
-  {
-    accessorKey: "external_id",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="工单号" />
-    ),
-    cell: ({ row }) => (
-      <Link
-        to={`/staff/tickets/${row.original.external_id}`}
-        className="font-mono text-xs text-primary hover:underline"
-      >
-        {row.original.external_id}
-      </Link>
-    ),
-    enableSorting: true,
-  },
-  {
-    accessorKey: "category",
-    header: "分类",
-    cell: ({ row }) =>
-      row.original.category ?? (
-        <span className="text-muted-foreground">—</span>
-      ),
-    enableSorting: false,
-  },
-  {
-    accessorKey: "severity",
-    header: "严重度",
-    cell: ({ row }) => <SeverityBadge value={row.original.severity} />,
-    enableSorting: false,
-  },
-  {
-    accessorKey: "status",
-    header: "状态",
-    cell: ({ row }) => {
-      const meta =
-        STATUS_META[row.original.status] ?? STATUS_META.in_progress;
-      return <Badge variant={meta.variant}>{meta.label}</Badge>;
-    },
-    enableSorting: false,
-  },
-  {
-    accessorKey: "created_at",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="创建时间" />
-    ),
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-        {formatDateTime(row.original.created_at)}
-      </span>
-    ),
-    enableSorting: true,
-    sortDescFirst: true,
-  },
-  {
-    accessorKey: "conversation_id",
-    header: "关联会话",
-    cell: ({ row }) => (
-      <Link
-        to={`/staff/conversations/${row.original.conversation_id}/logs`}
-        className="font-mono text-xs text-primary hover:underline"
-      >
-        #{row.original.conversation_id}
-      </Link>
-    ),
-    enableSorting: false,
-  },
-];
-
-// ── Filter chips ──────────────────────────────────────────────────────────────
-
-const STATUS_OPTIONS: { value: TicketStatus | ""; label: string }[] = [
+const STATUS_OPTIONS = [
   { value: "", label: "全部状态" },
   { value: "pending", label: "待处理" },
   { value: "in_progress", label: "进行中" },
@@ -141,70 +69,13 @@ const STATUS_OPTIONS: { value: TicketStatus | ""; label: string }[] = [
   { value: "closed", label: "已关闭" },
 ];
 
-const SEVERITY_FILTER_OPTIONS: { value: string; label: string }[] = [
+const SEVERITY_FILTER_OPTIONS = [
   { value: "", label: "全部严重度" },
   { value: "p0", label: "P0" },
   { value: "p1", label: "P1" },
   { value: "p2", label: "P2" },
   { value: "p3", label: "P3" },
 ];
-
-function FilterChips({
-  status,
-  onStatus,
-  severity,
-  onSeverity,
-}: {
-  status: TicketStatus | "";
-  onStatus: (v: TicketStatus | "") => void;
-  severity: string;
-  onSeverity: (v: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      <div className="flex flex-wrap gap-1">
-        {STATUS_OPTIONS.map((o) => (
-          <Button
-            key={o.value}
-            size="sm"
-            variant={status === o.value ? "default" : "outline"}
-            onClick={() => onStatus(o.value as TicketStatus | "")}
-            className="h-7 px-2.5 text-xs"
-          >
-            {o.label}
-          </Button>
-        ))}
-      </div>
-      <div className="flex flex-wrap gap-1">
-        {SEVERITY_FILTER_OPTIONS.map((o) => (
-          <Button
-            key={o.value}
-            size="sm"
-            variant={severity === o.value ? "default" : "outline"}
-            onClick={() => onSeverity(o.value)}
-            className="h-7 px-2.5 text-xs"
-          >
-            {o.label}
-          </Button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Loading skeleton ──────────────────────────────────────────────────────────
-
-function SkeletonRows() {
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <Skeleton key={i} className="h-10 w-full rounded-md" />
-      ))}
-    </div>
-  );
-}
-
-// ── Route ─────────────────────────────────────────────────────────────────────
 
 export function TicketsRoute() {
   const { token } = useStaffSession();
@@ -216,10 +87,14 @@ export function TicketsRoute() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [hasMore, setHasMore] = useState(false);
+  const [search, setSearch] = useState("");
 
   const buildFilter = useCallback(
     (beforeId?: string) => ({
-      open: status === "" ? undefined : status !== "closed" && status !== "resolved",
+      open:
+        status === ""
+          ? undefined
+          : status !== "closed" && status !== "resolved",
       severity: severity || undefined,
       beforeId,
       limit: PAGE_SIZE,
@@ -254,48 +129,140 @@ export function TicketsRoute() {
       .catch(() => setLoadError("加载更多失败"));
   }
 
+  const columns: ColumnsType<Ticket> = useMemo(
+    () => [
+      {
+        title: "工单号",
+        dataIndex: "external_id",
+        sorter: (a, b) => a.external_id.localeCompare(b.external_id),
+        render: (v: string) => (
+          <Link
+            to={`/staff/tickets/${v}`}
+            style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+          >
+            {v}
+          </Link>
+        ),
+      },
+      {
+        title: "分类",
+        dataIndex: "category",
+        render: (v: string | null) =>
+          v ?? <span style={{ color: "rgba(0,0,0,0.45)" }}>—</span>,
+      },
+      {
+        title: "严重度",
+        dataIndex: "severity",
+        width: 100,
+        render: (v: string | null) => <SeverityTag value={v} />,
+      },
+      {
+        title: "状态",
+        dataIndex: "status",
+        width: 100,
+        render: (s: TicketStatus) => {
+          const meta = STATUS_META[s] ?? STATUS_META.in_progress;
+          return <Tag color={meta.color}>{meta.label}</Tag>;
+        },
+      },
+      {
+        title: "创建时间",
+        dataIndex: "created_at",
+        width: 160,
+        defaultSortOrder: "descend",
+        sorter: (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        render: (v: string) => (
+          <span
+            style={{
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 12,
+              color: "rgba(0,0,0,0.65)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {formatDateTime(v)}
+          </span>
+        ),
+      },
+      {
+        title: "关联会话",
+        dataIndex: "conversation_id",
+        width: 120,
+        render: (id: number) => (
+          <Link
+            to={`/staff/conversations/${id}/logs`}
+            style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+          >
+            #{id}
+          </Link>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const filteredRows = useMemo(() => {
+    const kw = search.trim().toLowerCase();
+    return kw
+      ? rows.filter((r) => r.external_id.toLowerCase().includes(kw))
+      : rows;
+  }, [rows, search]);
+
   return (
-    <PageContainer width="wide">
-      <PageHeader title="工单" />
+    <div className="space-y-4 p-6">
+      <Title level={3} style={{ margin: 0 }}>
+        工单
+      </Title>
 
-      <FilterChips
-        status={status}
-        onStatus={setStatus}
-        severity={severity}
-        onSeverity={setSeverity}
-      />
+      <Card>
+        <Space wrap style={{ marginBottom: 12 }}>
+          <Segmented
+            value={status}
+            onChange={(v) => setStatus(v as TicketStatus | "")}
+            options={STATUS_OPTIONS}
+          />
+          <Segmented
+            value={severity}
+            onChange={(v) => setSeverity(v as string)}
+            options={SEVERITY_FILTER_OPTIONS}
+          />
+          <Input.Search
+            placeholder="搜索工单号…"
+            allowClear
+            style={{ width: 200 }}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </Space>
 
-      {loadError && (
-        <Alert variant="destructive" className="mt-3">
-          {loadError}
-        </Alert>
-      )}
-
-      <div className="mt-3">
-        {loading ? (
-          <SkeletonRows />
-        ) : (
-          <DataTable
-            columns={columns}
-            data={rows}
-            toolbar={(t) => (
-              <DataTableToolbar
-                table={t}
-                searchColumn="external_id"
-                placeholder="搜索工单号…"
-              />
-            )}
+        {loadError && (
+          <Alert
+            type="error"
+            showIcon
+            title={loadError}
+            style={{ marginBottom: 12 }}
           />
         )}
-      </div>
 
-      {hasMore && !loading && rows.length > 0 && (
-        <div className="mt-3">
-          <Button variant="outline" size="sm" onClick={loadMore}>
-            加载更多
-          </Button>
-        </div>
-      )}
-    </PageContainer>
+        {loading ? (
+          <Skeleton active paragraph={{ rows: 8 }} />
+        ) : (
+          <Table<Ticket>
+            rowKey="external_id"
+            size="small"
+            columns={columns}
+            dataSource={filteredRows}
+            pagination={false}
+            locale={{ emptyText: "暂无工单" }}
+          />
+        )}
+
+        {hasMore && !loading && rows.length > 0 && (
+          <Flex justify="center" style={{ marginTop: 12 }}>
+            <Button onClick={loadMore}>加载更多</Button>
+          </Flex>
+        )}
+      </Card>
+    </div>
   );
 }

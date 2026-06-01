@@ -1,3 +1,4 @@
+import { Alert, Breadcrumb, Button, Card, Flex, Space } from "antd";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -10,20 +11,9 @@ import {
   type StaffStreamEvent,
 } from "../../api/staff";
 import { AiDraftPanel } from "../../components/AiDraftPanel";
-import { ImageThumb } from "../../components/ImageThumb";
 import { AiToolsPanel } from "../../components/AiToolsPanel";
+import { ImageThumb } from "../../components/ImageThumb";
 import { TakeoverFooter } from "../../components/TakeoverFooter";
-import { Alert } from "../../components/ui/alert";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "../../components/ui/breadcrumb";
-import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { useAiDraft } from "../../hooks/useAiDraft";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
@@ -33,7 +23,10 @@ import { useStaffSession } from "../../hooks/useStaffSession";
  * mount→unmount→mount，两次 mount 共享同一个 ref，第二次 mount 会把 stopped 重置成
  * false，导致第一个订阅的 for-await 永不 break → 双订阅 → 每个事件被 push 两次。
  */
-function useStaffStream(token: string | null, convId: number): StaffStreamEvent[] {
+function useStaffStream(
+  token: string | null,
+  convId: number,
+): StaffStreamEvent[] {
   const [events, setEvents] = useState<StaffStreamEvent[]>([]);
   useEffect(() => {
     if (!token) return;
@@ -67,7 +60,10 @@ function useInitialTaken(
     let cancelled = false;
     getStaffConversation(token, convId)
       .then((c) => {
-        if (!cancelled) setTaken(c.mode === "human_takeover" && c.assigned_staff_id === staffId);
+        if (!cancelled)
+          setTaken(
+            c.mode === "human_takeover" && c.assigned_staff_id === staffId,
+          );
       })
       .catch(() => {
         /* 取不到状态时保持未接管 */
@@ -78,19 +74,43 @@ function useInitialTaken(
   }, [token, staffId, convId, setTaken]);
 }
 
-function EventLog({ events, convId }: { events: StaffStreamEvent[]; convId: number }) {
+function EventLog({
+  events,
+  convId,
+}: {
+  events: StaffStreamEvent[];
+  convId: number;
+}) {
   return (
-    <ul className="flex flex-1 flex-col gap-1.5 overflow-y-auto">
+    <ul
+      className="flex flex-1 flex-col overflow-y-auto"
+      style={{ margin: 0, padding: 0, listStyle: "none", gap: 6 }}
+    >
       {events.map((ev, i) => (
-        <li key={i} className="text-sm text-foreground leading-relaxed">
-          <span className="mr-1.5 text-xs font-mono text-muted-foreground">[{ev.type}]</span>
+        <li
+          key={i}
+          style={{ fontSize: 13, lineHeight: 1.6 }}
+        >
+          <span
+            style={{
+              marginRight: 6,
+              fontSize: 12,
+              fontFamily: "ui-monospace, monospace",
+              color: "rgba(0,0,0,0.45)",
+            }}
+          >
+            [{ev.type}]
+          </span>
           {ev.content ?? ev.to ?? ""}
           {ev.attachments?.length ? (
-            <div className="mt-1 flex flex-wrap gap-2">
+            <Flex wrap="wrap" gap="small" style={{ marginTop: 4 }}>
               {ev.attachments.map((a) => (
-                <ImageThumb key={a.id} src={staffAttachmentUrl(convId, a.id)} />
+                <ImageThumb
+                  key={a.id}
+                  src={staffAttachmentUrl(convId, a.id)}
+                />
               ))}
-            </div>
+            </Flex>
           ) : null}
         </li>
       ))}
@@ -139,75 +159,87 @@ export function ConversationDetailRoute() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 px-4 py-5 md:px-8 md:py-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center justify-between gap-4">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link to="/staff/conversations">会话列表</Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>会话 #{convId}</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-
-        {/* Header actions */}
-        <div className="flex shrink-0 items-center gap-2">
-          <Button size="sm" variant="outline" onClick={onToggleDraftMode}>
+    <div
+      className="flex h-full flex-col"
+      style={{ gap: 16, padding: "20px 24px" }}
+    >
+      <Flex justify="space-between" align="center" gap="middle">
+        <Breadcrumb
+          items={[
+            { title: <Link to="/staff/conversations">会话列表</Link> },
+            { title: <span style={{ fontWeight: 500 }}>会话 #{convId}</span> },
+          ]}
+        />
+        <Space>
+          <Button onClick={onToggleDraftMode}>
             {draftMode ? "关闭草稿模式" : "AI 草稿模式"}
           </Button>
           {taken ? (
-            <Button size="sm" variant="outline" onClick={onRelease}>
-              释放回 AI
-            </Button>
+            <Button onClick={onRelease}>释放回 AI</Button>
           ) : (
-            <Button size="sm" onClick={onTake}>
+            <Button type="primary" onClick={onTake}>
               接管
             </Button>
           )}
-        </div>
-      </div>
+        </Space>
+      </Flex>
 
-      {/* Notice banner */}
-      {notice && (
-        <Alert variant="info" className="py-2 text-sm">
-          {notice}
-        </Alert>
-      )}
+      {notice && <Alert type="info" showIcon title={notice} />}
 
-      {/* Two-column layout: left = event stream, right = panels */}
-      <div className="flex min-h-0 flex-1 gap-4">
-        {/* Left: event log + takeover footer */}
-        <Card className="flex min-h-0 flex-1 flex-col">
-          <CardHeader className="shrink-0 border-b border-border px-4 py-3">
-            <CardTitle className="text-sm font-semibold text-foreground">事件流</CardTitle>
-          </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
-            <EventLog events={events} convId={convId} />
-            {taken && token && (
-              <div className="shrink-0 border-t border-border pt-3">
-                <TakeoverFooter
-                  token={token}
-                  convId={convId}
-                  onNotice={setNotice}
-                  onReleased={() => setTaken(false)}
-                />
-              </div>
-            )}
-          </CardContent>
+      <Flex gap="middle" style={{ flex: 1, minHeight: 0 }}>
+        <Card
+          title="事件流"
+          size="small"
+          style={{ flex: 1, display: "flex", flexDirection: "column" }}
+          styles={{
+            body: {
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              flex: 1,
+              minHeight: 0,
+              overflow: "hidden",
+            },
+          }}
+        >
+          <EventLog events={events} convId={convId} />
+          {taken && token && (
+            <div
+              style={{
+                flexShrink: 0,
+                borderTop: "1px solid #f0f0f0",
+                paddingTop: 12,
+              }}
+            >
+              <TakeoverFooter
+                token={token}
+                convId={convId}
+                onNotice={setNotice}
+                onReleased={() => setTaken(false)}
+              />
+            </div>
+          )}
         </Card>
 
-        {/* Right: AI draft + AI tools panels */}
-        <div className="flex w-80 shrink-0 flex-col gap-4">
-          <AiDraftPanel draft={aiDraft} onApprove={approve} onReject={reject} />
-          {canUseTools && token && <AiToolsPanel token={token} convId={convId} />}
+        <div
+          style={{
+            width: 320,
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+          }}
+        >
+          <AiDraftPanel
+            draft={aiDraft}
+            onApprove={approve}
+            onReject={reject}
+          />
+          {canUseTools && token && (
+            <AiToolsPanel token={token} convId={convId} />
+          )}
         </div>
-      </div>
+      </Flex>
     </div>
   );
 }

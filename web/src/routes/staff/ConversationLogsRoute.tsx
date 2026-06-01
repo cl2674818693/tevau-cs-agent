@@ -1,3 +1,14 @@
+import {
+  Alert,
+  Breadcrumb,
+  Button,
+  Card,
+  Flex,
+  Skeleton,
+  Tabs,
+  Tag,
+  Typography,
+} from "antd";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -11,46 +22,27 @@ import {
   type ToolAudit,
 } from "../../api/staff";
 import { ImageThumb } from "../../components/ImageThumb";
-import { Alert } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "../../components/ui/breadcrumb";
-import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import { Skeleton } from "../../components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-const MSG_PAGE = 50;
+const { Title, Text } = Typography;
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+const MSG_PAGE = 50;
 
 /** 消息行状态徽章 */
 function MsgBadges({ m }: { m: StaffMessage }) {
   return (
     <>
       {m.status === "failed" && (
-        <Badge variant="destructive" className="ml-2">
+        <Tag color="red" style={{ marginLeft: 8 }}>
           failed:{m.error_code ?? "-"}
-        </Badge>
+        </Tag>
       )}
       {m.status === "processing" && (
-        <Badge variant="secondary" className="ml-2">
-          processing
-        </Badge>
+        <Tag style={{ marginLeft: 8 }}>processing</Tag>
       )}
       {m.topic_verdict && m.topic_verdict !== "yes" && (
-        <Badge variant="secondary" className="ml-2">
-          verdict:{m.topic_verdict}
-        </Badge>
+        <Tag style={{ marginLeft: 8 }}>verdict:{m.topic_verdict}</Tag>
       )}
     </>
   );
@@ -59,61 +51,31 @@ function MsgBadges({ m }: { m: StaffMessage }) {
 /** 长文本截断展开（纯 details，无依赖） */
 function ExpandableText({ text, maxLen = 300 }: { text: string; maxLen?: number }) {
   if (text.length <= maxLen) {
-    return <span className="whitespace-pre-wrap break-words">{text}</span>;
+    return (
+      <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+        {text}
+      </span>
+    );
   }
   return (
     <details className="group">
-      <summary className="cursor-pointer select-none list-none text-muted-foreground hover:text-foreground">
+      <summary
+        style={{
+          cursor: "pointer",
+          userSelect: "none",
+          listStyle: "none",
+          color: "rgba(0,0,0,0.45)",
+        }}
+      >
         <span className="group-open:hidden">{text.slice(0, maxLen)}…（点击展开）</span>
         <span className="hidden group-open:inline">收起</span>
       </summary>
-      <span className="whitespace-pre-wrap break-words">{text}</span>
+      <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+        {text}
+      </span>
     </details>
   );
 }
-
-// ─── tab skeletons ─────────────────────────────────────────────────────────────
-
-function MessagesSkeleton() {
-  return (
-    <div className="flex flex-col gap-2">
-      {[1, 2, 3].map((i) => (
-        <Card key={i} className="px-3 py-2">
-          <Skeleton className="mb-2 h-3 w-40" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="mt-1 h-4 w-3/4" />
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-function AuditsSkeleton() {
-  return (
-    <div className="flex flex-col gap-2">
-      {[1, 2].map((i) => (
-        <Card key={i} className="px-3 py-2">
-          <Skeleton className="mb-2 h-3 w-32" />
-          <Skeleton className="h-4 w-full" />
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-function FeedbackSkeleton() {
-  return (
-    <div className="flex flex-col gap-2">
-      {[1].map((i) => (
-        <Card key={i} className="px-3 py-2">
-          <Skeleton className="h-4 w-48" />
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-// ─── message history (paginated) ──────────────────────────────────────────────
 
 function useConversationMessages(token: string | null, convId: number) {
   const [messages, setMessages] = useState<StaffMessage[]>([]);
@@ -122,7 +84,6 @@ function useConversationMessages(token: string | null, convId: number) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [err, setErr] = useState("");
 
-  // initial load
   useEffect(() => {
     if (!token) return;
     setLoading(true);
@@ -139,7 +100,10 @@ function useConversationMessages(token: string | null, convId: number) {
   const loadEarlier = () => {
     if (!token || messages.length === 0 || loadingMore) return;
     setLoadingMore(true);
-    getConversationMessages(token, convId, { limit: MSG_PAGE, beforeId: messages[0].id })
+    getConversationMessages(token, convId, {
+      limit: MSG_PAGE,
+      beforeId: messages[0].id,
+    })
       .then((p) => {
         setMessages((prev) => [...p.messages, ...prev]);
         setHasMore(p.hasMore);
@@ -150,8 +114,6 @@ function useConversationMessages(token: string | null, convId: number) {
 
   return { messages, hasMore, loading, loadingMore, err, loadEarlier };
 }
-
-// ─── tab panels ───────────────────────────────────────────────────────────────
 
 function MessagesTab({
   convId,
@@ -168,119 +130,151 @@ function MessagesTab({
   loadingMore: boolean;
   loadEarlier: () => void;
 }) {
-  if (loading) return <MessagesSkeleton />;
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-2">
+        {[1, 2, 3].map((i) => (
+          <Card key={i} size="small">
+            <Skeleton active paragraph={{ rows: 2 }} />
+          </Card>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2">
       {hasMore && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={loadEarlier}
-          disabled={loadingMore}
-          className="self-center"
-        >
-          {loadingMore ? "加载中…" : "加载更早消息"}
-        </Button>
+        <Flex justify="center">
+          <Button onClick={loadEarlier} loading={loadingMore}>
+            加载更早消息
+          </Button>
+        </Flex>
       )}
       {messages.map((m) => (
-        <Card key={m.id} className="px-3 py-2">
-          <div className="mb-1 flex flex-wrap items-center text-[10px] text-muted-foreground">
-            <span className="font-medium capitalize">{m.role}</span>
-            <span className="mx-1">·</span>
+        <Card key={m.id} size="small">
+          <Flex wrap="wrap" align="center" style={{ fontSize: 10, color: "rgba(0,0,0,0.45)", marginBottom: 4 }}>
+            <Text strong style={{ textTransform: "capitalize" }}>
+              {m.role}
+            </Text>
+            <span style={{ margin: "0 4px" }}>·</span>
             <span>{m.created_at}</span>
             <MsgBadges m={m} />
-          </div>
-          <div className="text-xs font-semibold text-foreground">
+          </Flex>
+          <div style={{ fontSize: 12, fontWeight: 600 }}>
             <ExpandableText text={m.content} />
           </div>
           {m.attachments?.length ? (
-            <div className="mt-2 flex flex-wrap gap-2">
+            <Flex wrap="wrap" gap="small" style={{ marginTop: 8 }}>
               {m.attachments.map((a) => (
                 <ImageThumb key={a.id} src={staffAttachmentUrl(convId, a.id)} />
               ))}
-            </div>
+            </Flex>
           ) : null}
         </Card>
       ))}
       {messages.length === 0 && (
-        <div className="py-4 text-center text-xs text-muted-foreground">无消息记录</div>
+        <Text type="secondary" style={{ textAlign: "center", padding: 16, fontSize: 12 }}>
+          无消息记录
+        </Text>
       )}
     </div>
   );
 }
 
 function AuditsTab({ audits, loading }: { audits: ToolAudit[]; loading: boolean }) {
-  if (loading) return <AuditsSkeleton />;
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-2">
+        {[1, 2].map((i) => (
+          <Card key={i} size="small">
+            <Skeleton active paragraph={{ rows: 1 }} />
+          </Card>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2">
       {audits.map((a) => (
-        <Card key={a.id} className="px-3 py-2">
-          <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
-            <span className="font-medium text-foreground">{a.tool_name}</span>
-            <span className="text-muted-foreground">{a.duration_ms}ms</span>
-            <span
-              className={
-                a.is_empty === 1 || a.is_empty === true
-                  ? "text-status-error"
-                  : "text-muted-foreground"
-              }
-            >
+        <Card key={a.id} size="small">
+          <Flex wrap="wrap" align="center" gap="small" style={{ fontSize: 12, marginBottom: 4 }}>
+            <Text strong>{a.tool_name}</Text>
+            <Text type="secondary">{a.duration_ms}ms</Text>
+            <span style={{ color: a.is_empty === 1 || a.is_empty === true ? "#dc2626" : "rgba(0,0,0,0.45)" }}>
               返回 {a.result_count ?? 0} 条
             </span>
             {a.subject_id ? (
-              <span className="text-muted-foreground">身份 {a.subject_id}</span>
+              <Text type="secondary">身份 {a.subject_id}</Text>
             ) : null}
             {a.rejected ? (
-              <Badge variant="destructive">被拒：{a.reject_reason ?? "-"}</Badge>
+              <Tag color="red">被拒：{a.reject_reason ?? "-"}</Tag>
             ) : (
-              <Badge variant="success">ok</Badge>
+              <Tag color="green">ok</Tag>
             )}
-          </div>
+          </Flex>
           {a.params_json && (
-            <div className="mt-1 text-[10px] text-muted-foreground">
+            <div style={{ marginTop: 4, fontSize: 10, color: "rgba(0,0,0,0.45)" }}>
               <ExpandableText text={a.params_json} maxLen={200} />
             </div>
           )}
-          <div className="mt-0.5 text-[10px] text-muted-foreground">{a.created_at}</div>
+          <div style={{ marginTop: 2, fontSize: 10, color: "rgba(0,0,0,0.45)" }}>
+            {a.created_at}
+          </div>
         </Card>
       ))}
       {audits.length === 0 && (
-        <div className="py-4 text-center text-xs text-muted-foreground">无工具调用记录</div>
+        <Text type="secondary" style={{ textAlign: "center", padding: 16, fontSize: 12 }}>
+          无工具调用记录
+        </Text>
       )}
     </div>
   );
 }
 
 function FeedbackTab({ feedback, loading }: { feedback: MessageFeedback[]; loading: boolean }) {
-  if (loading) return <FeedbackSkeleton />;
+  if (loading) {
+    return (
+      <Card size="small">
+        <Skeleton active paragraph={{ rows: 1 }} />
+      </Card>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2">
       {feedback.map((f) => (
-        <Card key={f.id} className="px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
+        <Card key={f.id} size="small">
+          <Flex wrap="wrap" align="center" gap="small" style={{ fontSize: 12 }}>
             <span
-              className={f.rating === "down" ? "text-status-error" : "text-status-success"}
+              style={{ color: f.rating === "down" ? "#dc2626" : "#059669" }}
               aria-label={f.rating === "down" ? "thumbs down" : "thumbs up"}
             >
               {f.rating === "down" ? "👎" : "👍"}
             </span>
-            <span className="text-muted-foreground">消息 #{f.message_id}</span>
-            {f.reason ? <span className="text-foreground">{f.reason}</span> : null}
-            <span className="ml-auto text-[10px] text-muted-foreground">{f.created_at}</span>
-          </div>
+            <Text type="secondary">消息 #{f.message_id}</Text>
+            {f.reason ? <span>{f.reason}</span> : null}
+            <span
+              style={{
+                marginLeft: "auto",
+                fontSize: 10,
+                color: "rgba(0,0,0,0.45)",
+              }}
+            >
+              {f.created_at}
+            </span>
+          </Flex>
         </Card>
       ))}
       {feedback.length === 0 && (
-        <div className="py-4 text-center text-xs text-muted-foreground">无用户反馈</div>
+        <Text type="secondary" style={{ textAlign: "center", padding: 16, fontSize: 12 }}>
+          无用户反馈
+        </Text>
       )}
     </div>
   );
 }
-
-// ─── main route ───────────────────────────────────────────────────────────────
 
 export function ConversationLogsRoute() {
   const { id } = useParams();
@@ -290,80 +284,68 @@ export function ConversationLogsRoute() {
   const { messages, hasMore, loading, loadingMore, err: msgErr, loadEarlier } =
     useConversationMessages(token, convId);
 
-  // 审计 + 反馈：一次性加载（条数受会话规模约束）
   const { data: extra, loading: extraLoading } = useAsyncData(
     () =>
       token
-        ? Promise.all([getConversationAudits(token, convId), getConversationFeedback(token, convId)])
+        ? Promise.all([
+            getConversationAudits(token, convId),
+            getConversationFeedback(token, convId),
+          ])
         : null,
     [token, convId],
   );
   const [audits, feedback] = extra ?? [[], []];
 
   return (
-    <PageContainer width="wide">
-      {/* Breadcrumb */}
-      <Breadcrumb className="mb-2">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link to="/staff/conversations">会话</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link to={`/staff/conversations/${convId}`}>#{convId}</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>日志</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      <PageHeader
-        title={`会话日志 — #${convId}`}
-        actions={
-          <Button variant="outline" size="sm" asChild>
-            <Link to={`/staff/conversations/${convId}`}>返回会话</Link>
-          </Button>
-        }
+    <div className="space-y-4 p-6">
+      <Breadcrumb
+        items={[
+          { title: <Link to="/staff/conversations">会话</Link> },
+          { title: <Link to={`/staff/conversations/${convId}`}>#{convId}</Link> },
+          { title: <span style={{ fontWeight: 500 }}>日志</span> },
+        ]}
       />
 
-      {msgErr && (
-        <Alert variant="destructive" className="mb-3">
-          {msgErr}
-        </Alert>
-      )}
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          会话日志 — #{convId}
+        </Title>
+        <Link to={`/staff/conversations/${convId}`}>
+          <Button>返回会话</Button>
+        </Link>
+      </Flex>
 
-      <Tabs defaultValue="messages" className="mt-1">
-        <TabsList className="mb-3">
-          <TabsTrigger value="messages">消息流</TabsTrigger>
-          <TabsTrigger value="audits">工具调用</TabsTrigger>
-          <TabsTrigger value="feedback">反馈</TabsTrigger>
-        </TabsList>
+      {msgErr && <Alert type="error" showIcon title={msgErr} />}
 
-        <TabsContent value="messages">
-          <MessagesTab
-            convId={convId}
-            messages={messages}
-            hasMore={hasMore}
-            loading={loading}
-            loadingMore={loadingMore}
-            loadEarlier={loadEarlier}
-          />
-        </TabsContent>
-
-        <TabsContent value="audits">
-          <AuditsTab audits={audits as ToolAudit[]} loading={extraLoading} />
-        </TabsContent>
-
-        <TabsContent value="feedback">
-          <FeedbackTab feedback={feedback as MessageFeedback[]} loading={extraLoading} />
-        </TabsContent>
-      </Tabs>
-    </PageContainer>
+      <Tabs
+        defaultActiveKey="messages"
+        items={[
+          {
+            key: "messages",
+            label: "消息流",
+            children: (
+              <MessagesTab
+                convId={convId}
+                messages={messages}
+                hasMore={hasMore}
+                loading={loading}
+                loadingMore={loadingMore}
+                loadEarlier={loadEarlier}
+              />
+            ),
+          },
+          {
+            key: "audits",
+            label: "工具调用",
+            children: <AuditsTab audits={audits as ToolAudit[]} loading={extraLoading} />,
+          },
+          {
+            key: "feedback",
+            label: "反馈",
+            children: <FeedbackTab feedback={feedback as MessageFeedback[]} loading={extraLoading} />,
+          },
+        ]}
+      />
+    </div>
   );
 }

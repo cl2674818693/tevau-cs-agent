@@ -1,19 +1,25 @@
-import type { ColumnDef } from "@tanstack/react-table";
+import {
+  Alert,
+  Button,
+  Card,
+  Input,
+  Select,
+  Skeleton,
+  Space,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { getRecentAudits } from "../../api/staff";
 import type { ToolAudit } from "../../api/staff";
-import { DataTable } from "../../components/admin/data-table/DataTable";
-import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
-import { Alert } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import { Pager } from "../../components/ui/pager";
-import { Skeleton } from "../../components/ui/skeleton";
 import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
+
+const { Title } = Typography;
 
 const PAGE_SIZE = 100;
 
@@ -35,92 +41,6 @@ function isEmpty(a: ToolAudit): boolean {
   return a.is_empty === 1 || a.is_empty === true;
 }
 
-// ── Columns ───────────────────────────────────────────────────────────────────
-
-const columns: ColumnDef<ToolAudit>[] = [
-  {
-    accessorKey: "created_at",
-    header: "时间",
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-        {row.original.created_at}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "conversation_id",
-    header: "会话",
-    cell: ({ row }) =>
-      row.original.conversation_id != null ? (
-        <Link
-          to={`/staff/conversations/${row.original.conversation_id}/logs`}
-          className="font-mono text-xs text-primary hover:underline"
-        >
-          #{row.original.conversation_id}
-        </Link>
-      ) : (
-        <span className="text-muted-foreground">—</span>
-      ),
-  },
-  {
-    accessorKey: "tool_name",
-    header: "工具",
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap font-mono text-xs">{row.original.tool_name}</span>
-    ),
-  },
-  {
-    id: "identity",
-    header: "身份",
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-        {row.original.user_type ?? "-"}
-        {row.original.subject_id ? `:${row.original.subject_id}` : ""}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "result_count",
-    header: "返回",
-    cell: ({ row }) => (
-      <span className={isEmpty(row.original) ? "text-destructive" : undefined}>
-        {row.original.result_count ?? 0} 条
-      </span>
-    ),
-  },
-  {
-    accessorKey: "duration_ms",
-    header: "耗时",
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap font-mono text-xs">{row.original.duration_ms}ms</span>
-    ),
-  },
-  {
-    accessorKey: "rejected",
-    header: "状态",
-    cell: ({ row }) =>
-      row.original.rejected ? (
-        <Badge variant="destructive">被拒：{row.original.reject_reason ?? "-"}</Badge>
-      ) : (
-        <Badge variant="success">ok</Badge>
-      ),
-  },
-];
-
-// ── Loading skeleton ──────────────────────────────────────────────────────────
-
-function SkeletonRows() {
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <Skeleton key={i} className="h-10 w-full rounded-md" />
-      ))}
-    </div>
-  );
-}
-
-// ── Route ─────────────────────────────────────────────────────────────────────
-
 export function AuditsRoute() {
   const { token } = useStaffSession();
 
@@ -130,7 +50,6 @@ export function AuditsRoute() {
   const [conversationId, setConversationId] = useState("");
   const [page, setPage] = useState(1);
 
-  // 改任一筛选都回到第 1 页
   function onFilter<T>(setter: (v: T) => void) {
     return (v: T) => {
       setter(v);
@@ -159,75 +78,177 @@ export function AuditsRoute() {
   const rows = data?.audits ?? [];
   const total = data?.total ?? 0;
 
+  const columns: ColumnsType<ToolAudit> = useMemo(
+    () => [
+      {
+        title: "时间",
+        dataIndex: "created_at",
+        width: 180,
+        render: (v: string) => (
+          <span
+            style={{
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 12,
+              color: "rgba(0,0,0,0.65)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {v}
+          </span>
+        ),
+      },
+      {
+        title: "会话",
+        dataIndex: "conversation_id",
+        width: 100,
+        render: (id: number | null) =>
+          id != null ? (
+            <Link
+              to={`/staff/conversations/${id}/logs`}
+              style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+            >
+              #{id}
+            </Link>
+          ) : (
+            <span style={{ color: "rgba(0,0,0,0.45)" }}>—</span>
+          ),
+      },
+      {
+        title: "工具",
+        dataIndex: "tool_name",
+        render: (v: string) => (
+          <span
+            style={{
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 12,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {v}
+          </span>
+        ),
+      },
+      {
+        title: "身份",
+        key: "identity",
+        render: (_: unknown, row: ToolAudit) => (
+          <span
+            style={{
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 12,
+              color: "rgba(0,0,0,0.65)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {row.user_type ?? "-"}
+            {row.subject_id ? `:${row.subject_id}` : ""}
+          </span>
+        ),
+      },
+      {
+        title: "返回",
+        dataIndex: "result_count",
+        width: 100,
+        render: (_: unknown, row: ToolAudit) => (
+          <span style={{ color: isEmpty(row) ? "#dc2626" : undefined }}>
+            {row.result_count ?? 0} 条
+          </span>
+        ),
+      },
+      {
+        title: "耗时",
+        dataIndex: "duration_ms",
+        width: 100,
+        render: (v: number) => (
+          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+            {v}ms
+          </span>
+        ),
+      },
+      {
+        title: "状态",
+        dataIndex: "rejected",
+        width: 140,
+        render: (_: unknown, row: ToolAudit) =>
+          row.rejected ? (
+            <Tag color="red">被拒：{row.reject_reason ?? "-"}</Tag>
+          ) : (
+            <Tag color="green">ok</Tag>
+          ),
+      },
+    ],
+    [],
+  );
+
   return (
-    <PageContainer width="wide">
-      <PageHeader title="工具审计" />
+    <div className="space-y-4 p-6">
+      <Title level={3} style={{ margin: 0 }}>
+        工具审计
+      </Title>
 
-      {/* Filter bar */}
-      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-        <select
-          value={toolName}
-          onChange={(e) => onFilter(setToolName)(e.target.value)}
-          className="rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-        >
-          <option value="">全部工具</option>
-          {TOOL_OPTIONS.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+      <Card>
+        <Space wrap style={{ marginBottom: 12 }}>
+          <Select
+            value={toolName}
+            onChange={onFilter(setToolName)}
+            style={{ width: 200 }}
+            options={[
+              { value: "", label: "全部工具" },
+              ...TOOL_OPTIONS.map((t) => ({ value: t, label: t })),
+            ]}
+          />
+          <Input
+            placeholder="会话号"
+            inputMode="numeric"
+            value={conversationId}
+            onChange={(e) => onFilter(setConversationId)(e.target.value)}
+            style={{ width: 120 }}
+            allowClear
+          />
+          <Button
+            type={rejectedOnly ? "primary" : "default"}
+            size="small"
+            onClick={() => onFilter(setRejectedOnly)(!rejectedOnly)}
+          >
+            只看被拒
+          </Button>
+          <Button
+            type={emptyOnly ? "primary" : "default"}
+            size="small"
+            onClick={() => onFilter(setEmptyOnly)(!emptyOnly)}
+          >
+            只看空结果
+          </Button>
+        </Space>
 
-        <input
-          type="text"
-          inputMode="numeric"
-          placeholder="会话号"
-          value={conversationId}
-          onChange={(e) => onFilter(setConversationId)(e.target.value)}
-          className="w-24 rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-        />
+        {error && (
+          <Alert
+            type="error"
+            showIcon
+            title={error}
+            style={{ marginBottom: 12 }}
+          />
+        )}
 
-        <Button
-          size="sm"
-          variant={rejectedOnly ? "default" : "outline"}
-          onClick={() => onFilter(setRejectedOnly)(!rejectedOnly)}
-          className="h-7 px-2.5 text-xs"
-        >
-          只看被拒
-        </Button>
-
-        <Button
-          size="sm"
-          variant={emptyOnly ? "default" : "outline"}
-          onClick={() => onFilter(setEmptyOnly)(!emptyOnly)}
-          className="h-7 px-2.5 text-xs"
-        >
-          只看空结果
-        </Button>
-      </div>
-
-      {error && (
-        <Alert variant="destructive" className="mb-3">
-          {error}
-        </Alert>
-      )}
-
-      {loading ? (
-        <SkeletonRows />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={rows}
-          toolbar={(t) => (
-            <DataTableToolbar table={t} searchColumn="tool_name" placeholder="搜索工具名…" />
-          )}
-          empty="暂无记录"
-        />
-      )}
-
-      {!loading && total > 0 && (
-        <Pager page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} className="mt-3" />
-      )}
-    </PageContainer>
+        {loading ? (
+          <Skeleton active paragraph={{ rows: 8 }} />
+        ) : (
+          <Table<ToolAudit>
+            rowKey={(r) => `${r.created_at}-${r.tool_name}-${r.conversation_id ?? ""}`}
+            size="small"
+            columns={columns}
+            dataSource={rows}
+            pagination={{
+              current: page,
+              pageSize: PAGE_SIZE,
+              total,
+              onChange: setPage,
+              showSizeChanger: false,
+            }}
+            locale={{ emptyText: "暂无记录" }}
+          />
+        )}
+      </Card>
+    </div>
   );
 }
