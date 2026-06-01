@@ -81,21 +81,3 @@ def validate_version_files(version: str) -> None:
         )
 
 
-def update_rollout(rollout: dict[str, int]) -> None:
-    """改灰度比例并写回 registry.yaml + 热加载。键必须是已声明版本，值之和 ≤ 100。"""
-    cfg = load_registry()
-    known = set(cfg["versions"].keys())
-    unknown = set(rollout) - known
-    if unknown:
-        raise ValueError(f"unknown versions: {sorted(unknown)}")
-    if any(v < 0 for v in rollout.values()) or sum(rollout.values()) > 100:
-        raise ValueError("rollout percentages must be >=0 and sum <= 100")
-    # 校验所有涉及版本的文件均存在
-    for version in rollout:
-        validate_version_files(version)
-    cfg = dict(cfg)
-    cfg["rollout"] = {k: int(v) for k, v in rollout.items()}
-    _registry_path().write_text(
-        yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding="utf-8"
-    )
-    reload_registry()

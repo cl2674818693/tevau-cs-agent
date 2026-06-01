@@ -43,7 +43,6 @@ conversations = Table(
     Column("archived", Integer, nullable=False, server_default="0"),
     # 👎 反馈触发：运营据此筛出待复核会话。
     Column("needs_review", Integer, nullable=False, server_default="0"),
-    Column("target_group_id", Integer),  # M3a 路由匹配后写入；null 表示无定向
     Column("created_at", String(32), nullable=False),
     CheckConstraint("user_type IN ('c','b','g')", name="ck_conversations_user_type"),
 )
@@ -173,17 +172,6 @@ message_feedback = Table(
 )
 Index("idx_feedback_conv", message_feedback.c.conversation_id)
 
-# 灰度变更审计留痕（Task 6.1）：记录谁在何时把 rollout 从 X 改到 Y。
-prompt_changes = Table(
-    "prompt_changes",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("actor", String(128), nullable=False),
-    Column("old_json", Text, nullable=False),
-    Column("new_json", Text, nullable=False),
-    Column("created_at", String(32), nullable=False),
-)
-
 # SLA 策略：接管/解决时长阈值，可按全局/user_type 设。违规为运行时计算，不落表。
 sla_policies = Table(
     "sla_policies",
@@ -216,21 +204,6 @@ agent_ratings = Table(
 )
 Index("idx_agent_ratings_staff", agent_ratings.c.staff_id, agent_ratings.c.created_at)
 Index("idx_agent_ratings_conv", agent_ratings.c.conversation_id)
-
-# AI 工具按角色的策略：是否允许 / 是否可解锁脱敏。
-# (tool_name, role) 唯一；表为空时回退到代码默认（M2 平滑过渡）。
-tool_policies = Table(
-    "tool_policies",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("tool_name", String(64), nullable=False),
-    Column("role", String(32), nullable=False),
-    Column("allowed", Integer, nullable=False, server_default="0"),
-    Column("unmask_allowed", Integer, nullable=False, server_default="0"),
-    Column("updated_by", String(64)),
-    Column("updated_at", String(32), nullable=False),
-)
-Index("ux_tool_policy_role", tool_policies.c.tool_name, tool_policies.c.role, unique=True)
 
 # 客服分组（M3a §5.1.b）
 staff_groups = Table(
@@ -265,76 +238,6 @@ staff_shifts = Table(
 )
 Index("idx_shifts_staff_time", staff_shifts.c.staff_id, staff_shifts.c.start_at)
 
-# 会话路由规则（M3a §5.1.d）
-routing_rules = Table(
-    "routing_rules",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("match_type", String(32), nullable=False),
-    Column("match_value", String(256), nullable=False),
-    Column("target_group_id", Integer, nullable=False),
-    Column("priority", Integer, nullable=False, server_default="100"),
-    Column("active", Integer, nullable=False, server_default="1"),
-    Column("created_at", String(32), nullable=False),
-    CheckConstraint(
-        "match_type IN ('user_type','scope','keyword')", name="ck_routing_match_type"
-    ),
-)
-Index("idx_routing_priority", routing_rules.c.priority, routing_rules.c.active)
-
-# Prompt 草稿 / 发布（M3b §5.4.b）
-# DB-first 读取：loader 先查 status=published 的最新行；缺失回退文件。
-prompt_drafts = Table(
-    "prompt_drafts",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("version", String(16), nullable=False),
-    Column("file_name", String(64), nullable=False),
-    Column("content", Text, nullable=False),
-    Column("status", String(16), nullable=False, server_default="draft"),
-    Column("editor", String(64)),
-    Column("created_at", String(32), nullable=False),
-    CheckConstraint("status IN ('draft','published')", name="ck_prompt_draft_status"),
-)
-Index("idx_prompt_drafts_lookup", prompt_drafts.c.version, prompt_drafts.c.file_name, prompt_drafts.c.status)
-
-# 知识库条目（M3b §5.4.e）
-knowledge_entries = Table(
-    "knowledge_entries",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("type", String(32), nullable=False),
-    Column("key", String(128), nullable=False),
-    Column("title", String(256), nullable=False),
-    Column("content", Text, nullable=False),
-    Column("locale", String(16), nullable=False, server_default="zh"),
-    Column("status", String(16), nullable=False, server_default="draft"),
-    Column("source_gap_signal", String(64)),
-    Column("created_by", String(64)),
-    Column("updated_at", String(32), nullable=False),
-    CheckConstraint("type IN ('api_doc','error_code','faq')", name="ck_knowledge_type"),
-    CheckConstraint("status IN ('draft','pending_review','published')", name="ck_knowledge_status"),
-)
-Index(
-    "ux_knowledge_key", knowledge_entries.c.type, knowledge_entries.c.key,
-    knowledge_entries.c.locale, knowledge_entries.c.status, unique=True,
-)
-
-# 范围 / 拦截规则（M3b §5.4.f）
-guardrail_rules = Table(
-    "guardrail_rules",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("type", String(32), nullable=False),
-    Column("pattern", String(512), nullable=False),
-    Column("action", String(16), nullable=False, server_default="block"),
-    Column("active", Integer, nullable=False, server_default="1"),
-    Column("created_by", String(64)),
-    Column("created_at", String(32), nullable=False),
-    CheckConstraint("type IN ('blocklist','sensitive_word','scope_toggle')", name="ck_guardrail_type"),
-    CheckConstraint("action IN ('block','flag')", name="ck_guardrail_action"),
-)
-Index("idx_guardrail_active", guardrail_rules.c.active, guardrail_rules.c.type)
 
 # 动态 RBAC（M3c §5.6.b 阶段二）
 role_permissions = Table(

@@ -17,7 +17,6 @@ from ai_engine.api.staff_conversations import (
 from ai_engine.auth.bu_session import USER_TYPE_GUEST, resolve_identity
 from ai_engine.config import settings
 from ai_engine.governance import rate_limit, token_budget
-from ai_engine.persistence import guardrails
 from ai_engine.persistence import attachments as att_dao
 from ai_engine.persistence import conversations as conv_dao
 
@@ -112,7 +111,7 @@ async def _early_block(
     conversation_id: int,
     message: str,
 ) -> tuple[dict[str, str], str] | None:
-    """合并入口护栏：rate_limit + guardrails。返回 (error_frame, stop_reason) 或 None。"""
+    """入口护栏：rate_limit。返回 (error_frame, stop_reason) 或 None。"""
     rl_key = (
         f"g:ip:{request.client.host if request.client else 'anon'}"
         if user_type == USER_TYPE_GUEST
@@ -124,18 +123,7 @@ async def _early_block(
             "RATE_LIMITED", "消息过于频繁，请稍后再试。", retry_after_ms=retry_after_ms
         )
         return err, "rate_limited"
-    if await _guardrail_check(subject_id, user_type, message, conversation_id):
-        err = se.error_event("GUARDRAIL_BLOCKED", "内容不符合规则，本次提问已拦截。")
-        return err, "guardrail_blocked"
     return None
-
-
-async def _guardrail_check(
-    subject_id: str, user_type: str, message: str, conversation_id: int
-) -> bool:
-    """评估 guardrails；block 返回 True（调用方应中止 stream），allow 返回 False。"""
-    action, _ = await guardrails.evaluate(subject_id, user_type, message)
-    return action == "block"
 
 
 async def _stream_ai_turn(
@@ -205,7 +193,7 @@ async def chat(
                     "model": "claude-sonnet-4-6",
                 },
             )
-            # 入口护栏：rate_limit + guardrails（任一拦截即结束）
+            # 入口护栏：rate_limit
             blocked = await _early_block(
                 request, user_type, subject_id, conversation_id, message
             )

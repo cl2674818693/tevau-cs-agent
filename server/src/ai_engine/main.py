@@ -5,17 +5,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ai_engine.api.admin_dashboard import router as admin_dashboard_router
-from ai_engine.api.admin_guardrails import router as admin_guardrails_router
-from ai_engine.api.admin_knowledge import router as admin_knowledge_router
-from ai_engine.api.admin_prompt_editor import router as admin_prompt_editor_router
-from ai_engine.api.admin_prompts import router as admin_prompts_router
 from ai_engine.api.admin_rbac import router as admin_rbac_router
-from ai_engine.api.admin_routing_rules import router as admin_routing_rules_router
 from ai_engine.api.admin_shifts import router as admin_shifts_router
 from ai_engine.api.admin_sla import router as admin_sla_router
 from ai_engine.api.admin_staff import router as admin_staff_router
 from ai_engine.api.admin_staff_groups import router as admin_staff_groups_router
-from ai_engine.api.admin_tool_policies import router as admin_tool_policies_router
 from ai_engine.api.agent_ratings import router as agent_ratings_router
 from ai_engine.api.attachments import router as attachments_router
 from ai_engine.api.auth_bu import router as auth_bu_router
@@ -65,17 +59,11 @@ app.include_router(staff_presence_router)
 app.include_router(staff_kpi_router)
 app.include_router(staff_logs_router)
 app.include_router(admin_dashboard_router)
-app.include_router(admin_guardrails_router)
-app.include_router(admin_knowledge_router)
-app.include_router(admin_prompt_editor_router)
-app.include_router(admin_prompts_router)
 app.include_router(admin_rbac_router)
-app.include_router(admin_routing_rules_router)
 app.include_router(admin_shifts_router)
 app.include_router(admin_sla_router)
 app.include_router(admin_staff_router)
 app.include_router(admin_staff_groups_router)
-app.include_router(admin_tool_policies_router)
 app.include_router(agent_ratings_router)
 app.include_router(user_events_router)
 app.include_router(feedback_router)

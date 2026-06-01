@@ -53,16 +53,12 @@ _GUEST_BLOCKED = (
 )
 
 
-async def _resolve_ai_unmask(unmask: bool | None, tool_name: str) -> bool:
-    """unmask=None → 从 tool_policies(role=ai) 取；DB 失败回退 False。"""
+async def _resolve_ai_unmask(unmask: bool | None, tool_name: str) -> bool:  # noqa: ARG001
+    """unmask=None → 默认 False（安全保留：AI 自动调用工具不解锁脱敏字段）。
+    客服代查端点显式传 True/False，不走本函数路径。"""
     if unmask is not None:
         return unmask
-    try:
-        from ai_engine.persistence.tool_policies import is_unmask_allowed
-
-        return await is_unmask_allowed(tool_name, "ai")
-    except Exception:
-        return False
+    return False
 
 
 async def dispatch(
@@ -74,8 +70,7 @@ async def dispatch(
     conversation_id: int,
     unmask: bool | None = None,
 ) -> dict[str, Any]:
-    """unmask=None 表示"按 DB/默认决定"（M5：未显式传时查 is_unmask_allowed("ai")）；
-    M2/M3b 客服代查端点显式传 True/False，不受本逻辑影响。"""
+    """unmask=None → 默认 False（AI 自动调用不解锁脱敏）；客服代查端点显式传 True/False。"""
     unmask = await _resolve_ai_unmask(unmask, tool_name)
     tool = base.get(tool_name)
     if tool is None:
@@ -85,21 +80,6 @@ async def dispatch(
         )
         metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
         return {"ok": False, "error": f"unknown tool: {tool_name}"}
-
-    # M3b: AI 自动调用前置策略检查（默认放行；DB 可显式禁用）。
-    try:
-        from ai_engine.persistence.tool_policies import is_tool_allowed
-        if not await is_tool_allowed(tool_name, "ai"):
-            await log_tool_call(
-                conversation_id, tool_name, params, 0, 0, True, "policy blocked (ai)",
-                result_count=0, is_empty=True, subject_id=subject_id, user_type=user_type,
-            )
-            metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
-            raise PermissionError(f"tool blocked by policy: {tool_name}")
-    except PermissionError:
-        raise
-    except Exception:
-        pass
 
     # 游客降级：未登录用户禁用一切需要身份隔离的工具（含 create_ticket），返回引导登录回执。
     if user_type == USER_TYPE_GUEST and tool.requires_subject_id:

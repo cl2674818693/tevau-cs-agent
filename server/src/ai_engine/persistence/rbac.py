@@ -11,16 +11,10 @@ PERMISSION_KEYS: list[str] = [
     "admin.dashboard",
     "admin.staff",
     "admin.sla",
-    "admin.tools",
-    "admin.prompts",
     "admin.rbac",
     "admin.staff_groups",
     "admin.presence",
     "admin.shifts",
-    "admin.routing",
-    "admin.prompt_editor",
-    "admin.knowledge",
-    "admin.guardrails",
 ]
 
 _DEFAULT_MATRIX: dict[str, set[str]] = {
@@ -28,13 +22,9 @@ _DEFAULT_MATRIX: dict[str, set[str]] = {
     "senior": set(),
     "supervisor": {
         "admin.dashboard", "admin.sla",
-        "admin.staff_groups", "admin.presence", "admin.shifts", "admin.routing",
-        "admin.knowledge",
+        "admin.staff_groups", "admin.presence", "admin.shifts",
     },
-    "engineer": {
-        "admin.tools",
-        "admin.prompt_editor", "admin.knowledge", "admin.guardrails",
-    },
+    "engineer": set(),
     "manager": {"admin.dashboard"},
     "admin": set(PERMISSION_KEYS),
 }

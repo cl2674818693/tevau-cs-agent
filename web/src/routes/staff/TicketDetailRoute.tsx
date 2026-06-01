@@ -8,11 +8,44 @@ import {
   Tabs,
   Typography,
 } from "antd";
+import { format } from "date-fns";
+import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { getTicketDetail, type TicketDetail } from "../../api/adminTickets";
 import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
+
+// payload 内可能出现的 ISO 时间字段（带 T + 时区/微秒），统一格式化为列表页一致的 "YYYY-MM-DD HH:mm:ss"。
+function formatValue(v: unknown): ReactNode {
+  if (v === null || v === undefined || v === "") return "—";
+  if (typeof v === "object") {
+    return (
+      <pre
+        style={{
+          margin: 0,
+          padding: 8,
+          background: "rgba(0,0,0,0.03)",
+          borderRadius: 4,
+          fontSize: 11,
+          lineHeight: 1.5,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-all",
+        }}
+      >
+        {JSON.stringify(v, null, 2)}
+      </pre>
+    );
+  }
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v)) {
+    try {
+      return format(new Date(v), "yyyy-MM-dd HH:mm:ss");
+    } catch {
+      return v;
+    }
+  }
+  return String(v);
+}
 
 const { Title, Text } = Typography;
 
@@ -39,15 +72,14 @@ function OverviewTab({
     payload = {};
   }
 
-  const rows: [string, string][] = [
+  const rows: [string, ReactNode][] = [
     ["严重度", t.current_severity ?? "—"],
     ["创建时间", t.created_at],
     ...(Object.keys(payload).length > 0
-      ? (Object.entries(payload).map(([k, v]) => [k, String(v ?? "—")]) as [
-          string,
-          string,
-        ][])
-      : ([["payload", "（空）"]] as [string, string][])),
+      ? Object.entries(payload).map(
+          ([k, v]) => [k, formatValue(v)] as [string, ReactNode],
+        )
+      : ([["payload", "（空）"]] as [string, ReactNode][])),
   ];
 
   return (
@@ -65,7 +97,7 @@ function OverviewTab({
             >
               {label}
             </dt>
-            <dd style={{ margin: 0 }}>{value}</dd>
+            <dd style={{ margin: 0, flex: 1, minWidth: 0 }}>{value}</dd>
           </div>
         ))}
       </dl>
@@ -141,16 +173,10 @@ function ConversationsTab({
       <Flex align="center" wrap="wrap" gap="small" style={{ fontSize: 12 }}>
         <Text type="secondary">会话 ID</Text>
         <Link
-          to={`/staff/conversations/${t.conversation_id}`}
+          to={`/staff/conversations/${t.conversation_id}/logs`}
           style={{ fontWeight: 500 }}
         >
           #{t.conversation_id}
-        </Link>
-        <Link
-          to={`/staff/conversations/${t.conversation_id}/logs`}
-          style={{ marginLeft: "auto", fontSize: 10, color: "rgba(0,0,0,0.45)" }}
-        >
-          查看日志 →
         </Link>
       </Flex>
     </Card>

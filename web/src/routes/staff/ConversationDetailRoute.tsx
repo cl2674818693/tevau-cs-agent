@@ -1,4 +1,4 @@
-import { Alert, Breadcrumb, Button, Card, Flex, Space } from "antd";
+import { Alert, Breadcrumb, Button, Card, Flex, Space, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -81,6 +81,22 @@ function EventLog({
   events: StaffStreamEvent[];
   convId: number;
 }) {
+  // 实时流面板：只显示订阅开始之后的新事件，历史聊天看 /logs。
+  if (events.length === 0) {
+    return (
+      <div
+        className="flex flex-1 items-center justify-center"
+        style={{ padding: 16 }}
+      >
+        <Typography.Text type="secondary" style={{ fontSize: 12, textAlign: "center" }}>
+          暂无新事件
+          <br />
+          历史聊天记录请查看{" "}
+          <Link to={`/staff/conversations/${convId}/logs`}>会话日志</Link>
+        </Typography.Text>
+      </div>
+    );
+  }
   return (
     <ul
       className="flex flex-1 flex-col overflow-y-auto"

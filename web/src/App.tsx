@@ -4,18 +4,12 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppShell } from "./components/app-shell/AppShell";
 import { ForbiddenRoute } from "./routes/ForbiddenRoute";
 import { DashboardRoute } from "./routes/admin/DashboardRoute";
-import { GuardrailsRoute } from "./routes/admin/GuardrailsRoute";
-import { KnowledgeRoute } from "./routes/admin/KnowledgeRoute";
 import { PresenceRoute } from "./routes/admin/PresenceRoute";
-import { PromptEditorRoute } from "./routes/admin/PromptEditorRoute";
-import { PromptsRoute } from "./routes/admin/PromptsRoute";
 import { ShiftsRoute } from "./routes/admin/ShiftsRoute";
 import { RbacRoute } from "./routes/admin/RbacRoute";
-import { RoutingRulesRoute } from "./routes/admin/RoutingRulesRoute";
 import { SlaRoute } from "./routes/admin/SlaRoute";
 import { StaffAccountsRoute } from "./routes/admin/StaffAccountsRoute";
 import { StaffGroupsRoute } from "./routes/admin/StaffGroupsRoute";
-import { ToolPoliciesRoute } from "./routes/admin/ToolPoliciesRoute";
 import { BuLoginRoute } from "./routes/BuLoginRoute";
 import { ChatRoute } from "./routes/ChatRoute";
 import { AuditsRoute } from "./routes/staff/AuditsRoute";
@@ -49,19 +43,13 @@ export default function App() {
             <Route path="/staff/audits" element={<AuditsRoute />} />
             <Route path="/staff/tickets" element={<TicketsRoute />} />
             <Route path="/staff/tickets/:externalId" element={<TicketDetailRoute />} />
-            <Route path="/admin/prompts" element={<PromptsRoute />} />
             <Route path="/admin/staff" element={<StaffAccountsRoute />} />
             <Route path="/admin/sla" element={<SlaRoute />} />
             <Route path="/admin/dashboard" element={<DashboardRoute />} />
-            <Route path="/admin/tools" element={<ToolPoliciesRoute />} />
             <Route path="/admin/rbac" element={<RbacRoute />} />
             <Route path="/admin/staff-groups" element={<StaffGroupsRoute />} />
             <Route path="/admin/presence" element={<PresenceRoute />} />
             <Route path="/admin/shifts" element={<ShiftsRoute />} />
-            <Route path="/admin/routing" element={<RoutingRulesRoute />} />
-            <Route path="/admin/prompt-editor" element={<PromptEditorRoute />} />
-            <Route path="/admin/knowledge" element={<KnowledgeRoute />} />
-            <Route path="/admin/guardrails" element={<GuardrailsRoute />} />
             <Route path="/403" element={<ForbiddenRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

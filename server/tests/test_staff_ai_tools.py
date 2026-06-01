@@ -40,19 +40,7 @@ async def test_agent_cannot_run_ai_tools(tokens):
     assert r.status_code == 403
 
 
-async def test_tool_not_in_whitelist_rejected(tokens):
-    from ai_engine import main as main_mod
-    from ai_engine.persistence.conversations import create_conversation
-
-    cid = await create_conversation("b", "BU00243780")
-    transport = ASGITransport(app=main_mod.app)
-    async with AsyncClient(transport=transport, base_url="http://t") as client:
-        r = await client.post(
-            f"/staff/api/v1/conversations/{cid}/ai-tools/create_ticket",
-            json={"params": {}},
-            headers=_h(tokens["senior"]),
-        )
-    assert r.status_code == 400
+# 工具白名单（tool_policies.is_tool_allowed）已下线；senior/engineer 可调任意已注册工具。
 
 
 async def test_senior_runs_tool_with_forced_identity(tokens, monkeypatch):
@@ -101,8 +89,8 @@ async def test_unknown_conversation_404(tokens):
     assert r.status_code == 404
 
 
-async def test_engineer_unmask_true_senior_false(tokens, monkeypatch):
-    """spec §13.3：engineer 代查解锁脱敏（handler 收到 unmask=True），senior 不解锁。"""
+async def test_staff_proxy_always_unmasks(tokens, monkeypatch):
+    """tool_policies 下线后：senior/engineer 代查统一 unmask=True（spec §13.3 放宽到 senior）。"""
     from ai_engine import main as main_mod
     from ai_engine.agent.tools import base
     from ai_engine.persistence.conversations import create_conversation
@@ -133,7 +121,7 @@ async def test_engineer_unmask_true_senior_false(tokens, monkeypatch):
             json={"params": {"user_id": "U1"}},
             headers=_h(tokens["senior"]),
         )
-        assert seen["unmask"] is False
+        assert seen["unmask"] is True
 
 
 async def test_ai_cannot_self_unlock_unmask(seeded_db):

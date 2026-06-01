@@ -114,43 +114,4 @@ def test_validate_version_files_raises_for_missing_file(tmp_path, monkeypatch):
     registry.reload_registry()
 
 
-def test_update_rollout_rejects_version_with_missing_files(tmp_path, monkeypatch):
-    """update_rollout 指向缺文件的版本时 raise ValueError，阻止写入。"""
-    import os
-
-    src = "src/ai_engine/prompts"
-    dst = tmp_path / "prompts"
-    shutil.copytree(src, dst)
-    os.remove(dst / "v1.1.0" / "role.md")
-
-    monkeypatch.setenv("PROMPTS_DIR", str(dst))
-    from ai_engine.config import settings
-    settings.reload()
-    registry.reload_registry()
-
-    with pytest.raises(ValueError):
-        registry.update_rollout({"v1.1.0": 10, "v1.0.0": 90})
-
-    monkeypatch.undo()
-    settings.reload()
-    registry.reload_registry()
-
-
-def test_update_rollout_succeeds_when_all_files_present(tmp_path, monkeypatch):
-    """update_rollout 对所有文件齐全的版本正常写入。"""
-    src = "src/ai_engine/prompts"
-    dst = tmp_path / "prompts"
-    shutil.copytree(src, dst)
-
-    monkeypatch.setenv("PROMPTS_DIR", str(dst))
-    from ai_engine.config import settings
-    settings.reload()
-    registry.reload_registry()
-
-    # 应不 raise
-    registry.update_rollout({"v1.1.0": 30, "v1.0.0": 70})
-    assert registry.get_rollout() == {"v1.1.0": 30, "v1.0.0": 70}
-
-    monkeypatch.undo()
-    settings.reload()
-    registry.reload_registry()
+# update_rollout 已随 admin_prompts 一起下线，灰度配置永久由 registry.yaml 静态控制。

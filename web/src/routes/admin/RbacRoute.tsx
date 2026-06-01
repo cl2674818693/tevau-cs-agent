@@ -14,16 +14,10 @@ const PERM_LABELS: Record<string, string> = {
   "admin.dashboard": "数据大盘",
   "admin.staff": "客服账号",
   "admin.sla": "SLA 策略",
-  "admin.tools": "工具策略",
-  "admin.prompts": "Prompt 灰度",
   "admin.rbac": "角色权限",
   "admin.staff_groups": "客服分组",
   "admin.presence": "在线状态",
   "admin.shifts": "排班",
-  "admin.routing": "会话路由",
-  "admin.prompt_editor": "Prompt 编辑",
-  "admin.knowledge": "知识库",
-  "admin.guardrails": "范围拦截",
 };
 
 const ROLE_LABELS: Record<string, string> = {

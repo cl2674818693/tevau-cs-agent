@@ -1,8 +1,8 @@
 import {
-  Activity, BarChart3, BookOpen, CalendarClock,
-  FileEdit, Headphones, Inbox, KeySquare,
-  LayoutDashboard, Lightbulb, type LucideIcon, Route,
-  Shield, ShieldAlert, ShieldCheck, SlidersHorizontal, Ticket,
+  Activity, BarChart3, CalendarClock,
+  Headphones, Inbox,
+  LayoutDashboard, Lightbulb, type LucideIcon,
+  Shield, ShieldCheck, Ticket,
   Timer, Users, Users2,
 } from "lucide-react";
 
@@ -41,17 +41,6 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "ai",
-    label: "AI 配置",
-    items: [
-      { to: "/admin/prompt-editor", label: "Prompt 编辑", icon: FileEdit, roles: ["engineer", "admin"] },
-      { to: "/admin/prompts", label: "Prompt 灰度", icon: SlidersHorizontal, roles: ["admin"] },
-      { to: "/admin/knowledge", label: "知识库", icon: BookOpen, roles: ["supervisor", "engineer", "admin"] },
-      { to: "/admin/tools", label: "工具策略", icon: KeySquare, roles: ["engineer", "admin"] },
-      { to: "/admin/guardrails", label: "范围拦截", icon: ShieldAlert, roles: ["engineer", "admin"] },
-    ],
-  },
-  {
     id: "people",
     label: "坐席与权限",
     items: [
@@ -59,7 +48,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/staff-groups", label: "客服分组", icon: Users2, roles: ["supervisor", "admin"] },
       { to: "/admin/presence", label: "在线状态", icon: Activity, roles: ["supervisor", "admin"] },
       { to: "/admin/shifts", label: "排班", icon: CalendarClock, roles: ["supervisor", "admin"] },
-      { to: "/admin/routing", label: "会话路由", icon: Route, roles: ["supervisor", "admin"] },
       { to: "/admin/rbac", label: "角色权限", icon: Shield, roles: ["admin"] },
     ],
   },

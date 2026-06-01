@@ -323,22 +323,3 @@ async def append_human_message(conv_id: int, sender_staff_id: str, content: str)
     )
 
 
-# ── M3a 路由匹配支持 ────────────────────────────────────────────────────────
-
-
-async def set_target_group(conv_id: int, group_id: int | None) -> None:
-    """M3a 路由匹配后调用，落 target_group_id 到会话。"""
-    await db.execute(
-        "UPDATE conversations SET target_group_id = :g WHERE id = :id",
-        {"g": int(group_id) if group_id is not None else None, "id": int(conv_id)},
-    )
-
-
-async def last_user_text(conv_id: int) -> str | None:
-    """取该会话最近一条 user 消息的 content（路由匹配用）。"""
-    row = await db.fetch_one(
-        "SELECT content FROM messages WHERE conversation_id = :id AND role = 'user' "
-        "ORDER BY id DESC LIMIT 1",
-        {"id": int(conv_id)},
-    )
-    return str(row["content"]) if row else None

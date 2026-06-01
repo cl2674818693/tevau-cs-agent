@@ -2,7 +2,6 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ai_engine.auth.bu_session import resolve_identity
-from ai_engine.persistence import guardrails
 from ai_engine.persistence.attachments import list_for_conversation
 from ai_engine.persistence.conversations import (
     create_conversation,
@@ -64,11 +63,6 @@ _GREETING = {
 @router.post("/api/v1/conversations")
 async def init_conversation(body: ConversationsInitIn, request: Request) -> ConversationsInitOut:
     user_type, subject_id = await resolve_identity(request)
-
-    # M5: 入口接 guardrails——按 subject_id 维度（blocklist）拦截
-    action, reason = await guardrails.evaluate(subject_id, user_type, "")
-    if action == "block":
-        raise HTTPException(403, f"guardrail blocked: {reason}")
 
     # resume：传入且属主校验通过且未归档 → 续接旧会话(保留历史+当前 mode)；否则新建。
     mode = "ai"

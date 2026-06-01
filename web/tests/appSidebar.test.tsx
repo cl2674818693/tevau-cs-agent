@@ -23,7 +23,7 @@ beforeAll(() => {
 describe("AppSidebar", () => {
   beforeEach(() => localStorage.clear());
 
-  it("admin 角色能看到 4 个分组", () => {
+  it("admin 角色能看到 3 个分组", () => {
     render(
       <MemoryRouter>
         <AppSidebar />
@@ -31,7 +31,6 @@ describe("AppSidebar", () => {
     );
     expect(screen.getByText("工作台")).toBeInTheDocument();
     expect(screen.getByText("运营看板")).toBeInTheDocument();
-    expect(screen.getByText("AI 配置")).toBeInTheDocument();
     expect(screen.getByText("坐席与权限")).toBeInTheDocument();
   });
 

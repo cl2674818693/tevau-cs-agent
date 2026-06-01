@@ -31,24 +31,9 @@ def _entry(code: str, v: dict[str, Any]) -> dict[str, Any]:
 
 
 async def run(
-    code: str | None = None, keyword: str | None = None, locale: str = "zh"
+    code: str | None = None, keyword: str | None = None, locale: str = "zh"  # noqa: ARG001
 ) -> dict[str, Any]:
-    """按错误码 code 查含义/原因，或按关键词搜消息。M4: 加 locale 参数支持多语言知识库。"""
-    # M3b DB-first：知识库已发布条目优先于内置数据源
-    if code:
-        try:
-            from ai_engine.persistence.knowledge import get_published
-
-            row = await get_published(type_="error_code", key=str(code), locale=locale)
-            if row is not None:
-                return {"hits": [{
-                    "code": str(code),
-                    "message": str(row["title"]),
-                    "reason": str(row["content"]),
-                    "_source": "knowledge_db",
-                }]}
-        except Exception:
-            pass
+    """按错误码 code 查含义/原因，或按关键词搜消息。locale 保留兼容签名（KB 已下线）。"""
     codes = _load()
     if not codes:
         return {"hits": [], "note": "错误码知识库未加载"}

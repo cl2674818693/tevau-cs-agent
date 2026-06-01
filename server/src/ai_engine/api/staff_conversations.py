@@ -16,7 +16,6 @@ from ai_engine.auth.staff_session import require_staff
 from ai_engine.config import settings
 from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
-from ai_engine.persistence import tool_policies
 from ai_engine.persistence.db import get_conn
 from ai_engine.persistence.schema import now_str
 from ai_engine.persistence.staff import get_staff
@@ -156,22 +155,9 @@ def publish_conversation_event(conv_id: int, event: dict[str, Any]) -> None:
 async def list_conversations(
     status: str = Query("human_pending"),
     risk_only: bool = Query(False),
-    my_group_only: bool = Query(False),
     staff: dict[str, Any] = Depends(require_staff),
 ) -> list[dict[str, object]]:
-    rows = await conv_dao.list_for_staff(status, risk_only=risk_only)
-    # M4: my_group_only=true 时按当前 staff 所在组过滤；target_group_id IS NULL 视为对所有人可见。
-    if my_group_only:
-        from ai_engine.persistence.staff import get_staff
-        staff_id = str(staff.get("sub", ""))
-        me = await get_staff(staff_id) if staff_id else None
-        my_group = int(me["group_id"]) if me and me.get("group_id") is not None else None
-        rows = [
-            r for r in rows
-            if r.get("target_group_id") is None
-            or (my_group is not None and int(r["target_group_id"]) == my_group)
-        ]
-    return rows
+    return await conv_dao.list_for_staff(status, risk_only=risk_only)
 
 
 @router.get("/staff/api/v1/conversations/{conv_id}")
@@ -420,23 +406,17 @@ async def run_ai_tool(
     """客服代查 AI 工具：强制以该会话身份调用（不能跨用户），结果仅返回客服、不进对话流。"""
     if staff.get("role") not in ("senior", "engineer"):
         raise HTTPException(403, "ai-tools requires senior/engineer")
-    # M2 Task 4.3: 白名单/脱敏从硬编码常量改为读 DB tool_policies；表为空时回退
-    # 到 _STAFF_TOOL_WHITELIST 默认（在 tool_policies 模块中维护相同集合）。
-    role = str(staff.get("role"))
-    if not await tool_policies.is_tool_allowed(tool_name, role):
-        raise HTTPException(400, f"tool not allowed: {tool_name}")
     conv = await conv_dao.get_conversation(conv_id)
     if conv is None:
         raise HTTPException(404, "conversation not found")
-    unmask_flag = await tool_policies.is_unmask_allowed(tool_name, role)
-    # spec §13.3：脱敏决策（默认仅 engineer 可解锁），现由 tool_policies 管理
+    # senior/engineer 代查时给明文（spec §13.3）；工具白名单/角色细粒度策略已下线。
     return await dispatch(
         tool_name=tool_name,
         params=body.params,
         user_type=str(conv["user_type"]),
         subject_id=str(conv["subject_id"]),
         conversation_id=conv_id,
-        unmask=unmask_flag,
+        unmask=True,
     )
 
 
