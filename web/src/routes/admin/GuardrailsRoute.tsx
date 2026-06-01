@@ -1,11 +1,23 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import type { ColumnDef } from "@tanstack/react-table";
+import { MoreOutlined } from "@ant-design/icons";
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Drawer,
+  Dropdown,
+  Flex,
+  Form,
+  Input,
+  Select,
+  Skeleton,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { format } from "date-fns";
-import { MoreHorizontal } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { toast } from "sonner";
-import * as z from "zod";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   createGuardrail,
@@ -15,468 +27,115 @@ import {
   patchGuardrail,
   setGuardrailActive,
 } from "../../api/adminGuardrails";
-import { DataTable } from "../../components/admin/data-table/DataTable";
-import { DataTableColumnHeader } from "../../components/admin/data-table/DataTableColumnHeader";
-import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
-import { Alert } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../../components/ui/dropdown-menu";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "../../components/ui/form";
-import { Input } from "../../components/ui/input";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "../../components/ui/sheet";
-import { Skeleton } from "../../components/ui/skeleton";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-// ── Schema ───────────────────────────────────────────────────────────────────
+const { Title } = Typography;
 
 const GUARDRAIL_TYPES = ["blocklist", "sensitive_word", "scope_toggle"] as const;
 const GUARDRAIL_ACTIONS = ["block", "flag"] as const;
 
-const guardrailSchema = z.object({
-  type: z.enum(GUARDRAIL_TYPES),
-  pattern: z.string().min(1, "pattern 必填"),
-  action: z.enum(GUARDRAIL_ACTIONS),
-});
-type GuardrailFormValues = z.infer<typeof guardrailSchema>;
+type FormValues = {
+  type: (typeof GUARDRAIL_TYPES)[number];
+  pattern: string;
+  action: (typeof GUARDRAIL_ACTIONS)[number];
+};
 
-// ── Sheets ───────────────────────────────────────────────────────────────────
-
-function GuardrailSheet({
+/** 创建 + 编辑共用一个 Drawer：editing=null 即新建 */
+function GuardrailDrawer({
   open,
   onOpenChange,
+  editing,
   token,
   onSuccess,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  editing: Guardrail | null;
   token: string;
   onSuccess: () => void;
 }) {
-  const form = useForm<GuardrailFormValues>({
-    resolver: zodResolver(guardrailSchema),
-    defaultValues: {
-      type: "sensitive_word",
-      pattern: "",
-      action: "block",
-    },
-  });
+  const [form] = Form.useForm<FormValues>();
+  const { message } = App.useApp();
 
   useEffect(() => {
     if (open) {
-      form.reset({ type: "sensitive_word", pattern: "", action: "block" });
+      form.setFieldsValue(
+        editing
+          ? {
+              type: editing.type as FormValues["type"],
+              pattern: editing.pattern,
+              action: editing.action as FormValues["action"],
+            }
+          : { type: "sensitive_word", pattern: "", action: "block" },
+      );
     }
-  }, [open, form]);
+  }, [open, editing, form]);
 
-  async function onSubmit(values: GuardrailFormValues) {
+  async function onSubmit(values: FormValues) {
     try {
-      await createGuardrail(token, values);
-      toast.success("规则已创建");
+      if (editing) {
+        await patchGuardrail(token, editing.id, values);
+        message.success("规则已更新");
+      } else {
+        await createGuardrail(token, values);
+        message.success("规则已创建");
+      }
       onOpenChange(false);
       onSuccess();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "创建失败");
+      message.error(err instanceof Error ? err.message : "保存失败");
     }
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex flex-col gap-0 p-0">
-        <SheetHeader className="border-b px-6 py-4">
-          <SheetTitle>新建拦截规则</SheetTitle>
-        </SheetHeader>
-
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex flex-1 flex-col overflow-y-auto"
-          >
-            <div className="flex-1 space-y-5 px-6 py-5">
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>类型</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="选择类型" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="blocklist">blocklist</SelectItem>
-                        <SelectItem value="sensitive_word">sensitive_word</SelectItem>
-                        <SelectItem value="scope_toggle">scope_toggle</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="pattern"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>pattern</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="subject_id / 词 / scope 名"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="action"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>动作</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="选择动作" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="block">block</SelectItem>
-                        <SelectItem value="flag">flag</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <SheetFooter className="border-t px-6 py-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
-                取消
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                创建
-              </Button>
-            </SheetFooter>
-          </form>
-        </Form>
-      </SheetContent>
-    </Sheet>
+    <Drawer
+      title={editing ? `编辑规则 #${editing.id}` : "新建拦截规则"}
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="default"
+    >
+      <Form form={form} layout="vertical" onFinish={onSubmit}>
+        <Form.Item name="type" label="类型" rules={[{ required: true }]}>
+          <Select
+            options={GUARDRAIL_TYPES.map((t) => ({ value: t, label: t }))}
+          />
+        </Form.Item>
+        <Form.Item
+          name="pattern"
+          label="pattern"
+          rules={[{ required: true, message: "pattern 必填" }]}
+        >
+          <Input placeholder="subject_id / 词 / scope 名" />
+        </Form.Item>
+        <Form.Item name="action" label="动作" rules={[{ required: true }]}>
+          <Select
+            options={GUARDRAIL_ACTIONS.map((a) => ({ value: a, label: a }))}
+          />
+        </Form.Item>
+        <Form.Item style={{ marginBottom: 0 }}>
+          <Flex justify="flex-end" gap="small">
+            <Button onClick={() => onOpenChange(false)}>取消</Button>
+            <Button type="primary" htmlType="submit">
+              {editing ? "保存" : "创建"}
+            </Button>
+          </Flex>
+        </Form.Item>
+      </Form>
+    </Drawer>
   );
 }
-
-// ── Edit Sheet ───────────────────────────────────────────────────────────────
-
-function EditGuardrailSheet({
-  guardrail,
-  open,
-  onOpenChange,
-  token,
-  onSuccess,
-}: {
-  guardrail: Guardrail;
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  token: string;
-  onSuccess: () => void;
-}) {
-  const form = useForm<GuardrailFormValues>({
-    resolver: zodResolver(guardrailSchema),
-    defaultValues: {
-      type: guardrail.type as (typeof GUARDRAIL_TYPES)[number],
-      pattern: guardrail.pattern,
-      action: guardrail.action as (typeof GUARDRAIL_ACTIONS)[number],
-    },
-  });
-
-  useEffect(() => {
-    if (open) {
-      form.reset({
-        type: guardrail.type as (typeof GUARDRAIL_TYPES)[number],
-        pattern: guardrail.pattern,
-        action: guardrail.action as (typeof GUARDRAIL_ACTIONS)[number],
-      });
-    }
-  }, [open, guardrail, form]);
-
-  async function onSubmit(values: GuardrailFormValues) {
-    try {
-      await patchGuardrail(token, guardrail.id, values);
-      toast.success("规则已更新");
-      onOpenChange(false);
-      onSuccess();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "更新失败");
-    }
-  }
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex flex-col gap-0 p-0">
-        <SheetHeader className="border-b px-6 py-4">
-          <SheetTitle>编辑规则 #{guardrail.id}</SheetTitle>
-        </SheetHeader>
-
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex flex-1 flex-col overflow-y-auto"
-          >
-            <div className="flex-1 space-y-5 px-6 py-5">
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>类型</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="选择类型" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="blocklist">blocklist</SelectItem>
-                        <SelectItem value="sensitive_word">sensitive_word</SelectItem>
-                        <SelectItem value="scope_toggle">scope_toggle</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="pattern"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>pattern</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="subject_id / 词 / scope 名"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="action"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>动作</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="选择动作" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="block">block</SelectItem>
-                        <SelectItem value="flag">flag</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <SheetFooter className="border-t px-6 py-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
-                取消
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                保存
-              </Button>
-            </SheetFooter>
-          </form>
-        </Form>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-// ── Columns ──────────────────────────────────────────────────────────────────
-
-function buildColumns(
-  token: string,
-  onRefresh: () => void,
-  onEdit: (g: Guardrail) => void,
-): ColumnDef<Guardrail>[] {
-  return [
-    {
-      accessorKey: "id",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="ID" />
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "type",
-      header: "类型",
-      enableSorting: false,
-    },
-    {
-      accessorKey: "pattern",
-      header: "pattern",
-      enableSorting: false,
-    },
-    {
-      accessorKey: "action",
-      header: "动作",
-      enableSorting: false,
-    },
-    {
-      accessorKey: "active",
-      header: "状态",
-      cell: ({ row }) =>
-        row.original.active ? (
-          <Badge variant="success">启用</Badge>
-        ) : (
-          <Badge variant="secondary">停用</Badge>
-        ),
-      enableSorting: false,
-    },
-    {
-      accessorKey: "created_at",
-      header: "创建时间",
-      cell: ({ row }) => {
-        try {
-          return format(new Date(row.original.created_at), "yyyy-MM-dd HH:mm");
-        } catch {
-          return row.original.created_at;
-        }
-      },
-      enableSorting: false,
-    },
-    {
-      id: "actions",
-      header: () => null,
-      cell: ({ row }) => {
-        const g = row.original;
-
-        async function handleToggle() {
-          try {
-            await setGuardrailActive(token, g.id, g.active ? 0 : 1);
-            toast.success(g.active ? "已停用" : "已启用");
-            onRefresh();
-          } catch (err) {
-            toast.error(err instanceof Error ? err.message : "操作失败");
-          }
-        }
-
-        async function handleDelete() {
-          if (!confirm(`确认删除规则（${g.type}=${g.pattern}）？此操作不可撤销。`))
-            return;
-          try {
-            await deleteGuardrail(token, g.id);
-            toast.success("已删除");
-            onRefresh();
-          } catch (err) {
-            toast.error(err instanceof Error ? err.message : "删除失败");
-          }
-        }
-
-        return (
-          <div className="flex justify-end">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                  <span className="sr-only">操作</span>
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEdit(g)}>
-                  编辑
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleToggle}>
-                  {g.active ? "停用" : "启用"}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={handleDelete}
-                >
-                  删除
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        );
-      },
-    },
-  ];
-}
-
-// ── Loading skeleton ──────────────────────────────────────────────────────────
-
-function SkeletonRows() {
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <Skeleton key={i} className="h-10 w-full rounded-md" />
-      ))}
-    </div>
-  );
-}
-
-// ── Route ─────────────────────────────────────────────────────────────────────
 
 export function GuardrailsRoute() {
   const { token, role } = useStaffSession();
+  const { message, modal } = App.useApp();
   const allowed = role === "engineer" || role === "admin";
 
   const [rules, setRules] = useState<Guardrail[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [editGuardrail, setEditGuardrail] = useState<Guardrail | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editing, setEditing] = useState<Guardrail | null>(null);
+  const [search, setSearch] = useState("");
 
   function reload() {
     if (!token) return;
@@ -499,61 +158,168 @@ export function GuardrailsRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, role]);
 
-  const columns = token && allowed ? buildColumns(token, reload, setEditGuardrail) : [];
+  function openCreate() {
+    setEditing(null);
+    setDrawerOpen(true);
+  }
+
+  function openEdit(g: Guardrail) {
+    setEditing(g);
+    setDrawerOpen(true);
+  }
+
+  async function handleToggle(g: Guardrail) {
+    if (!token) return;
+    try {
+      await setGuardrailActive(token, g.id, g.active ? 0 : 1);
+      message.success(g.active ? "已停用" : "已启用");
+      reload();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "操作失败");
+    }
+  }
+
+  function handleDelete(g: Guardrail) {
+    modal.confirm({
+      title: `确认删除规则？`,
+      content: `${g.type} = ${g.pattern}（此操作不可撤销）`,
+      okText: "删除",
+      okType: "danger",
+      cancelText: "取消",
+      onOk: async () => {
+        if (!token) return;
+        try {
+          await deleteGuardrail(token, g.id);
+          message.success("已删除");
+          reload();
+        } catch (err) {
+          message.error(err instanceof Error ? err.message : "删除失败");
+        }
+      },
+    });
+  }
+
+  const columns: ColumnsType<Guardrail> = useMemo(
+    () => [
+      {
+        title: "ID",
+        dataIndex: "id",
+        width: 80,
+        sorter: (a, b) => a.id - b.id,
+      },
+      { title: "类型", dataIndex: "type", width: 140 },
+      { title: "pattern", dataIndex: "pattern" },
+      { title: "动作", dataIndex: "action", width: 100 },
+      {
+        title: "状态",
+        dataIndex: "active",
+        width: 100,
+        render: (v: number) =>
+          v ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>,
+      },
+      {
+        title: "创建时间",
+        dataIndex: "created_at",
+        width: 160,
+        render: (v: string) => {
+          try {
+            return format(new Date(v), "yyyy-MM-dd HH:mm");
+          } catch {
+            return v;
+          }
+        },
+      },
+      {
+        title: "",
+        key: "actions",
+        width: 60,
+        align: "right",
+        render: (_: unknown, g: Guardrail) => (
+          <Dropdown
+            menu={{
+              items: [
+                { key: "edit", label: "编辑", onClick: () => openEdit(g) },
+                {
+                  key: "toggle",
+                  label: g.active ? "停用" : "启用",
+                  onClick: () => handleToggle(g),
+                },
+                { type: "divider" },
+                {
+                  key: "delete",
+                  label: "删除",
+                  danger: true,
+                  onClick: () => handleDelete(g),
+                },
+              ],
+            }}
+            trigger={["click"]}
+          >
+            <Button type="text" icon={<MoreOutlined />} size="small" />
+          </Dropdown>
+        ),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [token],
+  );
+
+  const filteredRules = useMemo(() => {
+    const kw = search.trim().toLowerCase();
+    return kw
+      ? rules.filter((r) => r.pattern.toLowerCase().includes(kw))
+      : rules;
+  }, [rules, search]);
 
   return (
-    <PageContainer width="wide">
-      <PageHeader
-        title="范围拦截"
-        actions={
-          allowed && (
-            <Button size="sm" onClick={() => setSheetOpen(true)}>
-              新建规则
-            </Button>
-          )
-        }
-      />
+    <div className="space-y-4 p-6">
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          范围拦截
+        </Title>
+        {allowed && (
+          <Button type="primary" onClick={openCreate}>
+            新建规则
+          </Button>
+        )}
+      </Flex>
 
-      {loadError && (
-        <Alert variant="destructive" className="mb-4">
-          {loadError}
-        </Alert>
-      )}
+      {loadError && <Alert type="error" showIcon title={loadError} />}
 
       {loading ? (
-        <SkeletonRows />
+        <Card>
+          <Skeleton active paragraph={{ rows: 5 }} />
+        </Card>
       ) : (
-        <DataTable
-          columns={columns}
-          data={rules}
-          toolbar={(t) => (
-            <DataTableToolbar
-              table={t}
-              searchColumn="pattern"
+        <Card>
+          <Flex style={{ marginBottom: 12 }}>
+            <Input.Search
               placeholder="搜索 pattern…"
+              allowClear
+              style={{ width: 240 }}
+              onChange={(e) => setSearch(e.target.value)}
             />
-          )}
-        />
+          </Flex>
+          <Table<Guardrail>
+            rowKey="id"
+            size="middle"
+            columns={columns}
+            dataSource={filteredRules}
+            pagination={{ pageSize: 20, showSizeChanger: true }}
+            locale={{ emptyText: "暂无拦截规则" }}
+          />
+        </Card>
       )}
 
       {token && allowed && (
-        <GuardrailSheet
-          open={sheetOpen}
-          onOpenChange={setSheetOpen}
+        <GuardrailDrawer
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          editing={editing}
           token={token}
           onSuccess={reload}
         />
       )}
-
-      {token && allowed && editGuardrail && (
-        <EditGuardrailSheet
-          guardrail={editGuardrail}
-          open={!!editGuardrail}
-          onOpenChange={(v) => { if (!v) setEditGuardrail(null); }}
-          token={token}
-          onSuccess={reload}
-        />
-      )}
-    </PageContainer>
+    </div>
   );
 }
