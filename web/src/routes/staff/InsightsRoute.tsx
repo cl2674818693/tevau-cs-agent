@@ -194,7 +194,6 @@ function DrillPanel({
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line max-lines-per-function -- 报表页：时间窗 + 四卡片下钻 + 工具健康表
 export function InsightsRoute() {
   const { token } = useStaffSession();
   const [rangeKey, setRangeKey] = useState<RangeKey>("7d");
@@ -211,7 +210,6 @@ export function InsightsRoute() {
       token
         ? Promise.all([getKnowledgeGaps(token, range), getToolHealth(token, range)])
         : null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [token, rangeKey],
     "加载失败",
   );

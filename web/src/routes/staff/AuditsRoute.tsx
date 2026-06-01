@@ -121,7 +121,6 @@ function SkeletonRows() {
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line max-lines-per-function -- 审计页：筛选区 + 表格 + 页码分页
 export function AuditsRoute() {
   const { token } = useStaffSession();
 

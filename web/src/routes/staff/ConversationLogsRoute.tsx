@@ -282,7 +282,6 @@ function FeedbackTab({ feedback, loading }: { feedback: MessageFeedback[]; loadi
 
 // ─── main route ───────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line max-lines-per-function -- 会话日志三 tab：消息流 / 工具调用 / 反馈
 export function ConversationLogsRoute() {
   const { id } = useParams();
   const convId = Number(id);

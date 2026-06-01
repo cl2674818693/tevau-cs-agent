@@ -206,7 +206,6 @@ function SkeletonRows() {
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line max-lines-per-function -- 工单列表页：筛选区 + 表格 + 加载更多
 export function TicketsRoute() {
   const { token } = useStaffSession();
   const nav = useNavigate();
