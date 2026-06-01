@@ -1,11 +1,25 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import type { ColumnDef } from "@tanstack/react-table";
+import { MoreOutlined } from "@ant-design/icons";
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Drawer,
+  Dropdown,
+  Flex,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Skeleton,
+  Switch,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { format } from "date-fns";
-import { MoreHorizontal } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { toast } from "sonner";
-import * as z from "zod";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   createStaff,
@@ -16,55 +30,9 @@ import {
   type StaffRow,
 } from "../../api/adminStaff";
 import { listGroups, type StaffGroup } from "../../api/adminStaffGroups";
-import { DataTable } from "../../components/admin/data-table/DataTable";
-import { DataTableColumnHeader } from "../../components/admin/data-table/DataTableColumnHeader";
-import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
-import { Alert } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../../components/ui/dropdown-menu";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "../../components/ui/form";
-import { Input } from "../../components/ui/input";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "../../components/ui/sheet";
-import { Skeleton } from "../../components/ui/skeleton";
-import { Switch } from "../../components/ui/switch";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-// ── Role label map ────────────────────────────────────────────────────────────
+const { Title } = Typography;
 
 const ROLE_LABEL: Record<string, string> = {
   agent: "客服",
@@ -75,13 +43,12 @@ const ROLE_LABEL: Record<string, string> = {
   admin: "管理员",
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function parseSkills(raw: string | null): string[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed.filter((s) => typeof s === "string");
+    if (Array.isArray(parsed))
+      return parsed.filter((s) => typeof s === "string");
     return [];
   } catch {
     return [];
@@ -96,36 +63,16 @@ function formatDate(val: string) {
   }
 }
 
-// ── Schemas ───────────────────────────────────────────────────────────────────
+// ── Create Drawer ────────────────────────────────────────────────────────────
 
-const createSchema = z.object({
-  staff_id: z
-    .string()
-    .min(1, "staff_id 必填")
-    .regex(/^[a-z][a-z0-9_]*$/, "小写字母+数字+下划线"),
-  display_name: z.string().min(1, "显示名必填"),
-  role: z.enum(["agent", "senior", "supervisor", "engineer", "manager", "admin"]),
-  password: z.string().min(8, "密码至少 8 位"),
-});
-type CreateFormValues = z.infer<typeof createSchema>;
+type CreateValues = {
+  staff_id: string;
+  display_name: string;
+  role: (typeof STAFF_ROLES)[number];
+  password: string;
+};
 
-const editSchema = z.object({
-  display_name: z.string().min(1, "显示名必填"),
-  role: z.enum(["agent", "senior", "supervisor", "engineer", "manager", "admin"]),
-  group_id: z.string(), // "__none__" | stringified number
-  skills: z.string(), // comma-separated
-  active: z.boolean(),
-});
-type EditFormValues = z.infer<typeof editSchema>;
-
-const resetPwSchema = z.object({
-  password: z.string().min(8, "密码至少 8 位"),
-});
-type ResetPwFormValues = z.infer<typeof resetPwSchema>;
-
-// ── Create Sheet ──────────────────────────────────────────────────────────────
-
-function CreateSheet({
+function CreateDrawer({
   open,
   onOpenChange,
   token,
@@ -136,122 +83,98 @@ function CreateSheet({
   token: string;
   onSuccess: () => void;
 }) {
-  const form = useForm<CreateFormValues>({
-    resolver: zodResolver(createSchema),
-    defaultValues: { staff_id: "", display_name: "", role: "agent", password: "" },
-  });
+  const [form] = Form.useForm<CreateValues>();
+  const { message } = App.useApp();
 
   useEffect(() => {
-    if (open) form.reset({ staff_id: "", display_name: "", role: "agent", password: "" });
+    if (open) {
+      form.setFieldsValue({
+        staff_id: "",
+        display_name: "",
+        role: "agent",
+        password: "",
+      });
+    }
   }, [open, form]);
 
-  async function onSubmit(values: CreateFormValues) {
+  async function onSubmit(values: CreateValues) {
     try {
       await createStaff(token, values);
-      toast.success("已创建");
+      message.success("已创建");
       onOpenChange(false);
       onSuccess();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "创建失败");
+      message.error(err instanceof Error ? err.message : "创建失败");
     }
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex flex-col gap-0 p-0">
-        <SheetHeader className="border-b px-6 py-4">
-          <SheetTitle>新建客服</SheetTitle>
-        </SheetHeader>
-
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex flex-1 flex-col overflow-y-auto"
-          >
-            <div className="flex-1 space-y-5 px-6 py-5">
-              <FormField
-                control={form.control}
-                name="staff_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>staff_id</FormLabel>
-                    <FormControl>
-                      <Input placeholder="小写字母开头" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="display_name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>显示名</FormLabel>
-                    <FormControl>
-                      <Input placeholder="显示名" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="role"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>角色</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="选择角色" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {STAFF_ROLES.map((r) => (
-                          <SelectItem key={r} value={r}>
-                            {ROLE_LABEL[r] ?? r}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>初始密码</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="至少 8 位" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <SheetFooter className="border-t px-6 py-4">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                取消
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                保存
-              </Button>
-            </SheetFooter>
-          </form>
-        </Form>
-      </SheetContent>
-    </Sheet>
+    <Drawer
+      title="新建客服"
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="default"
+    >
+      <Form form={form} layout="vertical" onFinish={onSubmit}>
+        <Form.Item
+          name="staff_id"
+          label="staff_id"
+          rules={[
+            { required: true, message: "staff_id 必填" },
+            {
+              pattern: /^[a-z][a-z0-9_]*$/,
+              message: "小写字母开头，仅含小写字母+数字+下划线",
+            },
+          ]}
+        >
+          <Input placeholder="小写字母开头" />
+        </Form.Item>
+        <Form.Item
+          name="display_name"
+          label="显示名"
+          rules={[{ required: true, message: "显示名必填" }]}
+        >
+          <Input placeholder="显示名" />
+        </Form.Item>
+        <Form.Item name="role" label="角色" rules={[{ required: true }]}>
+          <Select
+            options={STAFF_ROLES.map((r) => ({
+              value: r,
+              label: ROLE_LABEL[r] ?? r,
+            }))}
+          />
+        </Form.Item>
+        <Form.Item
+          name="password"
+          label="初始密码"
+          rules={[{ required: true, min: 8, message: "密码至少 8 位" }]}
+        >
+          <Input.Password placeholder="至少 8 位" />
+        </Form.Item>
+        <Form.Item style={{ marginBottom: 0 }}>
+          <Flex justify="flex-end" gap="small">
+            <Button onClick={() => onOpenChange(false)}>取消</Button>
+            <Button type="primary" htmlType="submit">
+              保存
+            </Button>
+          </Flex>
+        </Form.Item>
+      </Form>
+    </Drawer>
   );
 }
 
-// ── Edit Sheet ────────────────────────────────────────────────────────────────
+// ── Edit Drawer ──────────────────────────────────────────────────────────────
 
-function EditSheet({
+type EditValues = {
+  display_name: string;
+  role: (typeof STAFF_ROLES)[number];
+  group_id: string; // "__none__" | stringified number
+  skills: string; // comma-separated
+  active: boolean;
+};
+
+function EditDrawer({
   open,
   onOpenChange,
   staff,
@@ -266,22 +189,14 @@ function EditSheet({
   token: string;
   onSuccess: () => void;
 }) {
-  const form = useForm<EditFormValues>({
-    resolver: zodResolver(editSchema),
-    defaultValues: {
-      display_name: "",
-      role: "agent",
-      group_id: "__none__",
-      skills: "",
-      active: true,
-    },
-  });
+  const [form] = Form.useForm<EditValues>();
+  const { message } = App.useApp();
 
   useEffect(() => {
     if (open && staff) {
-      form.reset({
+      form.setFieldsValue({
         display_name: staff.display_name,
-        role: staff.role as EditFormValues["role"],
+        role: staff.role as EditValues["role"],
         group_id: staff.group_id != null ? String(staff.group_id) : "__none__",
         skills: parseSkills(staff.skills).join(", "),
         active: staff.active === 1,
@@ -289,14 +204,15 @@ function EditSheet({
     }
   }, [open, staff, form]);
 
-  async function onSubmit(values: EditFormValues) {
+  async function onSubmit(values: EditValues) {
     if (!staff) return;
     try {
       const skillsArr = values.skills
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      const groupId = values.group_id === "__none__" ? null : Number(values.group_id);
+      const groupId =
+        values.group_id === "__none__" ? null : Number(values.group_id);
 
       await patchStaff(token, staff.staff_id, {
         display_name: values.display_name,
@@ -305,138 +221,67 @@ function EditSheet({
         skills: skillsArr,
         active: values.active ? 1 : 0,
       });
-      toast.success("已保存");
+      message.success("已保存");
       onOpenChange(false);
       onSuccess();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "保存失败");
+      message.error(err instanceof Error ? err.message : "保存失败");
     }
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex flex-col gap-0 p-0">
-        <SheetHeader className="border-b px-6 py-4">
-          <SheetTitle>编辑客服 {staff?.staff_id}</SheetTitle>
-        </SheetHeader>
-
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex flex-1 flex-col overflow-y-auto"
-          >
-            <div className="flex-1 space-y-5 px-6 py-5">
-              <FormField
-                control={form.control}
-                name="display_name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>显示名</FormLabel>
-                    <FormControl>
-                      <Input placeholder="显示名" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="role"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>角色</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="选择角色" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {STAFF_ROLES.map((r) => (
-                          <SelectItem key={r} value={r}>
-                            {ROLE_LABEL[r] ?? r}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="group_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>分组</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="选择分组" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="__none__">无</SelectItem>
-                        {groups.map((g) => (
-                          <SelectItem key={g.id} value={String(g.id)}>
-                            {g.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="skills"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>技能（逗号分隔）</FormLabel>
-                    <FormControl>
-                      <Input placeholder="如: 英语, 理财" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="active"
-                render={({ field }) => (
-                  <FormItem className="flex items-center gap-3">
-                    <FormLabel className="mt-0">启用</FormLabel>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <SheetFooter className="border-t px-6 py-4">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                取消
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                保存
-              </Button>
-            </SheetFooter>
-          </form>
-        </Form>
-      </SheetContent>
-    </Sheet>
+    <Drawer
+      title={`编辑客服 ${staff?.staff_id ?? ""}`}
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="default"
+    >
+      <Form form={form} layout="vertical" onFinish={onSubmit}>
+        <Form.Item
+          name="display_name"
+          label="显示名"
+          rules={[{ required: true, message: "显示名必填" }]}
+        >
+          <Input placeholder="显示名" />
+        </Form.Item>
+        <Form.Item name="role" label="角色" rules={[{ required: true }]}>
+          <Select
+            options={STAFF_ROLES.map((r) => ({
+              value: r,
+              label: ROLE_LABEL[r] ?? r,
+            }))}
+          />
+        </Form.Item>
+        <Form.Item name="group_id" label="分组">
+          <Select
+            options={[
+              { value: "__none__", label: "无" },
+              ...groups.map((g) => ({ value: String(g.id), label: g.name })),
+            ]}
+          />
+        </Form.Item>
+        <Form.Item name="skills" label="技能（逗号分隔）">
+          <Input placeholder="如: 英语, 理财" />
+        </Form.Item>
+        <Form.Item name="active" label="启用" valuePropName="checked">
+          <Switch />
+        </Form.Item>
+        <Form.Item style={{ marginBottom: 0 }}>
+          <Flex justify="flex-end" gap="small">
+            <Button onClick={() => onOpenChange(false)}>取消</Button>
+            <Button type="primary" htmlType="submit">
+              保存
+            </Button>
+          </Flex>
+        </Form.Item>
+      </Form>
+    </Drawer>
   );
 }
 
-// ── Reset Password Dialog ─────────────────────────────────────────────────────
+// ── Reset Password Modal ─────────────────────────────────────────────────────
 
-function ResetPasswordDialog({
+function ResetPasswordModal({
   open,
   onOpenChange,
   staffId,
@@ -447,205 +292,52 @@ function ResetPasswordDialog({
   staffId: string | null;
   token: string;
 }) {
-  const form = useForm<ResetPwFormValues>({
-    resolver: zodResolver(resetPwSchema),
-    defaultValues: { password: "" },
-  });
+  const [form] = Form.useForm<{ password: string }>();
+  const { message } = App.useApp();
 
   useEffect(() => {
-    if (open) form.reset({ password: "" });
+    if (open) form.setFieldsValue({ password: "" });
   }, [open, form]);
 
-  async function onSubmit(values: ResetPwFormValues) {
+  async function onSubmit(values: { password: string }) {
     if (!staffId) return;
     try {
       await resetPassword(token, staffId, values.password);
-      toast.success("密码已重置");
+      message.success("密码已重置");
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "重置失败");
+      message.error(err instanceof Error ? err.message : "重置失败");
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>重置密码 — {staffId}</DialogTitle>
-        </DialogHeader>
-
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>新密码</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="至少 8 位" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                取消
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                确认重置
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+    <Modal
+      title={`重置密码 — ${staffId ?? ""}`}
+      open={open}
+      onCancel={() => onOpenChange(false)}
+      onOk={() => form.submit()}
+      okText="确认重置"
+      cancelText="取消"
+      destroyOnHidden
+    >
+      <Form form={form} layout="vertical" onFinish={onSubmit}>
+        <Form.Item
+          name="password"
+          label="新密码"
+          rules={[{ required: true, min: 8, message: "密码至少 8 位" }]}
+        >
+          <Input.Password placeholder="至少 8 位" />
+        </Form.Item>
+      </Form>
+    </Modal>
   );
 }
 
-// ── Columns ───────────────────────────────────────────────────────────────────
-
-function buildColumns(
-  token: string,
-  groups: StaffGroup[],
-  onEdit: (s: StaffRow) => void,
-  onResetPw: (staffId: string) => void,
-  onRefresh: () => void,
-): ColumnDef<StaffRow>[] {
-  const groupMap = new Map(groups.map((g) => [g.id, g.name]));
-
-  return [
-    {
-      accessorKey: "staff_id",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="staff_id" />
-      ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs">{row.original.staff_id}</span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "display_name",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="显示名" />
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "role",
-      header: "角色",
-      cell: ({ row }) => {
-        const role = row.original.role;
-        return <Badge variant="outline">{ROLE_LABEL[role] ?? role}</Badge>;
-      },
-      enableSorting: false,
-    },
-    {
-      accessorKey: "group_id",
-      header: "分组",
-      cell: ({ row }) => {
-        const gid = row.original.group_id;
-        if (gid == null) return <span className="text-muted-foreground">-</span>;
-        return groupMap.get(gid) ?? <span className="text-muted-foreground">-</span>;
-      },
-      enableSorting: false,
-    },
-    {
-      accessorKey: "skills",
-      header: "技能",
-      cell: ({ row }) => {
-        const skills = parseSkills(row.original.skills);
-        if (!skills.length) return <span className="text-muted-foreground">-</span>;
-        return (
-          <div className="flex flex-wrap gap-1">
-            {skills.map((sk) => (
-              <Badge key={sk} variant="secondary" className="text-xs">
-                {sk}
-              </Badge>
-            ))}
-          </div>
-        );
-      },
-      enableSorting: false,
-    },
-    {
-      accessorKey: "active",
-      header: "状态",
-      cell: ({ row }) =>
-        row.original.active ? (
-          <Badge variant="success">启用</Badge>
-        ) : (
-          <Badge variant="secondary">停用</Badge>
-        ),
-      enableSorting: false,
-    },
-    {
-      accessorKey: "created_at",
-      header: "创建时间",
-      cell: ({ row }) => formatDate(row.original.created_at),
-      enableSorting: false,
-    },
-    {
-      id: "actions",
-      header: () => null,
-      cell: ({ row }) => {
-        const s = row.original;
-
-        async function handleToggleActive() {
-          try {
-            await patchStaff(token, s.staff_id, { active: s.active === 1 ? 0 : 1 });
-            onRefresh();
-          } catch (err) {
-            toast.error(err instanceof Error ? err.message : "操作失败");
-          }
-        }
-
-        return (
-          <div className="flex justify-end">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                  <span className="sr-only">操作</span>
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEdit(s)}>编辑</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onResetPw(s.staff_id)}>
-                  重置密码
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleToggleActive}>
-                  {s.active ? "停用" : "启用"}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        );
-      },
-    },
-  ];
-}
-
-// ── Loading skeleton ──────────────────────────────────────────────────────────
-
-function SkeletonRows() {
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <Skeleton key={i} className="h-10 w-full rounded-md" />
-      ))}
-    </div>
-  );
-}
-
-// ── Route ─────────────────────────────────────────────────────────────────────
+// ── Route ────────────────────────────────────────────────────────────────────
 
 export function StaffAccountsRoute() {
   const { token } = useStaffSession();
+  const { message } = App.useApp();
   const [rows, setRows] = useState<StaffRow[]>([]);
   const [groups, setGroups] = useState<StaffGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -656,6 +348,7 @@ export function StaffAccountsRoute() {
   const [editTarget, setEditTarget] = useState<StaffRow | null>(null);
   const [resetPwOpen, setResetPwOpen] = useState(false);
   const [resetPwTarget, setResetPwTarget] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   function reload() {
     if (!token) return;
@@ -686,51 +379,178 @@ export function StaffAccountsRoute() {
     setResetPwOpen(true);
   }
 
-  const columns =
-    token ? buildColumns(token, groups, openEdit, openResetPw, reload) : [];
+  async function handleToggleActive(s: StaffRow) {
+    if (!token) return;
+    try {
+      await patchStaff(token, s.staff_id, {
+        active: s.active === 1 ? 0 : 1,
+      });
+      reload();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "操作失败");
+    }
+  }
+
+  const groupMap = useMemo(
+    () => new Map(groups.map((g) => [g.id, g.name])),
+    [groups],
+  );
+
+  const columns: ColumnsType<StaffRow> = useMemo(
+    () => [
+      {
+        title: "staff_id",
+        dataIndex: "staff_id",
+        sorter: (a, b) => a.staff_id.localeCompare(b.staff_id),
+        render: (v: string) => (
+          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+            {v}
+          </span>
+        ),
+      },
+      {
+        title: "显示名",
+        dataIndex: "display_name",
+        sorter: (a, b) => a.display_name.localeCompare(b.display_name),
+      },
+      {
+        title: "角色",
+        dataIndex: "role",
+        width: 100,
+        render: (v: string) => <Tag>{ROLE_LABEL[v] ?? v}</Tag>,
+      },
+      {
+        title: "分组",
+        dataIndex: "group_id",
+        render: (gid: number | null) => {
+          if (gid == null)
+            return <span style={{ color: "rgba(0,0,0,0.45)" }}>-</span>;
+          return (
+            groupMap.get(gid) ?? (
+              <span style={{ color: "rgba(0,0,0,0.45)" }}>-</span>
+            )
+          );
+        },
+      },
+      {
+        title: "技能",
+        dataIndex: "skills",
+        render: (v: string | null) => {
+          const skills = parseSkills(v);
+          if (!skills.length)
+            return <span style={{ color: "rgba(0,0,0,0.45)" }}>-</span>;
+          return (
+            <Flex wrap="wrap" gap={4}>
+              {skills.map((sk) => (
+                <Tag key={sk} style={{ marginRight: 0 }}>
+                  {sk}
+                </Tag>
+              ))}
+            </Flex>
+          );
+        },
+      },
+      {
+        title: "状态",
+        dataIndex: "active",
+        width: 100,
+        render: (v: number) =>
+          v ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>,
+      },
+      {
+        title: "创建时间",
+        dataIndex: "created_at",
+        width: 160,
+        render: (v: string) => formatDate(v),
+      },
+      {
+        title: "",
+        key: "actions",
+        width: 60,
+        align: "right",
+        render: (_: unknown, s: StaffRow) => (
+          <Dropdown
+            menu={{
+              items: [
+                { key: "edit", label: "编辑", onClick: () => openEdit(s) },
+                {
+                  key: "resetpw",
+                  label: "重置密码",
+                  onClick: () => openResetPw(s.staff_id),
+                },
+                { type: "divider" },
+                {
+                  key: "toggle",
+                  label: s.active ? "停用" : "启用",
+                  onClick: () => handleToggleActive(s),
+                },
+              ],
+            }}
+            trigger={["click"]}
+          >
+            <Button type="text" icon={<MoreOutlined />} size="small" />
+          </Dropdown>
+        ),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [token, groupMap],
+  );
+
+  const filteredRows = useMemo(() => {
+    const kw = search.trim().toLowerCase();
+    return kw
+      ? rows.filter((r) => r.staff_id.toLowerCase().includes(kw))
+      : rows;
+  }, [rows, search]);
 
   return (
-    <PageContainer width="wide">
-      <PageHeader
-        title="客服账号"
-        actions={
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            新建客服
-          </Button>
-        }
-      />
+    <div className="space-y-4 p-6">
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          客服账号
+        </Title>
+        <Button type="primary" onClick={() => setCreateOpen(true)}>
+          新建客服
+        </Button>
+      </Flex>
 
-      {loadError && (
-        <Alert variant="destructive" className="mb-4">
-          {loadError}
-        </Alert>
-      )}
+      {loadError && <Alert type="error" showIcon title={loadError} />}
 
       {loading ? (
-        <SkeletonRows />
+        <Card>
+          <Skeleton active paragraph={{ rows: 6 }} />
+        </Card>
       ) : (
-        <DataTable
-          columns={columns}
-          data={rows}
-          toolbar={(t) => (
-            <DataTableToolbar
-              table={t}
-              searchColumn="staff_id"
+        <Card>
+          <Flex style={{ marginBottom: 12 }}>
+            <Input.Search
               placeholder="搜索 staff_id…"
+              allowClear
+              style={{ width: 240 }}
+              onChange={(e) => setSearch(e.target.value)}
             />
-          )}
-        />
+          </Flex>
+          <Table<StaffRow>
+            rowKey="staff_id"
+            size="middle"
+            columns={columns}
+            dataSource={filteredRows}
+            pagination={{ pageSize: 20, showSizeChanger: true }}
+            locale={{ emptyText: "暂无客服" }}
+          />
+        </Card>
       )}
 
       {token && (
         <>
-          <CreateSheet
+          <CreateDrawer
             open={createOpen}
             onOpenChange={setCreateOpen}
             token={token}
             onSuccess={reload}
           />
-          <EditSheet
+          <EditDrawer
             open={editOpen}
             onOpenChange={setEditOpen}
             staff={editTarget}
@@ -738,7 +558,7 @@ export function StaffAccountsRoute() {
             token={token}
             onSuccess={reload}
           />
-          <ResetPasswordDialog
+          <ResetPasswordModal
             open={resetPwOpen}
             onOpenChange={setResetPwOpen}
             staffId={resetPwTarget}
@@ -746,6 +566,6 @@ export function StaffAccountsRoute() {
           />
         </>
       )}
-    </PageContainer>
+    </div>
   );
 }

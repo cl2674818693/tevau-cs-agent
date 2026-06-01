@@ -1,11 +1,24 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import type { ColumnDef } from "@tanstack/react-table";
+import { MoreOutlined } from "@ant-design/icons";
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  DatePicker,
+  Drawer,
+  Dropdown,
+  Flex,
+  Form,
+  Input,
+  Skeleton,
+  Table,
+  TimePicker,
+  Typography,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { format } from "date-fns";
-import { MoreHorizontal } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { toast } from "sonner";
-import * as z from "zod";
+import dayjs, { type Dayjs } from "dayjs";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   createShift,
@@ -14,520 +27,160 @@ import {
   patchShift,
   type Shift,
 } from "../../api/adminShifts";
-import { DataTable } from "../../components/admin/data-table/DataTable";
-import { DataTableColumnHeader } from "../../components/admin/data-table/DataTableColumnHeader";
-import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
-import { Alert } from "../../components/ui/alert";
-import { Button } from "../../components/ui/button";
-import { DatePicker } from "../../components/ui/date-picker";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../../components/ui/dropdown-menu";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "../../components/ui/form";
-import { Input } from "../../components/ui/input";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import {
-  Sheet,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "../../components/ui/sheet";
-import { Skeleton } from "../../components/ui/skeleton";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-// ── Schema ──────────────────────────────────────────────────────────────────
+const { Title } = Typography;
 
-const shiftSchema = z.object({
-  staff_id: z.string().min(1, "staff_id 必填"),
-  start_date: z.date(),
-  start_time: z.string().regex(/^\d{2}:\d{2}$/, "格式 HH:mm"),
-  end_date: z.date(),
-  end_time: z.string().regex(/^\d{2}:\d{2}$/, "格式 HH:mm"),
-});
-type ShiftFormValues = z.infer<typeof shiftSchema>;
+type FormValues = {
+  staff_id: string;
+  start_date: Dayjs;
+  start_time: Dayjs;
+  end_date: Dayjs;
+  end_time: Dayjs;
+};
 
-/** Build a UTC datetime string "YYYY-MM-DD HH:MM:SS" from date + time parts */
-function buildDatetime(date: Date, time: string): string {
-  return `${format(date, "yyyy-MM-dd")} ${time}:00`;
+/** Build a UTC datetime string "YYYY-MM-DD HH:MM:SS" from antd date + time */
+function buildDatetime(date: Dayjs, time: Dayjs): string {
+  return `${date.format("YYYY-MM-DD")} ${time.format("HH:mm")}:00`;
 }
 
-// ── Sheets ───────────────────────────────────────────────────────────────────
+function parseShiftDatetime(dt: string): { date: Dayjs; time: Dayjs } {
+  // "YYYY-MM-DD HH:MM:SS" 后端返回 UTC；不引入 dayjs utc 插件，
+  // 把字符串补 Z 后用 Date 解析，再走 dayjs 包装供 DatePicker/TimePicker 使用。
+  // 显示按本地时区——与表单 buildDatetime 写回的格式一致（双向对齐）。
+  const d = new Date(dt.replace(" ", "T") + (dt.endsWith("Z") ? "" : "Z"));
+  const wrapped = dayjs(d);
+  return { date: wrapped, time: wrapped };
+}
 
-function ShiftSheet({
+/** 创建 + 编辑共用一个 Drawer：editing=null 即新建 */
+function ShiftDrawer({
   open,
   onOpenChange,
+  editing,
   token,
   onSuccess,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  editing: Shift | null;
   token: string;
   onSuccess: () => void;
 }) {
-  const form = useForm<ShiftFormValues>({
-    resolver: zodResolver(shiftSchema),
-    defaultValues: {
-      staff_id: "",
-      start_time: "09:00",
-      end_time: "18:00",
-    },
-  });
+  const [form] = Form.useForm<FormValues>();
+  const { message } = App.useApp();
 
   useEffect(() => {
     if (open) {
-      form.reset({
-        staff_id: "",
-        start_time: "09:00",
-        end_time: "18:00",
-        start_date: undefined,
-        end_date: undefined,
-      });
+      if (editing) {
+        const s = parseShiftDatetime(editing.start_at);
+        const e = parseShiftDatetime(editing.end_at);
+        form.setFieldsValue({
+          staff_id: editing.staff_id,
+          start_date: s.date,
+          start_time: s.time,
+          end_date: e.date,
+          end_time: e.time,
+        });
+      } else {
+        form.setFieldsValue({
+          staff_id: "",
+          start_date: dayjs(),
+          start_time: dayjs("09:00", "HH:mm"),
+          end_date: dayjs(),
+          end_time: dayjs("18:00", "HH:mm"),
+        });
+      }
     }
-  }, [open, form]);
+  }, [open, editing, form]);
 
-  async function onSubmit(values: ShiftFormValues) {
+  async function onSubmit(values: FormValues) {
     try {
-      await createShift(token, {
+      const payload = {
         staff_id: values.staff_id,
         start_at: buildDatetime(values.start_date, values.start_time),
         end_at: buildDatetime(values.end_date, values.end_time),
-      });
-      toast.success("排班已创建");
+      };
+      if (editing) {
+        await patchShift(token, editing.id, payload);
+        message.success("排班已更新");
+      } else {
+        await createShift(token, payload);
+        message.success("排班已创建");
+      }
       onOpenChange(false);
       onSuccess();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "创建失败");
+      message.error(err instanceof Error ? err.message : "保存失败");
     }
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex flex-col gap-0 p-0">
-        <SheetHeader className="border-b px-6 py-4">
-          <SheetTitle>新建排班</SheetTitle>
-        </SheetHeader>
-
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex flex-1 flex-col overflow-y-auto"
-          >
-            <div className="flex-1 space-y-5 px-6 py-5">
-              <FormField
-                control={form.control}
-                name="staff_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Staff ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="staff_id" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="start_date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>开始日期</FormLabel>
-                    <FormControl>
-                      <DatePicker
-                        date={field.value}
-                        onChange={field.onChange}
-                        placeholder="选择开始日期"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="start_time"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>开始时间（UTC，HH:mm）</FormLabel>
-                    <FormControl>
-                      <Input placeholder="09:00" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="end_date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>结束日期</FormLabel>
-                    <FormControl>
-                      <DatePicker
-                        date={field.value}
-                        onChange={field.onChange}
-                        placeholder="选择结束日期"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="end_time"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>结束时间（UTC，HH:mm）</FormLabel>
-                    <FormControl>
-                      <Input placeholder="18:00" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <SheetFooter className="border-t px-6 py-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
-                取消
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                创建
-              </Button>
-            </SheetFooter>
-          </form>
-        </Form>
-      </SheetContent>
-    </Sheet>
+    <Drawer
+      title={editing ? `编辑排班 #${editing.id}` : "新建排班"}
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="default"
+    >
+      <Form form={form} layout="vertical" onFinish={onSubmit}>
+        <Form.Item
+          name="staff_id"
+          label="Staff ID"
+          rules={[{ required: true, message: "staff_id 必填" }]}
+        >
+          <Input placeholder="staff_id" />
+        </Form.Item>
+        <Form.Item
+          name="start_date"
+          label="开始日期"
+          rules={[{ required: true }]}
+        >
+          <DatePicker style={{ width: "100%" }} placeholder="选择开始日期" />
+        </Form.Item>
+        <Form.Item
+          name="start_time"
+          label="开始时间（HH:mm）"
+          rules={[{ required: true }]}
+        >
+          <TimePicker format="HH:mm" style={{ width: "100%" }} />
+        </Form.Item>
+        <Form.Item
+          name="end_date"
+          label="结束日期"
+          rules={[{ required: true }]}
+        >
+          <DatePicker style={{ width: "100%" }} placeholder="选择结束日期" />
+        </Form.Item>
+        <Form.Item
+          name="end_time"
+          label="结束时间（HH:mm）"
+          rules={[{ required: true }]}
+        >
+          <TimePicker format="HH:mm" style={{ width: "100%" }} />
+        </Form.Item>
+        <Form.Item style={{ marginBottom: 0 }}>
+          <Flex justify="flex-end" gap="small">
+            <Button onClick={() => onOpenChange(false)}>取消</Button>
+            <Button type="primary" htmlType="submit">
+              {editing ? "保存" : "创建"}
+            </Button>
+          </Flex>
+        </Form.Item>
+      </Form>
+    </Drawer>
   );
 }
-
-// ── Edit Sheet ───────────────────────────────────────────────────────────────
-
-function parseShiftDatetime(dt: string): { date: Date; time: string } {
-  // "YYYY-MM-DD HH:MM:SS" or ISO
-  const normalized = dt.replace(" ", "T").replace(/Z?$/, "Z");
-  const d = new Date(normalized);
-  return {
-    date: d,
-    time: `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`,
-  };
-}
-
-function EditShiftSheet({
-  shift,
-  open,
-  onOpenChange,
-  token,
-  onSuccess,
-}: {
-  shift: Shift;
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  token: string;
-  onSuccess: () => void;
-}) {
-  const startParsed = parseShiftDatetime(shift.start_at);
-  const endParsed = parseShiftDatetime(shift.end_at);
-
-  const form = useForm<ShiftFormValues>({
-    resolver: zodResolver(shiftSchema),
-    defaultValues: {
-      staff_id: shift.staff_id,
-      start_date: startParsed.date,
-      start_time: startParsed.time,
-      end_date: endParsed.date,
-      end_time: endParsed.time,
-    },
-  });
-
-  useEffect(() => {
-    if (open) {
-      const s = parseShiftDatetime(shift.start_at);
-      const e = parseShiftDatetime(shift.end_at);
-      form.reset({
-        staff_id: shift.staff_id,
-        start_date: s.date,
-        start_time: s.time,
-        end_date: e.date,
-        end_time: e.time,
-      });
-    }
-  }, [open, shift, form]);
-
-  async function onSubmit(values: ShiftFormValues) {
-    try {
-      await patchShift(token, shift.id, {
-        staff_id: values.staff_id,
-        start_at: buildDatetime(values.start_date, values.start_time),
-        end_at: buildDatetime(values.end_date, values.end_time),
-      });
-      toast.success("排班已更新");
-      onOpenChange(false);
-      onSuccess();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "更新失败");
-    }
-  }
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex flex-col gap-0 p-0">
-        <SheetHeader className="border-b px-6 py-4">
-          <SheetTitle>编辑排班 #{shift.id}</SheetTitle>
-        </SheetHeader>
-
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex flex-1 flex-col overflow-y-auto"
-          >
-            <div className="flex-1 space-y-5 px-6 py-5">
-              <FormField
-                control={form.control}
-                name="staff_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Staff ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="staff_id" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="start_date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>开始日期</FormLabel>
-                    <FormControl>
-                      <DatePicker
-                        date={field.value}
-                        onChange={field.onChange}
-                        placeholder="选择开始日期"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="start_time"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>开始时间（UTC，HH:mm）</FormLabel>
-                    <FormControl>
-                      <Input placeholder="09:00" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="end_date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>结束日期</FormLabel>
-                    <FormControl>
-                      <DatePicker
-                        date={field.value}
-                        onChange={field.onChange}
-                        placeholder="选择结束日期"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="end_time"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>结束时间（UTC，HH:mm）</FormLabel>
-                    <FormControl>
-                      <Input placeholder="18:00" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <SheetFooter className="border-t px-6 py-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
-                取消
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                保存
-              </Button>
-            </SheetFooter>
-          </form>
-        </Form>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-// ── Columns ──────────────────────────────────────────────────────────────────
-
-function buildColumns(
-  token: string,
-  onRefresh: () => void,
-  onEdit: (s: Shift) => void,
-): ColumnDef<Shift>[] {
-  return [
-    {
-      accessorKey: "id",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="ID" />
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "staff_id",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Staff ID" />
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "start_at",
-      header: "开始时间",
-      cell: ({ row }) => {
-        try {
-          return format(new Date(row.original.start_at.replace(" ", "T") + "Z"), "yyyy-MM-dd HH:mm");
-        } catch {
-          return row.original.start_at;
-        }
-      },
-      enableSorting: false,
-    },
-    {
-      accessorKey: "end_at",
-      header: "结束时间",
-      cell: ({ row }) => {
-        try {
-          return format(new Date(row.original.end_at.replace(" ", "T") + "Z"), "yyyy-MM-dd HH:mm");
-        } catch {
-          return row.original.end_at;
-        }
-      },
-      enableSorting: false,
-    },
-    {
-      accessorKey: "created_at",
-      header: "创建时间",
-      cell: ({ row }) => {
-        try {
-          return format(new Date(row.original.created_at), "yyyy-MM-dd HH:mm");
-        } catch {
-          return row.original.created_at;
-        }
-      },
-      enableSorting: false,
-    },
-    {
-      id: "actions",
-      header: () => null,
-      cell: ({ row }) => {
-        const s = row.original;
-
-        async function handleDelete() {
-          if (!confirm(`确认删除排班 #${s.id}（${s.staff_id}）？此操作不可撤销。`)) return;
-          try {
-            await deleteShift(token, s.id);
-            toast.success("已删除");
-            onRefresh();
-          } catch (err) {
-            toast.error(err instanceof Error ? err.message : "删除失败");
-          }
-        }
-
-        return (
-          <div className="flex justify-end">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                  <span className="sr-only">操作</span>
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEdit(s)}>
-                  编辑
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={handleDelete}
-                >
-                  删除
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        );
-      },
-    },
-  ];
-}
-
-// ── Loading skeleton ─────────────────────────────────────────────────────────
-
-function SkeletonRows() {
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <Skeleton key={i} className="h-10 w-full rounded-md" />
-      ))}
-    </div>
-  );
-}
-
-// ── Route ────────────────────────────────────────────────────────────────────
 
 export function ShiftsRoute() {
   const { token, role } = useStaffSession();
+  const { message, modal } = App.useApp();
   const allowed = role === "supervisor" || role === "admin";
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [editShift, setEditShift] = useState<Shift | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editing, setEditing] = useState<Shift | null>(null);
+  const [search, setSearch] = useState("");
 
   function reload() {
     if (!token) return;
@@ -551,61 +204,168 @@ export function ShiftsRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, role]);
 
-  const columns = token ? buildColumns(token, reload, setEditShift) : [];
+  function openCreate() {
+    setEditing(null);
+    setDrawerOpen(true);
+  }
+
+  function openEdit(s: Shift) {
+    setEditing(s);
+    setDrawerOpen(true);
+  }
+
+  function handleDelete(s: Shift) {
+    modal.confirm({
+      title: `确认删除排班 #${s.id}？`,
+      content: `staff_id: ${s.staff_id}（此操作不可撤销）`,
+      okText: "删除",
+      okType: "danger",
+      cancelText: "取消",
+      onOk: async () => {
+        if (!token) return;
+        try {
+          await deleteShift(token, s.id);
+          message.success("已删除");
+          reload();
+        } catch (err) {
+          message.error(err instanceof Error ? err.message : "删除失败");
+        }
+      },
+    });
+  }
+
+  const columns: ColumnsType<Shift> = useMemo(
+    () => [
+      {
+        title: "ID",
+        dataIndex: "id",
+        width: 80,
+        sorter: (a, b) => a.id - b.id,
+      },
+      {
+        title: "Staff ID",
+        dataIndex: "staff_id",
+        sorter: (a, b) => a.staff_id.localeCompare(b.staff_id),
+      },
+      {
+        title: "开始时间",
+        dataIndex: "start_at",
+        render: (v: string) => {
+          try {
+            return format(new Date(v.replace(" ", "T") + "Z"), "yyyy-MM-dd HH:mm");
+          } catch {
+            return v;
+          }
+        },
+      },
+      {
+        title: "结束时间",
+        dataIndex: "end_at",
+        render: (v: string) => {
+          try {
+            return format(new Date(v.replace(" ", "T") + "Z"), "yyyy-MM-dd HH:mm");
+          } catch {
+            return v;
+          }
+        },
+      },
+      {
+        title: "创建时间",
+        dataIndex: "created_at",
+        render: (v: string) => {
+          try {
+            return format(new Date(v), "yyyy-MM-dd HH:mm");
+          } catch {
+            return v;
+          }
+        },
+      },
+      {
+        title: "",
+        key: "actions",
+        width: 60,
+        align: "right",
+        render: (_: unknown, s: Shift) => (
+          <Dropdown
+            menu={{
+              items: [
+                { key: "edit", label: "编辑", onClick: () => openEdit(s) },
+                { type: "divider" },
+                {
+                  key: "delete",
+                  label: "删除",
+                  danger: true,
+                  onClick: () => handleDelete(s),
+                },
+              ],
+            }}
+            trigger={["click"]}
+          >
+            <Button type="text" icon={<MoreOutlined />} size="small" />
+          </Dropdown>
+        ),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [token],
+  );
+
+  const filteredShifts = useMemo(() => {
+    const kw = search.trim().toLowerCase();
+    return kw
+      ? shifts.filter((s) => s.staff_id.toLowerCase().includes(kw))
+      : shifts;
+  }, [shifts, search]);
 
   return (
-    <PageContainer width="wide">
-      <PageHeader
-        title="排班"
-        actions={
-          allowed && (
-            <Button size="sm" onClick={() => setSheetOpen(true)}>
-              新建排班
-            </Button>
-          )
-        }
-      />
+    <div className="space-y-4 p-6">
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          排班
+        </Title>
+        {allowed && (
+          <Button type="primary" onClick={openCreate}>
+            新建排班
+          </Button>
+        )}
+      </Flex>
 
-      {loadError && (
-        <Alert variant="destructive" className="mb-4">
-          {loadError}
-        </Alert>
-      )}
+      {loadError && <Alert type="error" showIcon title={loadError} />}
 
       {loading ? (
-        <SkeletonRows />
+        <Card>
+          <Skeleton active paragraph={{ rows: 5 }} />
+        </Card>
       ) : (
-        <DataTable
-          columns={columns}
-          data={shifts}
-          toolbar={(t) => (
-            <DataTableToolbar
-              table={t}
-              searchColumn="staff_id"
+        <Card>
+          <Flex style={{ marginBottom: 12 }}>
+            <Input.Search
               placeholder="按 staff_id 搜索…"
+              allowClear
+              style={{ width: 240 }}
+              onChange={(e) => setSearch(e.target.value)}
             />
-          )}
-        />
+          </Flex>
+          <Table<Shift>
+            rowKey="id"
+            size="middle"
+            columns={columns}
+            dataSource={filteredShifts}
+            pagination={{ pageSize: 20, showSizeChanger: true }}
+            locale={{ emptyText: "暂无排班" }}
+          />
+        </Card>
       )}
 
       {token && allowed && (
-        <ShiftSheet
-          open={sheetOpen}
-          onOpenChange={setSheetOpen}
+        <ShiftDrawer
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          editing={editing}
           token={token}
           onSuccess={reload}
         />
       )}
-
-      {token && allowed && editShift && (
-        <EditShiftSheet
-          shift={editShift}
-          open={!!editShift}
-          onOpenChange={(v) => { if (!v) setEditShift(null); }}
-          token={token}
-          onSuccess={reload}
-        />
-      )}
-    </PageContainer>
+    </div>
   );
 }
