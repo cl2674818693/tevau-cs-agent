@@ -14,9 +14,10 @@ export type DashboardOverview = {
   failed_turns: number;
 };
 
-export async function getOverview(token: string, opts?: { from?: string }): Promise<DashboardOverview> {
+export async function getOverview(token: string, opts?: { from?: string; to?: string }): Promise<DashboardOverview> {
   const qs = new URLSearchParams();
   if (opts?.from) qs.set("from", opts.from);
+  if (opts?.to) qs.set("to", opts.to);
   const r = await staffFetch(`/admin/api/v1/dashboard/overview?${qs.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
