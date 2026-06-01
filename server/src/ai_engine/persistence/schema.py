@@ -414,17 +414,3 @@ daily_token_usage_by_model = Table(
     Column("output_tokens", Integer, nullable=False, server_default="0"),
 )
 
-# 自定义报表定义（M3c §5.5.c）
-report_definitions = Table(
-    "report_definitions",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("name", String(128), nullable=False),
-    Column("source", String(64), nullable=False),
-    Column("dims_json", Text, nullable=False, server_default="[]"),
-    Column("filters_json", Text, nullable=False, server_default="[]"),
-    Column("metrics_json", Text, nullable=False, server_default='[{"op":"count","col":"*","alias":"n"}]'),
-    Column("owner", String(64)),
-    Column("created_at", String(32), nullable=False),
-)
-Index("idx_reports_owner", report_definitions.c.owner)

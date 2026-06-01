@@ -14,7 +14,6 @@ import { PromptsRoute } from "./routes/admin/PromptsRoute";
 import { ShiftsRoute } from "./routes/admin/ShiftsRoute";
 import { QaReviewRoute } from "./routes/admin/QaReviewRoute";
 import { RbacRoute } from "./routes/admin/RbacRoute";
-import { ReportsRoute } from "./routes/admin/ReportsRoute";
 import { RoutingRulesRoute } from "./routes/admin/RoutingRulesRoute";
 import { SlaRoute } from "./routes/admin/SlaRoute";
 import { StaffAccountsRoute } from "./routes/admin/StaffAccountsRoute";
@@ -72,7 +71,6 @@ export default function App() {
             <Route path="/admin/prompt-editor" element={<PromptEditorRoute />} />
             <Route path="/admin/knowledge" element={<KnowledgeRoute />} />
             <Route path="/admin/guardrails" element={<GuardrailsRoute />} />
-            <Route path="/admin/reports" element={<ReportsRoute />} />
             <Route path="/403" element={<ForbiddenRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

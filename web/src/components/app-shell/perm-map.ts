@@ -17,5 +17,4 @@ export const PATH_TO_PERM: Record<string, string> = {
   "/admin/prompt-editor": "admin.prompt_editor",
   "/admin/knowledge": "admin.knowledge",
   "/admin/guardrails": "admin.guardrails",
-  "/admin/reports": "admin.reports",
 };

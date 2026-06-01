@@ -1,6 +1,6 @@
 import {
   Activity, BarChart3, BookOpen, CalendarClock, ClipboardCheck,
-  FileEdit, FileSpreadsheet, Headphones, Inbox, KeySquare,
+  FileEdit, Headphones, Inbox, KeySquare,
   LayoutDashboard, Lightbulb, type LucideIcon, Route, ScrollText,
   Shield, ShieldAlert, ShieldCheck, SlidersHorizontal, Ticket,
   Timer, UserCog, Users, Users2, Wallet,
@@ -40,7 +40,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/sla", label: "SLA", icon: Timer, roles: ["supervisor", "admin"] },
       { to: "/admin/performance", label: "客服绩效", icon: UserCog, roles: ["supervisor", "admin"] },
       { to: "/admin/cost", label: "成本大盘", icon: Wallet, roles: ["engineer", "manager", "admin"] },
-      { to: "/admin/reports", label: "自定义报表", icon: FileSpreadsheet, roles: ["supervisor", "manager", "admin"] },
     ],
   },
   {
