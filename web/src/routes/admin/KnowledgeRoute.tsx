@@ -1,156 +1,432 @@
+import { zodResolver } from "@hookform/resolvers/zod";
+import type { ColumnDef } from "@tanstack/react-table";
+import { format } from "date-fns";
+import { MoreHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
+import * as z from "zod";
 
 import {
-  createKnowledge, deleteKnowledge, type KnowledgeEntry, listKnowledge, publishKnowledge,
+  createKnowledge,
+  deleteKnowledge,
+  type KnowledgeEntry,
+  listKnowledge,
+  publishKnowledge,
 } from "../../api/adminKnowledge";
+import { DataTable } from "../../components/admin/data-table/DataTable";
+import { DataTableColumnHeader } from "../../components/admin/data-table/DataTableColumnHeader";
+import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
 import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "../../components/ui/form";
 import { Input } from "../../components/ui/input";
 import { PageContainer, PageHeader } from "../../components/ui/page";
-import { LoadingState } from "../../components/ui/spinner";
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "../../components/ui/sheet";
+import { Skeleton } from "../../components/ui/skeleton";
+import { Textarea } from "../../components/ui/textarea";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-const TYPES = ["api_doc", "error_code", "faq"];
+// ── Constants ────────────────────────────────────────────────────────────────
 
-function EntryForm({ onCreated, onError }: {
-  onCreated: () => void; onError: (m: string) => void;
+const TYPES = ["faq", "api_doc", "error_code"] as const;
+
+// ── Schema ───────────────────────────────────────────────────────────────────
+
+const knowledgeSchema = z.object({
+  type: z.string().min(1, "类型必填"),
+  key: z.string().min(1, "Key 必填"),
+  title: z.string().min(1, "标题必填"),
+  content: z.string().optional(),
+  locale: z.string().optional(),
+});
+type KnowledgeFormValues = z.infer<typeof knowledgeSchema>;
+
+// ── Sheet (create) ────────────────────────────────────────────────────────────
+
+function KnowledgeSheet({
+  open,
+  onOpenChange,
+  token,
+  onSuccess,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  token: string;
+  onSuccess: () => void;
 }) {
-  const { token } = useStaffSession();
-  const [type, setType] = useState("faq");
-  const [key, setKey] = useState("");
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  async function submit() {
-    if (!token || !key || !title) return;
+  const form = useForm<KnowledgeFormValues>({
+    resolver: zodResolver(knowledgeSchema),
+    defaultValues: { type: "faq", key: "", title: "", content: "", locale: "" },
+  });
+
+  useEffect(() => {
+    if (open) {
+      form.reset({ type: "faq", key: "", title: "", content: "", locale: "" });
+    }
+  }, [open, form]);
+
+  async function onSubmit(values: KnowledgeFormValues) {
     try {
-      await createKnowledge(token, { type, key, title, content });
-      setKey(""); setTitle(""); setContent("");
-      onCreated();
-    } catch (e) { onError(e instanceof Error ? e.message : "创建失败"); }
+      await createKnowledge(token, {
+        type: values.type,
+        key: values.key,
+        title: values.title,
+        content: values.content ?? "",
+        locale: values.locale || undefined,
+      });
+      toast.success("已创建草稿");
+      onOpenChange(false);
+      onSuccess();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "创建失败");
+    }
   }
+
   return (
-    <Card>
-      <div className="flex flex-col gap-2 px-page py-block-sm">
-        <div className="flex flex-wrap items-end gap-2">
-          <select value={type} onChange={(e) => setType(e.target.value)}
-            className="rounded border border-line px-2 py-1 text-body2">
-            {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <Input placeholder="key（错误码/路径/slug）" value={key} className="w-56"
-            onChange={(e) => setKey(e.target.value)} />
-          <Input placeholder="标题" value={title} className="w-72"
-            onChange={(e) => setTitle(e.target.value)} />
-          <Button size="md" onClick={submit} disabled={!key || !title}>新建草稿</Button>
-        </div>
-        <textarea className="rounded border border-line px-2 py-1 font-mono text-body3"
-          rows={5} placeholder="内容（Markdown）" value={content}
-          aria-label="内容"
-          onChange={(e) => setContent(e.target.value)} />
-      </div>
-    </Card>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex flex-col gap-0 p-0">
+        <SheetHeader className="border-b px-6 py-4">
+          <SheetTitle>新建知识条目</SheetTitle>
+        </SheetHeader>
+
+        <Form {...form}>
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="flex flex-1 flex-col overflow-y-auto"
+          >
+            <div className="flex-1 space-y-5 px-6 py-5">
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>类型</FormLabel>
+                    <FormControl>
+                      <select
+                        {...field}
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        {TYPES.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="key"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Key</FormLabel>
+                    <FormControl>
+                      <Input placeholder="错误码 / 路径 / slug" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>标题</FormLabel>
+                    <FormControl>
+                      <Input placeholder="条目标题" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="locale"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>语言（可选）</FormLabel>
+                    <FormControl>
+                      <Input placeholder="zh / en / …" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="content"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>内容（Markdown）</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Markdown 内容"
+                        rows={8}
+                        className="font-mono text-sm"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <SheetFooter className="border-t px-6 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                取消
+              </Button>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                创建草稿
+              </Button>
+            </SheetFooter>
+          </form>
+        </Form>
+      </SheetContent>
+    </Sheet>
   );
 }
 
-function EntryRow({ e, onChanged, onError }: {
-  e: KnowledgeEntry; onChanged: () => void; onError: (m: string) => void;
-}) {
-  const { token } = useStaffSession();
-  async function pub() {
-    if (!token) return;
-    try { await publishKnowledge(token, e.id); onChanged(); }
-    catch (err) { onError(err instanceof Error ? err.message : "发布失败"); }
-  }
-  async function rm() {
-    if (!token) return;
-    try { await deleteKnowledge(token, e.id); onChanged(); }
-    catch (err) { onError(err instanceof Error ? err.message : "删除失败"); }
-  }
+// ── Columns ───────────────────────────────────────────────────────────────────
+
+function buildColumns(
+  token: string,
+  onRefresh: () => void,
+): ColumnDef<KnowledgeEntry>[] {
+  return [
+    {
+      accessorKey: "type",
+      header: "类型",
+      cell: ({ row }) => (
+        <Badge variant="neutral" className="font-mono text-xs">
+          {row.original.type}
+        </Badge>
+      ),
+      enableSorting: false,
+    },
+    {
+      accessorKey: "key",
+      header: "Key",
+      cell: ({ row }) => (
+        <span className="font-mono text-sm">{row.original.key}</span>
+      ),
+      enableSorting: false,
+    },
+    {
+      accessorKey: "title",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="标题" />
+      ),
+      enableSorting: true,
+    },
+    {
+      accessorKey: "status",
+      header: "状态",
+      cell: ({ row }) => {
+        const s = row.original.status;
+        return s === "published" ? (
+          <Badge variant="success">已发布</Badge>
+        ) : (
+          <Badge variant="neutral">草稿</Badge>
+        );
+      },
+      enableSorting: false,
+    },
+    {
+      accessorKey: "source_gap_signal",
+      header: "来源",
+      cell: ({ row }) => row.original.source_gap_signal ?? "—",
+      enableSorting: false,
+    },
+    {
+      accessorKey: "updated_at",
+      header: "更新时间",
+      cell: ({ row }) => {
+        try {
+          return format(new Date(row.original.updated_at), "yyyy-MM-dd HH:mm");
+        } catch {
+          return row.original.updated_at;
+        }
+      },
+      enableSorting: false,
+    },
+    {
+      id: "actions",
+      header: () => null,
+      cell: ({ row }) => {
+        const e = row.original;
+
+        async function handlePublish() {
+          try {
+            await publishKnowledge(token, e.id);
+            toast.success("已发布");
+            onRefresh();
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "发布失败");
+          }
+        }
+
+        async function handleDelete() {
+          if (!confirm(`确认删除"${e.title}"？此操作不可撤销。`)) return;
+          try {
+            await deleteKnowledge(token, e.id);
+            toast.success("已删除");
+            onRefresh();
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "删除失败");
+          }
+        }
+
+        return (
+          <div className="flex justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <span className="sr-only">操作</span>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {e.status === "draft" && (
+                  <DropdownMenuItem onClick={handlePublish}>
+                    发布
+                  </DropdownMenuItem>
+                )}
+                {e.status === "draft" && <DropdownMenuSeparator />}
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={handleDelete}
+                >
+                  删除
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        );
+      },
+    },
+  ];
+}
+
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+
+function SkeletonRows() {
   return (
-    <tr className="border-b border-line last:border-0">
-      <td className="px-3 py-2">{e.id}</td>
-      <td className="px-3 py-2">{e.type}</td>
-      <td className="px-3 py-2 text-ink-primary">{e.key}</td>
-      <td className="px-3 py-2 text-ink-secondary">{e.title}</td>
-      <td className="px-3 py-2">{e.status}</td>
-      <td className="px-3 py-2 text-ink-tertiary">{e.source_gap_signal ?? "—"}</td>
-      <td className="px-3 py-2">
-        <div className="flex gap-2">
-          {e.status === "draft" && <button className="text-brand" onClick={pub}>发布</button>}
-          <button className="text-status-error" onClick={rm}>删除</button>
-        </div>
-      </td>
-    </tr>
+    <div className="space-y-2">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Skeleton key={i} className="h-10 w-full rounded-md" />
+      ))}
+    </div>
   );
 }
 
-function EntriesTable({ entries, onChanged, onError }: {
-  entries: KnowledgeEntry[]; onChanged: () => void; onError: (m: string) => void;
-}) {
-  return (
-    <Card className="mt-3">
-      <table className="w-full text-body3">
-        <thead>
-          <tr className="border-b border-line text-ink-secondary">
-            <th className="px-3 py-2 text-left font-normal">ID</th>
-            <th className="px-3 py-2 text-left font-normal">类型</th>
-            <th className="px-3 py-2 text-left font-normal">key</th>
-            <th className="px-3 py-2 text-left font-normal">标题</th>
-            <th className="px-3 py-2 text-left font-normal">状态</th>
-            <th className="px-3 py-2 text-left font-normal">来源</th>
-            <th className="px-3 py-2 text-left font-normal">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.length === 0 && (
-            <tr><td colSpan={7} className="px-3 py-4 text-center text-ink-tertiary">无</td></tr>
-          )}
-          {entries.map((e) => <EntryRow key={e.id} e={e} onChanged={onChanged} onError={onError} />)}
-        </tbody>
-      </table>
-    </Card>
-  );
-}
+// ── Route ─────────────────────────────────────────────────────────────────────
 
 export function KnowledgeRoute() {
   const { token, role } = useStaffSession();
-  const allowed = role === "supervisor" || role === "engineer" || role === "admin";
-  const [filter, setFilter] = useState("");
+  const allowed =
+    role === "supervisor" || role === "engineer" || role === "admin";
+
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   function reload() {
     if (!token) return;
     setLoading(true);
-    listKnowledge(token, filter ? { type: filter } : undefined)
-      .then(setEntries).catch(() => setErr("加载失败")).finally(() => setLoading(false));
+    listKnowledge(token)
+      .then(setEntries)
+      .catch((e: unknown) =>
+        setLoadError(e instanceof Error ? e.message : "加载失败"),
+      )
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {
-    if (!token || !allowed) { setErr("需要主管/工程/管理员权限"); setLoading(false); return; }
+    if (!token || !allowed) {
+      setLoadError("需要主管 / 工程师 / 管理员权限");
+      setLoading(false);
+      return;
+    }
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, role, filter]);
+  }, [token, role]);
+
+  const columns = token ? buildColumns(token, reload) : [];
 
   return (
     <PageContainer width="wide">
-      <PageHeader title="知识库" />
-      {err && <Alert variant="error" className="mb-2">{err}</Alert>}
-      {allowed && <EntryForm onCreated={reload} onError={setErr} />}
-      {allowed && (
-        <Card className="mt-3">
-          <div className="flex items-end gap-2 px-page py-block-sm">
-            <select value={filter} onChange={(e) => setFilter(e.target.value)}
-              className="rounded border border-line px-2 py-1 text-body2">
-              <option value="">全部类型</option>
-              {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-        </Card>
+      <PageHeader
+        title="知识库"
+        actions={
+          allowed && (
+            <Button size="sm" onClick={() => setSheetOpen(true)}>
+              新建条目
+            </Button>
+          )
+        }
+      />
+
+      {loadError && (
+        <Alert variant="destructive" className="mb-4">
+          {loadError}
+        </Alert>
       )}
-      {loading ? <LoadingState /> : allowed && (
-        <EntriesTable entries={entries} onChanged={reload} onError={setErr} />
+
+      {loading ? (
+        <SkeletonRows />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={entries}
+          toolbar={(t) => (
+            <DataTableToolbar
+              table={t}
+              searchColumn="title"
+              placeholder="搜索标题…"
+            />
+          )}
+        />
+      )}
+
+      {token && allowed && (
+        <KnowledgeSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          token={token}
+          onSuccess={reload}
+        />
       )}
     </PageContainer>
   );
