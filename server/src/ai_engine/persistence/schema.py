@@ -214,34 +214,6 @@ sla_policies = Table(
     ),
 )
 
-# 质检评分卡模板（运营定义评分项 JSON）
-qa_scorecards = Table(
-    "qa_scorecards",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("name", String(128), nullable=False),
-    Column("items_json", Text, nullable=False),  # [{"key":"polite","label":"礼貌用语","weight":1}, ...]
-    Column("active", Integer, nullable=False, server_default="1"),
-    Column("created_at", String(32), nullable=False),
-)
-
-# 质检记录：reviewer 对一通会话按 scorecard 打分
-qa_reviews = Table(
-    "qa_reviews",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("conversation_id", Integer, nullable=False),
-    Column("reviewer_staff_id", String(64), nullable=False),
-    Column("scorecard_id", Integer, nullable=False),
-    Column("score", Integer, nullable=False),  # 0-100
-    Column("items_result_json", Text, nullable=False),  # {"polite":1,"accurate":0,...}
-    Column("tags", String(256)),  # 逗号分隔标签：violation,excellent,needs_improvement
-    Column("comment", Text),
-    Column("created_at", String(32), nullable=False),
-)
-Index("idx_qa_reviews_conv", qa_reviews.c.conversation_id)
-Index("idx_qa_reviews_reviewer", qa_reviews.c.reviewer_staff_id, qa_reviews.c.created_at)
-
 # 用户对人工客服的满意度评分（区别于 message_feedback 是对 AI 的 👍👎）
 agent_ratings = Table(
     "agent_ratings",
@@ -273,17 +245,6 @@ tool_policies = Table(
     Column("updated_at", String(32), nullable=False),
 )
 Index("ux_tool_policy_role", tool_policies.c.tool_name, tool_policies.c.role, unique=True)
-
-# 模型单价（M2 成本大盘用）。单价存"每千 token × 10000"，避免浮点 — 展示时除以 10000。
-model_pricing = Table(
-    "model_pricing",
-    metadata,
-    Column("model", String(64), primary_key=True),
-    Column("input_price_per_1k_x10000", Integer, nullable=False),
-    Column("output_price_per_1k_x10000", Integer, nullable=False),
-    Column("currency", String(8), nullable=False, server_default="USD"),
-    Column("updated_at", String(32), nullable=False),
-)
 
 # 客服分组（M3a §5.1.b）
 staff_groups = Table(

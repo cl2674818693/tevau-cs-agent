@@ -13,11 +13,8 @@ const { Title, Text } = Typography;
 const PERM_LABELS: Record<string, string> = {
   "admin.dashboard": "数据大盘",
   "admin.staff": "客服账号",
-  "admin.performance": "客服绩效",
-  "admin.qa": "会话质检",
   "admin.sla": "SLA 策略",
   "admin.tools": "工具策略",
-  "admin.cost": "成本大盘",
   "admin.audit": "操作审计",
   "admin.prompts": "Prompt 灰度",
   "admin.rbac": "角色权限",

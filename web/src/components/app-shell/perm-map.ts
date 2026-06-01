@@ -2,11 +2,8 @@
 export const PATH_TO_PERM: Record<string, string> = {
   "/admin/dashboard": "admin.dashboard",
   "/admin/staff": "admin.staff",
-  "/admin/performance": "admin.performance",
-  "/admin/qa": "admin.qa",
   "/admin/sla": "admin.sla",
   "/admin/tools": "admin.tools",
-  "/admin/cost": "admin.cost",
   "/admin/audit": "admin.audit",
   "/admin/prompts": "admin.prompts",
   "/admin/rbac": "admin.rbac",

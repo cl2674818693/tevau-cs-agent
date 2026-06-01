@@ -10,11 +10,8 @@ ROLES: list[str] = ["agent", "senior", "supervisor", "engineer", "manager", "adm
 PERMISSION_KEYS: list[str] = [
     "admin.dashboard",
     "admin.staff",
-    "admin.performance",
-    "admin.qa",
     "admin.sla",
     "admin.tools",
-    "admin.cost",
     "admin.audit",
     "admin.prompts",
     "admin.rbac",
@@ -31,15 +28,15 @@ _DEFAULT_MATRIX: dict[str, set[str]] = {
     "agent": set(),
     "senior": set(),
     "supervisor": {
-        "admin.dashboard", "admin.performance", "admin.qa", "admin.sla",
+        "admin.dashboard", "admin.sla",
         "admin.staff_groups", "admin.presence", "admin.shifts", "admin.routing",
         "admin.knowledge",
     },
     "engineer": {
-        "admin.tools", "admin.audit", "admin.cost",
+        "admin.tools", "admin.audit",
         "admin.prompt_editor", "admin.knowledge", "admin.guardrails",
     },
-    "manager": {"admin.dashboard", "admin.cost"},
+    "manager": {"admin.dashboard"},
     "admin": set(PERMISSION_KEYS),
 }
 

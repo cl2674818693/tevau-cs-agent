@@ -139,11 +139,13 @@ describe("AuditCenterRoute", () => {
 
     renderRoute();
 
-    await waitFor(() => expect(screen.getByText("时间")).toBeInTheDocument());
-    expect(screen.getByText("操作人")).toBeInTheDocument();
-    expect(screen.getByText("动作")).toBeInTheDocument();
-    expect(screen.getByText("对象")).toBeInTheDocument();
-    expect(screen.getByText("详情")).toBeInTheDocument();
+    // antd Table 加 scroll={{x}} 后表头会渲染两份（measure + visible），
+    // 用 getAllByText 取至少一次即可。
+    await waitFor(() => expect(screen.getAllByText("时间").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("操作人").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("动作").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("对象").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("详情").length).toBeGreaterThan(0);
   });
 
   it("shows empty state message when no data", async () => {

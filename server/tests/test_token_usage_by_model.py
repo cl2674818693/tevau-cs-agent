@@ -27,16 +27,3 @@ async def test_same_subject_two_models_keep_separate(temp_db_url):
     by = {r["model"]: r for r in rows}
     assert int(by["claude-sonnet-4-6"]["input_tokens"]) == 1000
     assert int(by["claude-haiku-4-5"]["input_tokens"]) == 200
-
-
-async def test_admin_cost_usage_reads_by_model_table(temp_db_url):
-    from ai_engine.governance.token_budget import check_and_record
-    from ai_engine.persistence import admin_cost
-    from ai_engine.persistence.db import init_db
-    await init_db()
-    await check_and_record("b", "BU3", 1000, 500, model="claude-sonnet-4-6")
-    await check_and_record("b", "BU3", 200, 100, model="claude-haiku-4-5")
-    rows = await admin_cost.usage_by_model(None, None)
-    by = {r["model"]: r for r in rows}
-    assert by["claude-sonnet-4-6"]["input_tokens"] == 1000
-    assert by["claude-haiku-4-5"]["input_tokens"] == 200

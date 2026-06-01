@@ -31,7 +31,7 @@ describe("AppSidebar", () => {
     );
     expect(screen.getByText("工作台")).toBeInTheDocument();
     expect(screen.getByText("运营看板")).toBeInTheDocument();
-    expect(screen.getByText("质检与审计")).toBeInTheDocument();
+    expect(screen.getByText("审计")).toBeInTheDocument();
     expect(screen.getByText("AI 配置")).toBeInTheDocument();
     expect(screen.getByText("坐席与权限")).toBeInTheDocument();
   });

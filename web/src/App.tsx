@@ -4,7 +4,6 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppShell } from "./components/app-shell/AppShell";
 import { ForbiddenRoute } from "./routes/ForbiddenRoute";
 import { AuditCenterRoute } from "./routes/admin/AuditCenterRoute";
-import { CostRoute } from "./routes/admin/CostRoute";
 import { DashboardRoute } from "./routes/admin/DashboardRoute";
 import { GuardrailsRoute } from "./routes/admin/GuardrailsRoute";
 import { KnowledgeRoute } from "./routes/admin/KnowledgeRoute";
@@ -12,13 +11,11 @@ import { PresenceRoute } from "./routes/admin/PresenceRoute";
 import { PromptEditorRoute } from "./routes/admin/PromptEditorRoute";
 import { PromptsRoute } from "./routes/admin/PromptsRoute";
 import { ShiftsRoute } from "./routes/admin/ShiftsRoute";
-import { QaReviewRoute } from "./routes/admin/QaReviewRoute";
 import { RbacRoute } from "./routes/admin/RbacRoute";
 import { RoutingRulesRoute } from "./routes/admin/RoutingRulesRoute";
 import { SlaRoute } from "./routes/admin/SlaRoute";
 import { StaffAccountsRoute } from "./routes/admin/StaffAccountsRoute";
 import { StaffGroupsRoute } from "./routes/admin/StaffGroupsRoute";
-import { StaffPerformanceRoute } from "./routes/admin/StaffPerformanceRoute";
 import { ToolPoliciesRoute } from "./routes/admin/ToolPoliciesRoute";
 import { BuLoginRoute } from "./routes/BuLoginRoute";
 import { ChatRoute } from "./routes/ChatRoute";
@@ -58,11 +55,7 @@ export default function App() {
             <Route path="/admin/sla" element={<SlaRoute />} />
             <Route path="/admin/audit" element={<AuditCenterRoute />} />
             <Route path="/admin/dashboard" element={<DashboardRoute />} />
-            <Route path="/admin/qa" element={<QaReviewRoute />} />
-            <Route path="/admin/performance" element={<StaffPerformanceRoute />} />
-            <Route path="/admin/performance/:staffId" element={<StaffPerformanceRoute />} />
             <Route path="/admin/tools" element={<ToolPoliciesRoute />} />
-            <Route path="/admin/cost" element={<CostRoute />} />
             <Route path="/admin/rbac" element={<RbacRoute />} />
             <Route path="/admin/staff-groups" element={<StaffGroupsRoute />} />
             <Route path="/admin/presence" element={<PresenceRoute />} />
