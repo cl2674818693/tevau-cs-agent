@@ -57,8 +57,9 @@ describe("staff api transfer/resolve/kpi", () => {
 });
 
 describe("KpiRoute", () => {
-  it("renders kpi rows", async () => {
-    localStorage.setItem("staff_jwt", "h.e.s");
+  it("renders kpi cards for current user", async () => {
+    // JWT: { role: "agent", sub: "AG1" }
+    localStorage.setItem("staff_jwt", `h.${btoa(JSON.stringify({ role: "agent", sub: "AG1" }))}.s`);
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -88,8 +89,11 @@ describe("KpiRoute", () => {
         </Routes>
       </MemoryRouter>,
     );
-    await waitFor(() => expect(screen.getByText("AG1")).toBeTruthy());
-    expect(screen.getByText("75%")).toBeTruthy();
+    // 接管数
+    await waitFor(() => expect(screen.getByText("4")).toBeTruthy());
+    // 解决数
+    expect(screen.getByText("3")).toBeTruthy();
+    // 平均时长
     expect(screen.getByText("2分5秒")).toBeTruthy();
   });
 });

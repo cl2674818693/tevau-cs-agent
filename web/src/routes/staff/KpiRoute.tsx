@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { ArrowLeftRight, CheckCircle, Clock, UserCheck } from "lucide-react";
 
-import { getKpi, type AiQuality, type StaffKpi } from "../../api/staff";
+import { getKpi, type StaffKpi } from "../../api/staff";
+import { KpiCard } from "../../components/admin/KpiCard";
 import { Alert } from "../../components/ui/alert";
-import { Card, CardContent } from "../../components/ui/card";
+import { DatePicker } from "../../components/ui/date-picker";
 import { EmptyState } from "../../components/ui/empty-state";
-import { FilterTabs } from "../../components/ui/filter-tabs";
 import { PageContainer, PageHeader } from "../../components/ui/page";
-import { LoadingState } from "../../components/ui/spinner";
-import { Table, TableScroll, TBody, Td, Th, THead, Tr } from "../../components/ui/table";
+import { Skeleton } from "../../components/ui/skeleton";
 import { useStaffSession } from "../../hooks/useStaffSession";
+
+function toUtcParam(d: Date): string {
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
 
 function fmtDuration(seconds: number): string {
   if (seconds <= 0) return "-";
@@ -17,159 +21,104 @@ function fmtDuration(seconds: number): string {
   return m > 0 ? `${m}分${s}秒` : `${s}秒`;
 }
 
-function pct(ratio: number): string {
-  return `${(ratio * 100).toFixed(1)}%`;
-}
-
-// 后端按 created_at 字符串字典序比较，from 必须是 "YYYY-MM-DD HH:MM:SS"（UTC，无 T 无 Z）
-function utcFrom(daysAgo: number): string {
-  const d = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
-  return d.toISOString().slice(0, 19).replace("T", " ");
-}
-
-type RangeKey = "7d" | "30d" | "all";
-
-const RANGE_OPTIONS: { value: RangeKey; label: string }[] = [
-  { value: "7d", label: "近7天" },
-  { value: "30d", label: "近30天" },
-  { value: "all", label: "全部" },
-];
-
-function QualityMetric({
-  label,
-  value,
-  hint,
-  alert,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  alert?: boolean;
-}) {
+function KpiSkeleton() {
   return (
-    <Card>
-      <CardContent>
-        <div className="text-footnote text-ink-secondary">{label}</div>
-        <div className={alert ? "text-sh2 text-status-error" : "text-sh2 text-ink-primary"}>
-          {value}
-        </div>
-        {hint && <div className="text-footnote text-ink-footnote mt-0.5">{hint}</div>}
-      </CardContent>
-    </Card>
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Skeleton key={i} className="h-[100px] rounded-xl" />
+      ))}
+    </div>
   );
 }
 
 export function KpiRoute() {
-  const { token } = useStaffSession();
-  const [range, setRange] = useState<RangeKey>("7d");
-  const [rows, setRows] = useState<StaffKpi[]>([]);
-  const [quality, setQuality] = useState<AiQuality | null>(null);
+  const { token, staffId } = useStaffSession();
+
+  const defaultFrom = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+  const defaultTo = new Date();
+
+  const [fromDate, setFromDate] = useState<Date | undefined>(defaultFrom);
+  const [toDate, setToDate] = useState<Date | undefined>(defaultTo);
+  const [kpi, setKpi] = useState<StaffKpi | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const from = useMemo(() => {
-    if (range === "7d") return utcFrom(7);
-    if (range === "30d") return utcFrom(30);
-    return undefined;
-  }, [range]);
-
   useEffect(() => {
     if (!token) return;
-    setError("");
     setLoading(true);
-    getKpi(token, { from })
+    setError("");
+    const opts: { from?: string; to?: string } = {};
+    if (fromDate) opts.from = toUtcParam(fromDate);
+    if (toDate) opts.to = toUtcParam(toDate);
+    getKpi(token, opts)
       .then((res) => {
-        setRows(res.staff);
-        setQuality(res.ai_quality);
+        const mine = staffId ? res.staff.find((r) => r.staff_id === staffId) ?? null : null;
+        setKpi(mine);
       })
       .catch(() => setError("加载失败"))
       .finally(() => setLoading(false));
-  }, [token, from]);
+  }, [token, staffId, fromDate, toDate]);
 
   return (
     <PageContainer width="wide">
-      <PageHeader title="客服 KPI 看板" />
+      <PageHeader
+        title="我的 KPI"
+        actions={
+          <div className="flex items-center gap-2">
+            <DatePicker date={fromDate} onChange={setFromDate} placeholder="开始日期" />
+            <span className="text-sm text-muted-foreground">至</span>
+            <DatePicker date={toDate} onChange={setToDate} placeholder="结束日期" />
+          </div>
+        }
+      />
+
       {error && (
-        <Alert variant="error" className="mb-2">
+        <Alert variant="error" className="mb-4">
           {error}
         </Alert>
       )}
-      <FilterTabs value={range} onChange={setRange} options={RANGE_OPTIONS} className="mb-4" />
 
       {loading ? (
-        <LoadingState />
+        <KpiSkeleton />
+      ) : kpi ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            label="接管数"
+            value={kpi.takeovers.toLocaleString()}
+            icon={UserCheck}
+          />
+          <KpiCard
+            label="解决数"
+            value={kpi.resolved.toLocaleString()}
+            delta={`解决率 ${(kpi.resolved_ratio * 100).toFixed(0)}%`}
+            trend={kpi.resolved_ratio >= 0.7 ? "up" : "down"}
+            icon={CheckCircle}
+          />
+          <KpiCard
+            label="转派数"
+            value={(kpi.transfers ?? 0).toLocaleString()}
+            delta={
+              kpi.transfer_ratio != null
+                ? `转派率 ${(kpi.transfer_ratio * 100).toFixed(0)}%`
+                : undefined
+            }
+            trend={
+              kpi.transfer_ratio != null
+                ? kpi.transfer_ratio > 0.3
+                  ? "down"
+                  : "flat"
+                : "flat"
+            }
+            icon={ArrowLeftRight}
+          />
+          <KpiCard
+            label="平均处理时长"
+            value={fmtDuration(kpi.avg_handle_seconds)}
+            icon={Clock}
+          />
+        </div>
       ) : (
-        <>
-          {quality && (
-            <div className="mb-6">
-              <h2 className="mb-2 text-sh2 text-ink-primary">AI 质量</h2>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-                <QualityMetric
-                  label="转人工率"
-                  value={pct(quality.handoff_rate)}
-                  hint={`${quality.handoff} / ${quality.total_conversations} 会话`}
-                  alert={quality.handoff_rate > 0.5}
-                />
-                <QualityMetric
-                  label="差评率"
-                  value={pct(quality.downvote_rate)}
-                  hint={`${quality.downvote} / ${quality.downvote + quality.upvote} 有反馈消息`}
-                  alert={quality.downvote_rate > 0.2}
-                />
-                <QualityMetric
-                  label="工具空结果率"
-                  value={pct(quality.tool_empty_rate)}
-                  hint={`${quality.tool_empty} / ${quality.tool_calls} 工具调用`}
-                  alert={quality.tool_empty_rate > 0.3}
-                />
-                <QualityMetric label="范围外提问" value={String(quality.out_of_scope)} hint="计数" />
-                <QualityMetric label="失败回合" value={String(quality.failed_turns)} hint="计数" />
-              </div>
-            </div>
-          )}
-
-          <h2 className="mb-2 text-sh2 text-ink-primary">客服明细</h2>
-          {rows.length === 0 ? (
-            <EmptyState>暂无数据</EmptyState>
-          ) : (
-            <TableScroll>
-              <Table className="min-w-[760px]">
-                <THead>
-                  <tr>
-                    <Th>客服</Th>
-                    <Th>接管</Th>
-                    <Th>解决</Th>
-                    <Th>释放回 AI</Th>
-                    <Th>转交</Th>
-                    <Th>转交率</Th>
-                    <Th>释放率</Th>
-                    <Th>解决率</Th>
-                    <Th>平均时长</Th>
-                  </tr>
-                </THead>
-                <TBody>
-                  {rows.map((r) => (
-                    <Tr key={r.staff_id}>
-                      <Td className="whitespace-nowrap">{r.staff_id}</Td>
-                      <Td>{r.takeovers}</Td>
-                      <Td>{r.resolved}</Td>
-                      <Td>{r.releases}</Td>
-                      <Td>{r.transfers ?? 0}</Td>
-                      <Td>
-                        {r.transfer_ratio != null
-                          ? `${(r.transfer_ratio * 100).toFixed(0)}%`
-                          : "-"}
-                      </Td>
-                      <Td>{(r.release_ratio * 100).toFixed(0)}%</Td>
-                      <Td>{(r.resolved_ratio * 100).toFixed(0)}%</Td>
-                      <Td className="whitespace-nowrap">{fmtDuration(r.avg_handle_seconds)}</Td>
-                    </Tr>
-                  ))}
-                </TBody>
-              </Table>
-            </TableScroll>
-          )}
-        </>
+        <EmptyState>该时间段内暂无数据</EmptyState>
       )}
     </PageContainer>
   );
