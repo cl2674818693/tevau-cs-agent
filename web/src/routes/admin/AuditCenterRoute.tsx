@@ -1,26 +1,27 @@
-import type { ColumnDef } from "@tanstack/react-table";
+import { ReloadOutlined } from "@ant-design/icons";
+import {
+  Alert,
+  Button,
+  Card,
+  DatePicker,
+  Flex,
+  Input,
+  Skeleton,
+  Space,
+  Table,
+  Tooltip,
+  Typography,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
+import type { Dayjs } from "dayjs";
 import { format } from "date-fns";
-import { RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { listAudit, type AuditEntry } from "../../api/adminAudit";
-import { DataTable } from "../../components/admin/data-table/DataTable";
-import { DataTableColumnHeader } from "../../components/admin/data-table/DataTableColumnHeader";
-import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
-import { Alert } from "../../components/ui/alert";
-import { Button } from "../../components/ui/button";
-import { DatePicker } from "../../components/ui/date-picker";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import { Skeleton } from "../../components/ui/skeleton";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../../components/ui/tooltip";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const { Title } = Typography;
+const { RangePicker } = DatePicker;
 
 function formatDateTime(val: string) {
   try {
@@ -30,111 +31,37 @@ function formatDateTime(val: string) {
   }
 }
 
-// ── Detail cell with tooltip for long JSON ────────────────────────────────────
-
 function DetailCell({ value }: { value: string | null }) {
-  if (!value) return <span className="text-muted-foreground">—</span>;
+  if (!value) return <span style={{ color: "rgba(0,0,0,0.45)" }}>—</span>;
   const truncated = value.length > 60 ? value.slice(0, 60) + "…" : value;
   if (value.length <= 60) {
-    return <span className="font-mono text-xs">{value}</span>;
+    return (
+      <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+        {value}
+      </span>
+    );
   }
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="cursor-help font-mono text-xs text-muted-foreground">
-            {truncated}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-sm break-all text-xs">
-          {value}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-// ── Columns ───────────────────────────────────────────────────────────────────
-
-const columns: ColumnDef<AuditEntry>[] = [
-  {
-    accessorKey: "created_at",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="时间" />
-    ),
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-        {formatDateTime(row.original.created_at)}
+    <Tooltip title={<span style={{ wordBreak: "break-all" }}>{value}</span>} placement="topLeft">
+      <span
+        style={{
+          fontFamily: "ui-monospace, monospace",
+          fontSize: 12,
+          color: "rgba(0,0,0,0.65)",
+          cursor: "help",
+        }}
+      >
+        {truncated}
       </span>
-    ),
-    enableSorting: true,
-    sortDescFirst: true,
-  },
-  {
-    accessorKey: "actor",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="操作人" />
-    ),
-    cell: ({ row }) => (
-      <span className="font-mono text-xs">{row.original.actor}</span>
-    ),
-    enableSorting: true,
-  },
-  {
-    accessorKey: "action",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="动作" />
-    ),
-    cell: ({ row }) => (
-      <span className="font-mono text-xs text-foreground">{row.original.action}</span>
-    ),
-    enableSorting: true,
-  },
-  {
-    id: "target",
-    header: "对象",
-    cell: ({ row }) => {
-      const { target_type, target_id } = row.original;
-      if (!target_type) return <span className="text-muted-foreground">—</span>;
-      return (
-        <span className="font-mono text-xs">
-          {target_type}
-          {target_id ? `:${target_id}` : ""}
-        </span>
-      );
-    },
-    enableSorting: false,
-  },
-  {
-    accessorKey: "detail_json",
-    header: "详情",
-    cell: ({ row }) => <DetailCell value={row.original.detail_json} />,
-    enableSorting: false,
-  },
-];
-
-// ── Loading skeleton ──────────────────────────────────────────────────────────
-
-function SkeletonRows() {
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <Skeleton key={i} className="h-10 w-full rounded-md" />
-      ))}
-    </div>
+    </Tooltip>
   );
 }
-
-// ── Filter bar state ──────────────────────────────────────────────────────────
 
 interface FilterState {
   actor: string;
   action: string;
-  dateFrom: Date | undefined;
-  dateTo: Date | undefined;
+  dateRange: [Dayjs | null, Dayjs | null] | null;
 }
-
-// ── Route ─────────────────────────────────────────────────────────────────────
 
 export function AuditCenterRoute() {
   const { token, role } = useStaffSession();
@@ -146,8 +73,7 @@ export function AuditCenterRoute() {
   const [filter, setFilter] = useState<FilterState>({
     actor: "",
     action: "",
-    dateFrom: undefined,
-    dateTo: undefined,
+    dateRange: null,
   });
 
   function reload(f: FilterState = filter) {
@@ -160,11 +86,8 @@ export function AuditCenterRoute() {
     })
       .then((rows) => {
         // Client-side date filter (API doesn't support date range params)
-        const from = f.dateFrom ? f.dateFrom.getTime() : null;
-        // end of the "to" day
-        const to = f.dateTo
-          ? new Date(f.dateTo.getFullYear(), f.dateTo.getMonth(), f.dateTo.getDate(), 23, 59, 59, 999).getTime()
-          : null;
+        const from = f.dateRange?.[0]?.startOf("day").valueOf() ?? null;
+        const to = f.dateRange?.[1]?.endOf("day").valueOf() ?? null;
         const filtered =
           from != null || to != null
             ? rows.filter((r) => {
@@ -191,62 +114,124 @@ export function AuditCenterRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, role]);
 
-  // Sort entries descending by created_at on initial load
-  const sortedEntries = [...entries].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  const columns: ColumnsType<AuditEntry> = useMemo(
+    () => [
+      {
+        title: "时间",
+        dataIndex: "created_at",
+        width: 180,
+        defaultSortOrder: "descend",
+        sorter: (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        render: (v: string) => (
+          <span
+            style={{
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 12,
+              color: "rgba(0,0,0,0.65)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {formatDateTime(v)}
+          </span>
+        ),
+      },
+      {
+        title: "操作人",
+        dataIndex: "actor",
+        width: 160,
+        sorter: (a, b) => a.actor.localeCompare(b.actor),
+        render: (v: string) => (
+          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+            {v}
+          </span>
+        ),
+      },
+      {
+        title: "动作",
+        dataIndex: "action",
+        width: 180,
+        sorter: (a, b) => a.action.localeCompare(b.action),
+        render: (v: string) => (
+          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+            {v}
+          </span>
+        ),
+      },
+      {
+        title: "对象",
+        key: "target",
+        width: 200,
+        render: (_: unknown, row: AuditEntry) => {
+          if (!row.target_type) return <span style={{ color: "rgba(0,0,0,0.45)" }}>—</span>;
+          return (
+            <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+              {row.target_type}
+              {row.target_id ? `:${row.target_id}` : ""}
+            </span>
+          );
+        },
+      },
+      {
+        title: "详情",
+        dataIndex: "detail_json",
+        render: (v: string | null) => <DetailCell value={v} />,
+      },
+    ],
+    [],
   );
 
   return (
-    <PageContainer width="wide">
-      <PageHeader
-        title="操作审计"
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => reload()}
-            disabled={loading}
-          >
-            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            刷新
-          </Button>
-        }
-      />
+    <div className="space-y-4 p-6">
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          操作审计
+        </Title>
+        <Button
+          icon={<ReloadOutlined spin={loading} />}
+          onClick={() => reload()}
+          disabled={loading}
+        >
+          刷新
+        </Button>
+      </Flex>
 
-      {err && (
-        <Alert variant="destructive" className="mb-4">
-          {err}
-        </Alert>
-      )}
+      {err && <Alert type="error" showIcon title={err} />}
 
       {allowed && (
-        <>
-          {/* Date range + action filter */}
-          <div className="mb-3 flex flex-wrap items-end gap-2">
-            <DatePicker
-              date={filter.dateFrom}
-              onChange={(d) => setFilter((f) => ({ ...f, dateFrom: d }))}
-              placeholder="开始日期"
+        <Card>
+          <Space wrap style={{ marginBottom: 12 }}>
+            <Input
+              placeholder="搜索操作人…"
+              value={filter.actor}
+              onChange={(e) => setFilter((f) => ({ ...f, actor: e.target.value }))}
+              style={{ width: 200 }}
+              allowClear
             />
-            <DatePicker
-              date={filter.dateTo}
-              onChange={(d) => setFilter((f) => ({ ...f, dateTo: d }))}
-              placeholder="结束日期"
+            <Input
+              placeholder="搜索动作…"
+              value={filter.action}
+              onChange={(e) => setFilter((f) => ({ ...f, action: e.target.value }))}
+              style={{ width: 200 }}
+              allowClear
             />
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => reload(filter)}
-              disabled={loading}
-            >
+            <RangePicker
+              value={filter.dateRange}
+              onChange={(v) =>
+                setFilter((f) => ({
+                  ...f,
+                  dateRange: v as [Dayjs | null, Dayjs | null] | null,
+                }))
+              }
+            />
+            <Button type="primary" onClick={() => reload(filter)} disabled={loading}>
               筛选
             </Button>
-            {(filter.dateFrom || filter.dateTo) && (
+            {filter.dateRange && (
               <Button
-                variant="ghost"
-                size="sm"
+                type="text"
                 onClick={() => {
-                  const next = { ...filter, dateFrom: undefined, dateTo: undefined };
+                  const next = { ...filter, dateRange: null };
                   setFilter(next);
                   reload(next);
                 }}
@@ -254,39 +239,22 @@ export function AuditCenterRoute() {
                 清除日期
               </Button>
             )}
-          </div>
+          </Space>
 
           {loading ? (
-            <SkeletonRows />
+            <Skeleton active paragraph={{ rows: 8 }} />
           ) : (
-            <DataTable
+            <Table<AuditEntry>
+              rowKey={(r) => `${r.created_at}-${r.actor}-${r.action}`}
+              size="small"
               columns={columns}
-              data={sortedEntries}
-              toolbar={(t) => (
-                <DataTableToolbar
-                  table={t}
-                  searchColumn="actor"
-                  placeholder="搜索操作人…"
-                >
-                  {/* action column filter input */}
-                  {(() => {
-                    const actionCol = t.getColumn("action");
-                    return actionCol ? (
-                      <input
-                        className="h-8 w-[180px] rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                        placeholder="搜索动作…"
-                        value={(actionCol.getFilterValue() as string) ?? ""}
-                        onChange={(e) => actionCol.setFilterValue(e.target.value)}
-                      />
-                    ) : null;
-                  })()}
-                </DataTableToolbar>
-              )}
-              empty="暂无审计记录"
+              dataSource={entries}
+              pagination={{ pageSize: 20, showSizeChanger: true }}
+              locale={{ emptyText: "暂无审计记录" }}
             />
           )}
-        </>
+        </Card>
       )}
-    </PageContainer>
+    </div>
   );
 }

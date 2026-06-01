@@ -1,6 +1,18 @@
-import type { ColumnDef } from "@tanstack/react-table";
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Flex,
+  Input,
+  Skeleton,
+  Switch,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import {
   listToolPolicies,
@@ -9,18 +21,9 @@ import {
   TOOL_NAMES,
   upsertToolPolicies,
 } from "../../api/adminToolPolicies";
-import { DataTable } from "../../components/admin/data-table/DataTable";
-import { DataTableColumnHeader } from "../../components/admin/data-table/DataTableColumnHeader";
-import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
-import { Alert } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import { Skeleton } from "../../components/ui/skeleton";
-import { Switch } from "../../components/ui/switch";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+const { Title, Text } = Typography;
 
 type FlatRow = {
   tool_name: string;
@@ -28,8 +31,6 @@ type FlatRow = {
   allowed: number;
   unmask_allowed: number;
 };
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function emptyRows(): FlatRow[] {
   const out: FlatRow[] = [];
@@ -53,92 +54,16 @@ function applyApiRows(rows: ToolPolicy[]): FlatRow[] {
   return base;
 }
 
-// ── Columns ───────────────────────────────────────────────────────────────────
-
-function buildColumns(
-  setRows: React.Dispatch<React.SetStateAction<FlatRow[]>>,
-  readonly: boolean,
-): ColumnDef<FlatRow>[] {
-  function toggle(row: FlatRow, field: "allowed" | "unmask_allowed") {
-    setRows((prev) =>
-      prev.map((r) =>
-        r.tool_name === row.tool_name && r.role === row.role
-          ? { ...r, [field]: r[field] === 1 ? 0 : 1 }
-          : r,
-      ),
-    );
-  }
-
-  return [
-    {
-      accessorKey: "tool_name",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="工具" />
-      ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs">{row.original.tool_name}</span>
-      ),
-      enableSorting: true,
-    },
-    {
-      accessorKey: "role",
-      header: "角色",
-      cell: ({ row }) => (
-        <Badge variant="secondary">{row.original.role}</Badge>
-      ),
-      enableSorting: false,
-    },
-    {
-      accessorKey: "allowed",
-      header: "允许调用",
-      cell: ({ row }) => (
-        <Switch
-          checked={row.original.allowed === 1}
-          onCheckedChange={() => toggle(row.original, "allowed")}
-          disabled={readonly}
-          aria-label={`${row.original.tool_name}/${row.original.role}/allowed`}
-        />
-      ),
-      enableSorting: false,
-    },
-    {
-      accessorKey: "unmask_allowed",
-      header: "允许解锁",
-      cell: ({ row }) => (
-        <Switch
-          checked={row.original.unmask_allowed === 1}
-          onCheckedChange={() => toggle(row.original, "unmask_allowed")}
-          disabled={readonly}
-          aria-label={`${row.original.tool_name}/${row.original.role}/unmask`}
-        />
-      ),
-      enableSorting: false,
-    },
-  ];
-}
-
-// ── Loading skeleton ──────────────────────────────────────────────────────────
-
-function SkeletonRows() {
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <Skeleton key={i} className="h-10 w-full rounded-md" />
-      ))}
-    </div>
-  );
-}
-
-// ── Route ─────────────────────────────────────────────────────────────────────
-
 export function ToolPoliciesRoute() {
   const { token, role } = useStaffSession();
+  const { message } = App.useApp();
   const allowed = role === "engineer" || role === "admin";
 
   const [rows, setRows] = useState<FlatRow[]>(emptyRows);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
 
   function reload() {
     if (!token) return;
@@ -166,57 +91,120 @@ export function ToolPoliciesRoute() {
     setSaving(true);
     try {
       await upsertToolPolicies(token, rows);
-      toast.success("已保存（缓存已刷新）");
+      message.success("已保存（缓存已刷新）");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "保存失败");
+      message.error(e instanceof Error ? e.message : "保存失败");
     } finally {
       setSaving(false);
     }
   }
 
-  const columns = useMemo(
-    () => buildColumns(setRows, !allowed),
+  function toggle(row: FlatRow, field: "allowed" | "unmask_allowed") {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.tool_name === row.tool_name && r.role === row.role
+          ? { ...r, [field]: r[field] === 1 ? 0 : 1 }
+          : r,
+      ),
+    );
+  }
+
+  const columns: ColumnsType<FlatRow> = useMemo(
+    () => [
+      {
+        title: "工具",
+        dataIndex: "tool_name",
+        sorter: (a, b) => a.tool_name.localeCompare(b.tool_name),
+        render: (v: string) => (
+          <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+            {v}
+          </span>
+        ),
+      },
+      {
+        title: "角色",
+        dataIndex: "role",
+        width: 140,
+        render: (v: string) => <Tag>{v}</Tag>,
+      },
+      {
+        title: "允许调用",
+        dataIndex: "allowed",
+        width: 120,
+        align: "center",
+        render: (_: unknown, row: FlatRow) => (
+          <Switch
+            checked={row.allowed === 1}
+            onChange={() => toggle(row, "allowed")}
+            disabled={!allowed}
+          />
+        ),
+      },
+      {
+        title: "允许解锁",
+        dataIndex: "unmask_allowed",
+        width: 120,
+        align: "center",
+        render: (_: unknown, row: FlatRow) => (
+          <Switch
+            checked={row.unmask_allowed === 1}
+            onChange={() => toggle(row, "unmask_allowed")}
+            disabled={!allowed}
+          />
+        ),
+      },
+    ],
     [allowed],
   );
 
-  return (
-    <PageContainer width="wide">
-      <PageHeader
-        title="工具策略"
-        actions={
-          allowed && (
-            <Button size="sm" onClick={save} disabled={saving || loading}>
-              {saving ? "保存中…" : "保存"}
-            </Button>
-          )
-        }
-      />
+  const filteredRows = useMemo(() => {
+    const kw = search.trim().toLowerCase();
+    return kw ? rows.filter((r) => r.tool_name.toLowerCase().includes(kw)) : rows;
+  }, [rows, search]);
 
-      {loadError && (
-        <Alert variant="destructive" className="mb-4">
-          {loadError}
-        </Alert>
-      )}
+  return (
+    <div className="space-y-4 p-6">
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          工具策略
+        </Title>
+        {allowed && (
+          <Button type="primary" onClick={save} loading={saving} disabled={loading}>
+            保存
+          </Button>
+        )}
+      </Flex>
+
+      {loadError && <Alert type="error" showIcon title={loadError} />}
 
       {loading ? (
-        <SkeletonRows />
+        <Card>
+          <Skeleton active paragraph={{ rows: 8 }} />
+        </Card>
       ) : (
-        <DataTable
-          columns={columns}
-          data={rows}
-          toolbar={(t) => (
-            <DataTableToolbar
-              table={t}
-              searchColumn="tool_name"
+        <Card>
+          <Flex style={{ marginBottom: 12 }}>
+            <Input.Search
               placeholder="搜索工具名…"
+              allowClear
+              style={{ width: 260 }}
+              onChange={(e) => setSearch(e.target.value)}
             />
-          )}
-        />
+          </Flex>
+          <Table<FlatRow>
+            rowKey={(r) => `${r.tool_name}-${r.role}`}
+            size="small"
+            columns={columns}
+            dataSource={filteredRows}
+            pagination={{ pageSize: 50, showSizeChanger: true }}
+            locale={{ emptyText: "无匹配条目" }}
+          />
+        </Card>
       )}
 
-      <p className="mt-2 text-xs text-muted-foreground">
+      <Text type="secondary" style={{ fontSize: 12 }}>
         admin 角色默认全部允许，不在矩阵中显示。空表回退到 M1 默认白名单。
-      </p>
-    </PageContainer>
+      </Text>
+    </div>
   );
 }

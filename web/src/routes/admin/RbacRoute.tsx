@@ -1,71 +1,110 @@
-import { Loader2 } from "lucide-react";
+import { App, Button, Card, Checkbox, Flex, Skeleton, Table, Typography } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { toast } from "sonner";
 
 import { getMatrix, type RbacMatrix, upsertMatrix } from "../../api/adminRbac";
-import { Button } from "../../components/ui/button";
-import { Checkbox } from "../../components/ui/checkbox";
-import { PageContainer, PageHeader } from "../../components/ui/page";
-import { LoadingState } from "../../components/ui/spinner";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-type LocalMatrix = Record<string, Record<string, boolean>>;
+const { Title, Text } = Typography;
 
-function MatrixGrid({
-  matrix, roles, perms, onToggle,
-}: {
-  matrix: LocalMatrix; roles: string[]; perms: string[];
-  onToggle: (role: string, perm: string, v: boolean) => void;
-}) {
-  return (
-    <div className="rounded-md border border-border p-4">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-muted-foreground">
-              <th className="px-3 py-2 text-left font-normal">模块</th>
-              {roles.map((r) => (
-                <th key={r} className="px-3 py-2 text-center font-normal">{r}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {perms.map((p) => (
-              <tr key={p} className="border-b border-border last:border-0">
-                <td className="px-3 py-2 text-foreground">{p}</td>
-                {roles.map((r) => (
-                  <td key={r} className="px-3 py-2 text-center">
-                    <Checkbox
-                      aria-label={`${p}/${r}`}
-                      checked={matrix[r]?.[p] ?? false}
-                      onCheckedChange={(v) => onToggle(r, p, v as boolean)}
-                    />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+// ── 中文 label：让运营一眼看懂；原英文 key 保留作副标题（审计/排查用） ──────────
+// 文案与左侧导航栏 nav-config.ts 严格对齐，避免认知割裂。
+const PERM_LABELS: Record<string, string> = {
+  "admin.dashboard": "数据大盘",
+  "admin.staff": "客服账号",
+  "admin.performance": "客服绩效",
+  "admin.qa": "会话质检",
+  "admin.sla": "SLA 策略",
+  "admin.tools": "工具策略",
+  "admin.cost": "成本大盘",
+  "admin.audit": "操作审计",
+  "admin.prompts": "Prompt 灰度",
+  "admin.rbac": "角色权限",
+  "admin.staff_groups": "客服分组",
+  "admin.presence": "在线状态",
+  "admin.shifts": "排班",
+  "admin.routing": "会话路由",
+  "admin.prompt_editor": "Prompt 编辑",
+  "admin.knowledge": "知识库",
+  "admin.guardrails": "范围拦截",
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  agent: "客服",
+  senior: "高级客服",
+  supervisor: "主管",
+  engineer: "工程师",
+  manager: "经理",
+  admin: "管理员",
+};
+
+type LocalMatrix = Record<string, Record<string, boolean>>;
+type PermRow = { permKey: string };
+
+function buildColumns(
+  roles: string[],
+  matrix: LocalMatrix,
+  onToggle: (role: string, perm: string, v: boolean) => void,
+): ColumnsType<PermRow> {
+  return [
+    {
+      title: "模块",
+      dataIndex: "permKey",
+      fixed: "left",
+      width: 200,
+      render: (p: string) => (
+        <div>
+          <div className="font-medium">{PERM_LABELS[p] ?? p}</div>
+          <div className="mt-0.5 font-mono text-[11px] text-gray-400">{p}</div>
+        </div>
+      ),
+    },
+    ...roles.map<ColumnsType<PermRow>[number]>((r) => ({
+      title: (
+        <div className="text-center">
+          <div className="font-medium">{ROLE_LABELS[r] ?? r}</div>
+          <div className="mt-0.5 font-mono text-[11px] font-normal text-gray-400">
+            {r}
+          </div>
+        </div>
+      ),
+      key: r,
+      align: "center" as const,
+      width: 100,
+      render: (_: unknown, row: PermRow) => (
+        <Checkbox
+          aria-label={`${PERM_LABELS[row.permKey] ?? row.permKey}/${ROLE_LABELS[r] ?? r}`}
+          checked={matrix[r]?.[row.permKey] ?? false}
+          onChange={(e) => onToggle(r, row.permKey, e.target.checked)}
+        />
+      ),
+    })),
+  ];
 }
 
 export function RbacRoute() {
   const { token, role } = useStaffSession();
+  const { message } = App.useApp();
   const allowed = role === "admin";
+
   const [data, setData] = useState<RbacMatrix | null>(null);
   const [local, setLocal] = useState<LocalMatrix>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!token || !allowed) { setLoading(false); return; }
+    if (!token || !allowed) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     getMatrix(token)
-      .then((d) => { setData(d); setLocal(d.matrix); })
-      .catch(() => toast.error("加载失败"))
+      .then((d) => {
+        setData(d);
+        setLocal(d.matrix);
+      })
+      .catch(() => message.error("加载失败"))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, role]);
@@ -74,11 +113,15 @@ export function RbacRoute() {
     setLocal((prev) => ({ ...prev, [r]: { ...prev[r], [p]: v } }));
   }
 
-  const items = useMemo(() => {
+  const upsertItems = useMemo(() => {
     if (!data) return [];
-    return data.roles.flatMap((r) => data.permission_keys.map((p) => ({
-      role: r, permission_key: p, allowed: local[r]?.[p] ? 1 : 0,
-    })));
+    return data.roles.flatMap((r) =>
+      data.permission_keys.map((p) => ({
+        role: r,
+        permission_key: p,
+        allowed: local[r]?.[p] ? 1 : 0,
+      })),
+    );
   }, [data, local]);
 
   function reset() {
@@ -89,41 +132,71 @@ export function RbacRoute() {
     if (!token) return;
     setSaving(true);
     try {
-      await upsertMatrix(token, items);
-      toast.success("权限已保存");
+      await upsertMatrix(token, upsertItems);
+      message.success("权限已保存");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "保存失败");
+      message.error(e instanceof Error ? e.message : "保存失败");
     } finally {
       setSaving(false);
     }
   }
 
+  const columns = useMemo(
+    () =>
+      data ? buildColumns(data.roles, local, toggle) : [],
+    [data, local],
+  );
+  const rows: PermRow[] = useMemo(
+    () => (data ? data.permission_keys.map((p) => ({ permKey: p })) : []),
+    [data],
+  );
+
   return (
-    <PageContainer width="wide">
-      <PageHeader
-        title="角色权限"
-        actions={
-          allowed && data ? (
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={reset} disabled={saving}>
-                重置
-              </Button>
-              <Button size="sm" onClick={save} disabled={saving}>
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                保存
-              </Button>
-            </div>
-          ) : undefined
-        }
-      />
-      <p className="mb-3 text-sm text-muted-foreground">
+    <div className="space-y-4 p-6">
+      <Flex justify="space-between" align="flex-start" wrap="wrap" gap="middle">
+        <Title level={3} style={{ margin: 0 }}>
+          角色权限
+        </Title>
+        {allowed && data && (
+          <Flex gap="small">
+            <Button onClick={reset} disabled={saving}>
+              重置
+            </Button>
+            <Button type="primary" onClick={save} loading={saving}>
+              保存
+            </Button>
+          </Flex>
+        )}
+      </Flex>
+
+      <Text type="secondary">
         改完保存后，rbac.is_permitted 即时按新矩阵生效（缓存失效）。改角色仍走
-        <Link to="/admin/staff" className="ml-1 text-primary">客服账号</Link>。
-      </p>
-      {loading ? <LoadingState /> : (allowed && data && (
-        <MatrixGrid matrix={local} roles={data.roles} perms={data.permission_keys}
-          onToggle={toggle} />
-      ))}
-    </PageContainer>
+        <Link to="/admin/staff" style={{ marginLeft: 4 }}>
+          客服账号
+        </Link>
+        。
+      </Text>
+
+      {loading ? (
+        <Card>
+          <Skeleton active paragraph={{ rows: 8 }} />
+        </Card>
+      ) : allowed && data ? (
+        <Card>
+          <Table<PermRow>
+            rowKey="permKey"
+            size="middle"
+            columns={columns}
+            dataSource={rows}
+            pagination={false}
+            scroll={{ x: "max-content" }}
+          />
+        </Card>
+      ) : (
+        <Card>
+          <Text type="secondary">需要管理员权限。</Text>
+        </Card>
+      )}
+    </div>
   );
 }
