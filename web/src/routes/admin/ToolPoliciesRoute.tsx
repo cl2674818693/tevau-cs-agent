@@ -1,183 +1,222 @@
+import type { ColumnDef } from "@tanstack/react-table";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import {
   listToolPolicies,
   POLICY_ROLES,
-  TOOL_NAMES,
   type ToolPolicy,
+  TOOL_NAMES,
   upsertToolPolicies,
 } from "../../api/adminToolPolicies";
+import { DataTable } from "../../components/admin/data-table/DataTable";
+import { DataTableColumnHeader } from "../../components/admin/data-table/DataTableColumnHeader";
+import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
 import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
 import { PageContainer, PageHeader } from "../../components/ui/page";
-import { LoadingState } from "../../components/ui/spinner";
+import { Skeleton } from "../../components/ui/skeleton";
+import { Switch } from "../../components/ui/switch";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-type CellState = { allowed: number; unmask_allowed: number };
-type MatrixState = Record<string, Record<string, CellState>>;
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-function emptyMatrix(): MatrixState {
-  const m: MatrixState = {};
-  for (const t of TOOL_NAMES) {
-    m[t] = {};
-    for (const r of POLICY_ROLES) m[t][r] = { allowed: 0, unmask_allowed: 0 };
-  }
-  return m;
-}
+type FlatRow = {
+  tool_name: string;
+  role: string;
+  allowed: number;
+  unmask_allowed: number;
+};
 
-function applyRowsToMatrix(rows: ToolPolicy[]): MatrixState {
-  const m = emptyMatrix();
-  for (const row of rows) {
-    if (m[row.tool_name]?.[row.role]) {
-      m[row.tool_name][row.role] = {
-        allowed: Number(row.allowed),
-        unmask_allowed: Number(row.unmask_allowed),
-      };
-    }
-  }
-  return m;
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function flatten(m: MatrixState) {
-  const out: { tool_name: string; role: string; allowed: number; unmask_allowed: number }[] = [];
+function emptyRows(): FlatRow[] {
+  const out: FlatRow[] = [];
   for (const t of TOOL_NAMES)
-    for (const r of POLICY_ROLES) {
-      out.push({ tool_name: t, role: r, ...m[t][r] });
-    }
+    for (const r of POLICY_ROLES)
+      out.push({ tool_name: t, role: r, allowed: 0, unmask_allowed: 0 });
   return out;
 }
 
-function MatrixHeader() {
-  return (
-    <thead>
-      <tr className="border-b border-line text-ink-secondary">
-        <th className="px-3 py-2 text-left font-normal">工具</th>
-        {POLICY_ROLES.map((r) => (
-          <th key={r} className="px-3 py-2 text-center font-normal">
-            {r}
-            <br />
-            <span className="text-footnote">允许 / 解锁</span>
-          </th>
-        ))}
-      </tr>
-    </thead>
-  );
-}
-
-function MatrixRow({
-  tool,
-  value,
-  onSet,
-}: {
-  tool: string;
-  value: Record<string, CellState>;
-  onSet: (role: string, key: keyof CellState, v: number) => void;
-}) {
-  return (
-    <tr className="border-b border-line last:border-0">
-      <td className="px-3 py-2 text-ink-primary">{tool}</td>
-      {POLICY_ROLES.map((r) => (
-        <td key={r} className="px-3 py-2 text-center">
-          <div className="flex justify-center gap-2">
-            <input type="checkbox" aria-label={`${tool}/${r}/allowed`}
-              checked={value[r].allowed === 1}
-              onChange={(e) => onSet(r, "allowed", e.target.checked ? 1 : 0)} />
-            <input type="checkbox" aria-label={`${tool}/${r}/unmask`}
-              checked={value[r].unmask_allowed === 1}
-              onChange={(e) => onSet(r, "unmask_allowed", e.target.checked ? 1 : 0)} />
-          </div>
-        </td>
-      ))}
-    </tr>
-  );
-}
-
-function MatrixTable({
-  value,
-  onChange,
-}: {
-  value: MatrixState;
-  onChange: (next: MatrixState) => void;
-}) {
-  function setCell(tool: string, role: string, key: keyof CellState, v: number) {
-    const next: MatrixState = { ...value, [tool]: { ...value[tool] } };
-    next[tool][role] = { ...next[tool][role], [key]: v };
-    onChange(next);
+function applyApiRows(rows: ToolPolicy[]): FlatRow[] {
+  const base = emptyRows();
+  for (const row of rows) {
+    const found = base.find(
+      (r) => r.tool_name === row.tool_name && r.role === row.role,
+    );
+    if (found) {
+      found.allowed = Number(row.allowed);
+      found.unmask_allowed = Number(row.unmask_allowed);
+    }
   }
+  return base;
+}
+
+// ── Columns ───────────────────────────────────────────────────────────────────
+
+function buildColumns(
+  setRows: React.Dispatch<React.SetStateAction<FlatRow[]>>,
+  readonly: boolean,
+): ColumnDef<FlatRow>[] {
+  function toggle(row: FlatRow, field: "allowed" | "unmask_allowed") {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.tool_name === row.tool_name && r.role === row.role
+          ? { ...r, [field]: r[field] === 1 ? 0 : 1 }
+          : r,
+      ),
+    );
+  }
+
+  return [
+    {
+      accessorKey: "tool_name",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="工具" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs">{row.original.tool_name}</span>
+      ),
+      enableSorting: true,
+    },
+    {
+      accessorKey: "role",
+      header: "角色",
+      cell: ({ row }) => (
+        <Badge variant="neutral">{row.original.role}</Badge>
+      ),
+      enableSorting: false,
+    },
+    {
+      accessorKey: "allowed",
+      header: "允许调用",
+      cell: ({ row }) => (
+        <Switch
+          checked={row.original.allowed === 1}
+          onCheckedChange={() => toggle(row.original, "allowed")}
+          disabled={readonly}
+          aria-label={`${row.original.tool_name}/${row.original.role}/allowed`}
+        />
+      ),
+      enableSorting: false,
+    },
+    {
+      accessorKey: "unmask_allowed",
+      header: "允许解锁",
+      cell: ({ row }) => (
+        <Switch
+          checked={row.original.unmask_allowed === 1}
+          onCheckedChange={() => toggle(row.original, "unmask_allowed")}
+          disabled={readonly}
+          aria-label={`${row.original.tool_name}/${row.original.role}/unmask`}
+        />
+      ),
+      enableSorting: false,
+    },
+  ];
+}
+
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+
+function SkeletonRows() {
   return (
-    <Card>
-      <div className="overflow-x-auto">
-        <table className="w-full text-body3">
-          <MatrixHeader />
-          <tbody>
-            {TOOL_NAMES.map((t) => (
-              <MatrixRow key={t} tool={t} value={value[t]}
-                onSet={(r, k, v) => setCell(t, r, k, v)} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+    <div className="space-y-2">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Skeleton key={i} className="h-10 w-full rounded-md" />
+      ))}
+    </div>
   );
 }
+
+// ── Route ─────────────────────────────────────────────────────────────────────
 
 export function ToolPoliciesRoute() {
   const { token, role } = useStaffSession();
   const allowed = role === "engineer" || role === "admin";
-  const [matrix, setMatrix] = useState<MatrixState>(emptyMatrix);
+
+  const [rows, setRows] = useState<FlatRow[]>(emptyRows);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [notice, setNotice] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  function reload() {
+    if (!token) return;
+    setLoading(true);
+    listToolPolicies(token)
+      .then((data) => setRows(applyApiRows(data)))
+      .catch((e: unknown) =>
+        setLoadError(e instanceof Error ? e.message : "加载失败"),
+      )
+      .finally(() => setLoading(false));
+  }
 
   useEffect(() => {
     if (!token || !allowed) {
-      setErr("需要工程或管理员权限");
+      setLoadError("需要工程或管理员权限");
       setLoading(false);
       return;
     }
-    setLoading(true);
-    listToolPolicies(token)
-      .then((rows) => setMatrix(applyRowsToMatrix(rows)))
-      .catch(() => setErr("加载失败"))
-      .finally(() => setLoading(false));
+    reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, role]);
 
-  const items = useMemo(() => flatten(matrix), [matrix]);
-
   async function save() {
     if (!token) return;
-    setErr("");
-    setNotice("");
+    setSaving(true);
     try {
-      await upsertToolPolicies(token, items);
-      setNotice("已保存（缓存已刷新）");
+      await upsertToolPolicies(token, rows);
+      toast.success("已保存（缓存已刷新）");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "保存失败");
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
     }
   }
 
+  const columns = useMemo(
+    () => buildColumns(setRows, !allowed),
+    [allowed],
+  );
+
   return (
     <PageContainer width="wide">
-      <PageHeader title="AI 工具权限矩阵" />
-      {err && <Alert variant="error" className="mb-2">{err}</Alert>}
-      {notice && <Alert variant="success" className="mb-2">{notice}</Alert>}
-      {loading ? (
-        <LoadingState />
-      ) : (
-        allowed && (
-          <>
-            <MatrixTable value={matrix} onChange={setMatrix} />
-            <div className="mt-3">
-              <Button size="md" onClick={save}>保存</Button>
-            </div>
-            <p className="mt-2 text-footnote text-ink-tertiary">
-              admin 角色默认全部允许，不在矩阵中显示。空表回退到 M1 默认白名单。
-            </p>
-          </>
-        )
+      <PageHeader
+        title="工具策略"
+        actions={
+          allowed && (
+            <Button size="sm" onClick={save} disabled={saving || loading}>
+              {saving ? "保存中…" : "保存"}
+            </Button>
+          )
+        }
+      />
+
+      {loadError && (
+        <Alert variant="destructive" className="mb-4">
+          {loadError}
+        </Alert>
       )}
+
+      {loading ? (
+        <SkeletonRows />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={rows}
+          toolbar={(t) => (
+            <DataTableToolbar
+              table={t}
+              searchColumn="tool_name"
+              placeholder="搜索工具名…"
+            />
+          )}
+        />
+      )}
+
+      <p className="mt-2 text-xs text-muted-foreground">
+        admin 角色默认全部允许，不在矩阵中显示。空表回退到 M1 默认白名单。
+      </p>
     </PageContainer>
   );
 }
