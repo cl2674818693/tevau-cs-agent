@@ -19,7 +19,7 @@ export function MobileSidebar() {
       <Drawer
         open={open}
         placement="left"
-        width={280}
+        size="default"
         onClose={() => setOpen(false)}
         styles={{ body: { padding: 0 } }}
         closable={false}

@@ -76,7 +76,7 @@ export function CommandPalette() {
       closable={false}
       width={520}
       styles={{ body: { padding: 16 } }}
-      destroyOnClose
+      destroyOnHidden
     >
       <AutoComplete
         autoFocus
