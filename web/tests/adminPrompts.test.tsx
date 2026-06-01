@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Toaster } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPromptVersions, setRollout } from "../src/api/admin";
@@ -62,11 +63,14 @@ describe("admin api", () => {
 describe("PromptsRoute", () => {
   function renderRoute() {
     return render(
-      <MemoryRouter initialEntries={["/admin/prompts"]}>
-        <Routes>
-          <Route path="/admin/prompts" element={<PromptsRoute />} />
-        </Routes>
-      </MemoryRouter>,
+      <>
+        <Toaster />
+        <MemoryRouter initialEntries={["/admin/prompts"]}>
+          <Routes>
+            <Route path="/admin/prompts" element={<PromptsRoute />} />
+          </Routes>
+        </MemoryRouter>
+      </>,
     );
   }
 
@@ -76,7 +80,7 @@ describe("PromptsRoute", () => {
     await waitFor(() => expect(screen.getByText("需要 admin 权限")).toBeTruthy());
   });
 
-  it("loads versions and saves rollout", async () => {
+  it("loads versions and saves rollout via Sheet", async () => {
     localStorage.setItem("staff_jwt", fakeJwt("admin"));
     // 按 URL 分发，避免依赖调用顺序（PromptsRoute 挂载时还会拉 ab-stats）
     const fetchMock = vi.fn(async (url: string) => {
@@ -100,8 +104,13 @@ describe("PromptsRoute", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderRoute();
+    // 等版本行出现
     await waitFor(() => expect(screen.getByText("v1.1.0")).toBeTruthy());
-    fireEvent.click(screen.getByText("保存"));
+    // 打开调整流量 Sheet
+    fireEvent.click(screen.getByText("调整流量"));
+    // Sheet 出现后点保存
+    await waitFor(() => expect(screen.getAllByText("保存").length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByText("保存")[0]);
     await waitFor(() => expect(screen.getByText("已保存并热加载")).toBeTruthy());
   });
 });
