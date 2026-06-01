@@ -1,90 +1,114 @@
+import type { ColumnDef } from "@tanstack/react-table";
+import { format } from "date-fns";
+import { ExternalLink, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { toast } from "sonner";
 
 import {
-  createScorecard,
   listReviews,
   listScorecards,
+  submitReview,
   type QaReview,
   type Scorecard,
-  type ScorecardItem,
-  submitReview,
 } from "../../api/adminQa";
+import { DataTable } from "../../components/admin/data-table/DataTable";
+import { DataTableColumnHeader } from "../../components/admin/data-table/DataTableColumnHeader";
+import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
 import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
+import { DatePicker } from "../../components/ui/date-picker";
 import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import { PageContainer, PageHeader } from "../../components/ui/page";
-import { LoadingState } from "../../components/ui/spinner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "../../components/ui/sheet";
+import { Skeleton } from "../../components/ui/skeleton";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-function ScorecardCreator({
-  onCreated,
-  onError,
-}: {
-  onCreated: () => void;
-  onError: (m: string) => void;
-}) {
-  const { token } = useStaffSession();
-  const [name, setName] = useState("");
-  const [raw, setRaw] = useState('[{"key":"polite","label":"礼貌用语"}]');
-  async function submit() {
-    if (!token || !name) return;
-    let items: ScorecardItem[];
-    try {
-      items = JSON.parse(raw);
-    } catch {
-      onError("评分项 JSON 格式错");
-      return;
-    }
-    try {
-      await createScorecard(token, { name, items });
-      setName("");
-      onCreated();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "创建失败");
-    }
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatDateTime(val: string) {
+  try {
+    return format(new Date(val), "yyyy-MM-dd HH:mm:ss");
+  } catch {
+    return val;
   }
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const variant =
+    score >= 90 ? "default" : score >= 70 ? "secondary" : "destructive";
+  return <Badge variant={variant}>{score}</Badge>;
+}
+
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+
+function SkeletonRows() {
   return (
-    <Card>
-      <div className="flex flex-col gap-2 px-page py-block-sm">
-        <Input placeholder="评分卡名称" value={name} onChange={(e) => setName(e.target.value)} />
-        <textarea
-          className="rounded border border-line px-2 py-1 font-mono text-body3"
-          rows={3}
-          value={raw}
-          onChange={(e) => setRaw(e.target.value)}
-          aria-label="评分项 JSON"
-        />
-        <div>
-          <Button size="md" onClick={submit} disabled={!name}>
-            新建评分卡
-          </Button>
-        </div>
-      </div>
-    </Card>
+    <div className="space-y-2">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Skeleton key={i} className="h-10 w-full rounded-md" />
+      ))}
+    </div>
   );
 }
 
-function ReviewForm({
+// ── Submit Review Sheet ───────────────────────────────────────────────────────
+
+interface ReviewSheetProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  scorecards: Scorecard[];
+  defaultConvId?: number;
+  token: string;
+  onSuccess: () => void;
+}
+
+function ReviewSheet({
+  open,
+  onOpenChange,
   scorecards,
   defaultConvId,
-  onSubmitted,
-  onError,
-}: {
-  scorecards: Scorecard[];
-  defaultConvId: number;
-  onSubmitted: () => void;
-  onError: (m: string) => void;
-}) {
-  const { token } = useStaffSession();
-  const [convId, setConvId] = useState(defaultConvId);
+  token,
+  onSuccess,
+}: ReviewSheetProps) {
+  const [convId, setConvId] = useState(defaultConvId ?? 0);
   const [scid, setScid] = useState(scorecards[0]?.id ?? 0);
   const [score, setScore] = useState(80);
   const [tags, setTags] = useState("");
   const [comment, setComment] = useState("");
-  async function submit() {
-    if (!token || !scid) return;
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setConvId(defaultConvId ?? 0);
+      setScid(scorecards[0]?.id ?? 0);
+      setScore(80);
+      setTags("");
+      setComment("");
+    }
+  }, [open, defaultConvId, scorecards]);
+
+  async function handleSubmit() {
+    if (!scid || !convId) {
+      toast.error("请填写会话 ID 并选择评分卡");
+      return;
+    }
+    setSubmitting(true);
     try {
       await submitReview(token, {
         conversation_id: convId,
@@ -94,97 +118,282 @@ function ReviewForm({
         tags: tags || undefined,
         comment: comment || undefined,
       });
-      onSubmitted();
+      toast.success("质检已提交");
+      onOpenChange(false);
+      onSuccess();
     } catch (e) {
-      onError(e instanceof Error ? e.message : "提交失败");
+      toast.error(e instanceof Error ? e.message : "提交失败");
+    } finally {
+      setSubmitting(false);
     }
   }
+
   return (
-    <Card className="mt-3">
-      <div className="flex flex-wrap items-end gap-2 px-page py-block-sm">
-        <Input type="number" min={1} value={convId} aria-label="会话 ID" className="w-28"
-          onChange={(e) => setConvId(Number(e.target.value))} />
-        <select value={scid} onChange={(e) => setScid(Number(e.target.value))}
-          className="rounded border border-line px-2 py-1 text-body2">
-          {scorecards.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <Input type="number" min={0} max={100} value={score} aria-label="得分" className="w-20"
-          onChange={(e) => setScore(Number(e.target.value))} />
-        <Input placeholder="标签 excellent/violation/..." value={tags} className="w-44"
-          onChange={(e) => setTags(e.target.value)} />
-        <Input placeholder="备注" value={comment} className="w-60"
-          onChange={(e) => setComment(e.target.value)} />
-        <Button size="md" onClick={submit} disabled={!scid}>提交质检</Button>
-      </div>
-    </Card>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex flex-col gap-0 p-0">
+        <SheetHeader className="border-b px-6 py-4">
+          <SheetTitle>提交质检</SheetTitle>
+        </SheetHeader>
+
+        <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
+          {/* 会话 ID */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="qa-conv-id">会话 ID</Label>
+            <Input
+              id="qa-conv-id"
+              type="number"
+              min={1}
+              value={convId || ""}
+              placeholder="输入会话 ID"
+              onChange={(e) => setConvId(Number(e.target.value))}
+            />
+          </div>
+
+          {/* 评分卡 */}
+          <div className="flex flex-col gap-1.5">
+            <Label>评分卡</Label>
+            <Select
+              value={String(scid)}
+              onValueChange={(v) => setScid(Number(v))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="选择评分卡" />
+              </SelectTrigger>
+              <SelectContent>
+                {scorecards.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* 得分 */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="qa-score">得分（0–100）</Label>
+            <Input
+              id="qa-score"
+              type="number"
+              min={0}
+              max={100}
+              value={score}
+              onChange={(e) => setScore(Number(e.target.value))}
+            />
+          </div>
+
+          {/* 标签 */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="qa-tags">标签</Label>
+            <Input
+              id="qa-tags"
+              placeholder="excellent / violation / …"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+            />
+          </div>
+
+          {/* 备注 */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="qa-comment">备注</Label>
+            <textarea
+              id="qa-comment"
+              className="min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              placeholder="可选备注"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <SheetFooter className="border-t px-6 py-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            取消
+          </Button>
+          <Button
+            type="button"
+            disabled={submitting || !scid || !convId}
+            onClick={handleSubmit}
+          >
+            {submitting ? "提交中…" : "提交质检"}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
 
-function ReviewsList({ rows }: { rows: QaReview[] }) {
-  return (
-    <Card className="mt-3">
-      <table className="w-full text-body3">
-        <thead>
-          <tr className="border-b border-line text-ink-secondary">
-            <th className="px-3 py-2 text-left font-normal">时间</th>
-            <th className="px-3 py-2 text-left font-normal">会话</th>
-            <th className="px-3 py-2 text-left font-normal">质检员</th>
-            <th className="px-3 py-2 text-right font-normal">得分</th>
-            <th className="px-3 py-2 text-left font-normal">标签</th>
-            <th className="px-3 py-2 text-left font-normal">备注</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 && (
-            <tr>
-              <td colSpan={6} className="px-3 py-4 text-center text-ink-tertiary">
-                暂无记录
-              </td>
-            </tr>
-          )}
-          {rows.map((r) => (
-            <tr key={r.id} className="border-b border-line last:border-0">
-              <td className="px-3 py-2 text-ink-tertiary">{r.created_at}</td>
-              <td className="px-3 py-2 text-ink-primary">#{r.conversation_id}</td>
-              <td className="px-3 py-2 text-ink-secondary">{r.reviewer_staff_id}</td>
-              <td className="px-3 py-2 text-right text-ink-primary">{r.score}</td>
-              <td className="px-3 py-2 text-ink-secondary">{r.tags ?? "—"}</td>
-              <td className="px-3 py-2 text-ink-tertiary">{r.comment ?? "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Card>
-  );
+// ── Columns ───────────────────────────────────────────────────────────────────
+
+function buildColumns(
+  onReview: (row: QaReview) => void,
+): ColumnDef<QaReview>[] {
+  return [
+    {
+      accessorKey: "created_at",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="时间" />
+      ),
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+          {formatDateTime(row.original.created_at)}
+        </span>
+      ),
+      enableSorting: true,
+      sortDescFirst: true,
+    },
+    {
+      accessorKey: "conversation_id",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="会话" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-foreground">
+          #{row.original.conversation_id}
+        </span>
+      ),
+      enableSorting: true,
+    },
+    {
+      accessorKey: "reviewer_staff_id",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="质检员" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs">{row.original.reviewer_staff_id}</span>
+      ),
+      enableSorting: true,
+    },
+    {
+      accessorKey: "score",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="得分" />
+      ),
+      cell: ({ row }) => <ScoreBadge score={row.original.score} />,
+      enableSorting: true,
+    },
+    {
+      accessorKey: "tags",
+      header: "标签",
+      cell: ({ row }) =>
+        row.original.tags ? (
+          <span className="text-xs text-muted-foreground">{row.original.tags}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+      enableSorting: false,
+    },
+    {
+      accessorKey: "comment",
+      header: "备注",
+      cell: ({ row }) =>
+        row.original.comment ? (
+          <span className="text-xs text-muted-foreground">{row.original.comment}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+      enableSorting: false,
+    },
+    {
+      id: "actions",
+      header: "",
+      cell: ({ row }) => {
+        const convId = row.original.conversation_id;
+        return (
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/staff/conversations/${convId}/logs`}
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              <ExternalLink className="h-3 w-3" />
+              查看
+            </Link>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs"
+              onClick={() => onReview(row.original)}
+            >
+              重新质检
+            </Button>
+          </div>
+        );
+      },
+      enableSorting: false,
+    },
+  ];
 }
+
+// ── Filter state ──────────────────────────────────────────────────────────────
+
+interface FilterState {
+  dateFrom: Date | undefined;
+  dateTo: Date | undefined;
+}
+
+// ── Route ─────────────────────────────────────────────────────────────────────
 
 export function QaReviewRoute() {
   const { token, role } = useStaffSession();
   const allowed = role === "supervisor" || role === "admin";
-  const [search] = useSearchParams();
-  const defaultConvId = Number(search.get("conversation_id") ?? 0);
-  const [scorecards, setScorecards] = useState<Scorecard[]>([]);
+
   const [reviews, setReviews] = useState<QaReview[]>([]);
+  const [scorecards, setScorecards] = useState<Scorecard[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [filter, setFilter] = useState<FilterState>({
+    dateFrom: undefined,
+    dateTo: undefined,
+  });
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetConvId, setSheetConvId] = useState<number | undefined>(undefined);
 
-  function reload() {
+  function reload(f: FilterState = filter) {
     if (!token) return;
     setLoading(true);
-    Promise.all([
-      listScorecards(token, true),
-      listReviews(token, defaultConvId ? { conversation_id: defaultConvId } : undefined),
-    ])
+    setErr("");
+    Promise.all([listScorecards(token, true), listReviews(token)])
       .then(([sc, rv]) => {
         setScorecards(sc);
-        setReviews(rv);
+        // Client-side date filter
+        const from = f.dateFrom ? f.dateFrom.getTime() : null;
+        const to = f.dateTo
+          ? new Date(
+              f.dateTo.getFullYear(),
+              f.dateTo.getMonth(),
+              f.dateTo.getDate(),
+              23,
+              59,
+              59,
+              999,
+            ).getTime()
+          : null;
+        const filtered =
+          from != null || to != null
+            ? rv.filter((r) => {
+                const t = new Date(r.created_at).getTime();
+                if (from != null && t < from) return false;
+                if (to != null && t > to) return false;
+                return true;
+              })
+            : rv;
+        const sorted = [...filtered].sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        );
+        setReviews(sorted);
       })
-      .catch(() => setErr("加载失败"))
+      .catch(() => setErr("加载失败，请重试"))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
-    if (!token || !allowed) {
+    if (!token) return;
+    if (!allowed) {
       setErr("需要主管或管理员权限");
       setLoading(false);
       return;
@@ -193,29 +402,110 @@ export function QaReviewRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, role]);
 
+  function openReviewSheet(row?: QaReview) {
+    setSheetConvId(row?.conversation_id);
+    setSheetOpen(true);
+  }
+
+  const columns = buildColumns((row) => openReviewSheet(row));
+
   return (
     <PageContainer width="wide">
-      <PageHeader title="会话质检" />
+      <PageHeader
+        title="会话质检"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => reload()}
+              disabled={loading}
+            >
+              <RefreshCw
+                className={`mr-1.5 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+              />
+              刷新
+            </Button>
+            {allowed && (
+              <Button size="sm" onClick={() => openReviewSheet()}>
+                新建质检
+              </Button>
+            )}
+          </div>
+        }
+      />
+
       {err && (
-        <Alert variant="error" className="mb-2">
+        <Alert variant="destructive" className="mb-4">
           {err}
         </Alert>
       )}
-      {loading ? (
-        <LoadingState />
-      ) : (
-        allowed && (
-          <>
-            <ScorecardCreator onCreated={reload} onError={setErr} />
-            <ReviewForm
-              scorecards={scorecards}
-              defaultConvId={defaultConvId || 1}
-              onSubmitted={reload}
-              onError={setErr}
+
+      {allowed && (
+        <>
+          {/* Date range filter */}
+          <div className="mb-3 flex flex-wrap items-end gap-2">
+            <DatePicker
+              date={filter.dateFrom}
+              onChange={(d) => setFilter((f) => ({ ...f, dateFrom: d }))}
+              placeholder="开始日期"
             />
-            <ReviewsList rows={reviews} />
-          </>
-        )
+            <DatePicker
+              date={filter.dateTo}
+              onChange={(d) => setFilter((f) => ({ ...f, dateTo: d }))}
+              placeholder="结束日期"
+            />
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => reload(filter)}
+              disabled={loading}
+            >
+              筛选
+            </Button>
+            {(filter.dateFrom || filter.dateTo) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const next = { ...filter, dateFrom: undefined, dateTo: undefined };
+                  setFilter(next);
+                  reload(next);
+                }}
+              >
+                清除日期
+              </Button>
+            )}
+          </div>
+
+          {loading ? (
+            <SkeletonRows />
+          ) : (
+            <DataTable
+              columns={columns}
+              data={reviews}
+              toolbar={(t) => (
+                <DataTableToolbar
+                  table={t}
+                  searchColumn="conversation_id"
+                  placeholder="搜索会话 ID…"
+                />
+              )}
+              empty="暂无质检记录"
+            />
+          )}
+        </>
+      )}
+
+      {token && (
+        <ReviewSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          scorecards={scorecards}
+          defaultConvId={sheetConvId}
+          token={token}
+          onSuccess={() => reload()}
+        />
       )}
     </PageContainer>
   );
