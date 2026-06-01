@@ -538,6 +538,7 @@ export function StaffAccountsRoute() {
             dataSource={filteredRows}
             pagination={{ pageSize: 20, showSizeChanger: true }}
             locale={{ emptyText: "暂无客服" }}
+            scroll={{ x: "max-content" }}
           />
         </Card>
       )}

@@ -307,6 +307,7 @@ export function GuardrailsRoute() {
             dataSource={filteredRules}
             pagination={{ pageSize: 20, showSizeChanger: true }}
             locale={{ emptyText: "暂无拦截规则" }}
+            scroll={{ x: "max-content" }}
           />
         </Card>
       )}

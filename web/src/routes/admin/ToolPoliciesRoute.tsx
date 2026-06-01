@@ -198,6 +198,7 @@ export function ToolPoliciesRoute() {
             dataSource={filteredRows}
             pagination={{ pageSize: 50, showSizeChanger: true }}
             locale={{ emptyText: "无匹配条目" }}
+            scroll={{ x: "max-content" }}
           />
         </Card>
       )}

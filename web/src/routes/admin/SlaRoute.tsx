@@ -405,6 +405,7 @@ export function SlaRoute() {
           loading={loading}
           pagination={false}
           locale={{ emptyText: "暂无策略，请在右上角新增" }}
+          scroll={{ x: "max-content" }}
         />
       </Card>
 
@@ -418,6 +419,7 @@ export function SlaRoute() {
           loading={loading}
           pagination={false}
           locale={{ emptyText: "无超时会话" }}
+          scroll={{ x: "max-content" }}
         />
       </Card>
     </div>

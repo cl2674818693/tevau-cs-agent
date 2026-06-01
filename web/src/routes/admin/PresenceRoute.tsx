@@ -159,6 +159,7 @@ export function PresenceRoute() {
             dataSource={filteredRows}
             pagination={{ pageSize: 20, showSizeChanger: true }}
             locale={{ emptyText: "暂无客服在线记录" }}
+            scroll={{ x: "max-content" }}
           />
         </Card>
       )}

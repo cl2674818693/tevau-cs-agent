@@ -37,6 +37,7 @@ export function AppShell() {
         theme="light"
         breakpoint="md"
         collapsedWidth={0}
+        trigger={null}
         style={{ borderRight: "1px solid #f0f0f0" }}
       >
         <AppSidebar />

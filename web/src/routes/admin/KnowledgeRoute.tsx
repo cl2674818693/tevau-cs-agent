@@ -329,6 +329,7 @@ export function KnowledgeRoute() {
             dataSource={filteredEntries}
             pagination={{ pageSize: 20, showSizeChanger: true }}
             locale={{ emptyText: "暂无知识条目" }}
+            scroll={{ x: "max-content" }}
           />
         </Card>
       )}

@@ -278,6 +278,7 @@ export function StaffGroupsRoute() {
             dataSource={filteredGroups}
             pagination={{ pageSize: 20, showSizeChanger: true }}
             locale={{ emptyText: "暂无分组" }}
+            scroll={{ x: "max-content" }}
           />
         </Card>
       )}

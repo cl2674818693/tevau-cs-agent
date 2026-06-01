@@ -212,6 +212,7 @@ export function ConversationsListRoute() {
             dataSource={filteredItems}
             pagination={{ pageSize: 20, showSizeChanger: true }}
             locale={{ emptyText: "暂无会话" }}
+            scroll={{ x: "max-content" }}
           />
         </Card>
       )}

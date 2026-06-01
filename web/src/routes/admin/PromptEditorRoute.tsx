@@ -289,6 +289,7 @@ function HistoryTab({
       dataSource={drafts}
       pagination={false}
       locale={{ emptyText: "该版本无记录" }}
+      scroll={{ x: "max-content" }}
     />
   );
 }

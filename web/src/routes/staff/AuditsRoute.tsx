@@ -246,6 +246,7 @@ export function AuditsRoute() {
               showSizeChanger: false,
             }}
             locale={{ emptyText: "暂无记录" }}
+            scroll={{ x: "max-content" }}
           />
         )}
       </Card>

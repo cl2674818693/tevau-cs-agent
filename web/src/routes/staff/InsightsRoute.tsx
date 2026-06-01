@@ -155,6 +155,7 @@ function DrillPanel({
           dataSource={rows}
           pagination={{ pageSize: 20, showSizeChanger: true }}
           locale={{ emptyText: "暂无记录" }}
+          scroll={{ x: "max-content" }}
         />
       )}
     </Card>
@@ -309,6 +310,7 @@ export function InsightsRoute() {
               dataSource={tools}
               pagination={false}
               locale={{ emptyText: "暂无记录" }}
+              scroll={{ x: "max-content" }}
             />
           </Card>
         </>

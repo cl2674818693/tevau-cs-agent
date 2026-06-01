@@ -353,6 +353,7 @@ export function ShiftsRoute() {
             dataSource={filteredShifts}
             pagination={{ pageSize: 20, showSizeChanger: true }}
             locale={{ emptyText: "暂无排班" }}
+            scroll={{ x: "max-content" }}
           />
         </Card>
       )}

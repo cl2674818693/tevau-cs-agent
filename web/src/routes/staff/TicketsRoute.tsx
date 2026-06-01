@@ -254,6 +254,7 @@ export function TicketsRoute() {
             dataSource={filteredRows}
             pagination={false}
             locale={{ emptyText: "暂无工单" }}
+            scroll={{ x: "max-content" }}
           />
         )}
 

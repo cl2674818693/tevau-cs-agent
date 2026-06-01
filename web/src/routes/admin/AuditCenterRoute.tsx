@@ -251,6 +251,7 @@ export function AuditCenterRoute() {
               dataSource={entries}
               pagination={{ pageSize: 20, showSizeChanger: true }}
               locale={{ emptyText: "暂无审计记录" }}
+              scroll={{ x: "max-content" }}
             />
           )}
         </Card>

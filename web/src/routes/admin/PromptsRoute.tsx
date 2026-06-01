@@ -140,6 +140,7 @@ export function PromptsRoute() {
             dataSource={rows}
             pagination={false}
             locale={{ emptyText: "无版本配置" }}
+            scroll={{ x: "max-content" }}
           />
         </Card>
       )}
