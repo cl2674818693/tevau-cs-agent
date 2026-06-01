@@ -1,93 +1,239 @@
-import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { getTicketDetail, type TicketDetail } from "../../api/adminTickets";
 import { Alert } from "../../components/ui/alert";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "../../components/ui/breadcrumb";
+import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { PageContainer, PageHeader } from "../../components/ui/page";
-import { LoadingState } from "../../components/ui/spinner";
+import { Skeleton } from "../../components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
-function HeaderCard({ t, payload }: { t: TicketDetail; payload: Record<string, unknown> }) {
+// ─── skeletons ─────────────────────────────────────────────────────────────────
+
+function OverviewSkeleton() {
   return (
-    <Card>
-      <div className="flex flex-col gap-1 px-page py-block-sm text-body3">
-        <div>严重度：{t.current_severity ?? "—"}</div>
-        <div>分类：{String(payload.category ?? "—")}</div>
-        <div>创建时间：{t.created_at}</div>
-        <div>
-          关联会话：
-          <Link className="text-brand" to={`/staff/conversations/${t.conversation_id}/logs`}>
-            #{t.conversation_id}
-          </Link>
-        </div>
+    <Card className="px-3 py-3">
+      <div className="flex flex-col gap-2">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="flex gap-3">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+        ))}
       </div>
     </Card>
   );
 }
 
-function EventsList({ events }: { events: TicketDetail["events"] }) {
+function EventsSkeleton() {
   return (
-    <Card className="mt-2">
-      <ul className="flex flex-col">
-        {events.length === 0 && (
-          <li className="px-page py-block-sm text-ink-tertiary">暂无事件</li>
-        )}
-        {events.map((e, i) => (
-          <li key={i} className="border-b border-line px-page py-block-sm last:border-0">
-            <div className="flex justify-between text-body3">
-              <span className="text-ink-primary">{e.event}</span>
-              <span className="text-ink-tertiary">{e.created_at}</span>
-            </div>
-            {(e.actor || e.comment) && (
-              <div className="mt-0.5 text-footnote text-ink-secondary">
-                {e.actor && <span>受理人：{e.actor} </span>}
-                {e.comment && <span>· {e.comment}</span>}
-              </div>
-            )}
-          </li>
+    <div className="flex flex-col gap-2">
+      {[1, 2, 3].map((i) => (
+        <Card key={i} className="px-3 py-2">
+          <Skeleton className="mb-2 h-3 w-32" />
+          <Skeleton className="h-4 w-full" />
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ─── tab panels ───────────────────────────────────────────────────────────────
+
+function OverviewTab({
+  t,
+  loading,
+}: {
+  t: TicketDetail | null;
+  loading: boolean;
+}) {
+  if (loading) return <OverviewSkeleton />;
+  if (!t) return null;
+
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = JSON.parse(t.payload_json) as Record<string, unknown>;
+  } catch {
+    payload = {};
+  }
+
+  const rows: [string, string][] = [
+    ["严重度", t.current_severity ?? "—"],
+    ["创建时间", t.created_at],
+    ...(Object.keys(payload).length > 0
+      ? (Object.entries(payload).map(([k, v]) => [k, String(v ?? "—")]) as [string, string][])
+      : ([["payload", "（空）"]] as [string, string][])),
+  ];
+
+  return (
+    <Card className="px-3 py-3">
+      <dl className="flex flex-col gap-2 text-body3">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex flex-wrap gap-x-3">
+            <dt className="w-24 shrink-0 text-ink-secondary">{label}</dt>
+            <dd className="text-ink-primary">{value}</dd>
+          </div>
         ))}
-      </ul>
+      </dl>
     </Card>
   );
 }
 
+function EventsTab({
+  events,
+  loading,
+}: {
+  events: TicketDetail["events"];
+  loading: boolean;
+}) {
+  if (loading) return <EventsSkeleton />;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {events.length === 0 && (
+        <div className="py-4 text-center text-body3 text-ink-secondary">暂无事件</div>
+      )}
+      {events.map((e, i) => (
+        <Card key={i} className="px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-body3">
+            <span className="font-medium text-ink-primary">{e.event}</span>
+            <span className="text-footnote text-ink-tertiary">{e.created_at}</span>
+          </div>
+          {(e.actor || e.comment) && (
+            <div className="mt-1 text-footnote text-ink-secondary">
+              {e.actor && <span>执行人：{e.actor}</span>}
+              {e.actor && e.comment && <span className="mx-1">·</span>}
+              {e.comment && <span>{e.comment}</span>}
+            </div>
+          )}
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function ConversationsTab({
+  t,
+  loading,
+}: {
+  t: TicketDetail | null;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <Card className="px-3 py-2">
+        <Skeleton className="h-4 w-48" />
+      </Card>
+    );
+  }
+  if (!t) return null;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Card className="px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 text-body3">
+          <span className="text-ink-secondary">会话 ID</span>
+          <Link
+            className="font-medium text-brand hover:underline"
+            to={`/staff/conversations/${t.conversation_id}`}
+          >
+            #{t.conversation_id}
+          </Link>
+          <Link
+            className="ml-auto text-footnote text-ink-secondary hover:text-brand"
+            to={`/staff/conversations/${t.conversation_id}/logs`}
+          >
+            查看日志 →
+          </Link>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ─── main route ───────────────────────────────────────────────────────────────
+
 export function TicketDetailRoute() {
   const { externalId = "" } = useParams();
   const { token } = useStaffSession();
-  const [t, setT] = useState<TicketDetail | null>(null);
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!token) return;
-    setLoading(true);
-    getTicketDetail(token, externalId)
-      .then(setT)
-      .catch((e) => setErr(e instanceof Error ? e.message : "加载失败"))
-      .finally(() => setLoading(false));
-  }, [token, externalId]);
-
-  let payload: Record<string, unknown> = {};
-  if (t) {
-    try { payload = JSON.parse(t.payload_json); } catch { payload = {}; }
-  }
+  const {
+    data: t,
+    loading,
+    error,
+  } = useAsyncData(
+    () => (token ? getTicketDetail(token, externalId) : null),
+    [token, externalId],
+    "工单加载失败",
+  );
 
   return (
     <PageContainer width="wide">
-      <PageHeader title={`工单 ${externalId}`} />
-      {err && <Alert variant="error" className="mb-2">{err}</Alert>}
-      {loading ? (
-        <LoadingState />
-      ) : (
-        t && (
-          <>
-            <HeaderCard t={t} payload={payload} />
-            <div className="mt-4 text-body2 font-medium text-ink-primary">事件链</div>
-            <EventsList events={t.events} />
-          </>
-        )
+      {/* Breadcrumb */}
+      <Breadcrumb className="mb-2">
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link to="/staff">工作台</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link to="/staff/tickets">工单</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>{externalId}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
+      <PageHeader
+        title={`工单 — ${externalId}`}
+        actions={
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/staff/tickets">返回工单列表</Link>
+          </Button>
+        }
+      />
+
+      {error && (
+        <Alert variant="error" className="mb-3">
+          {error}
+        </Alert>
       )}
+
+      <Tabs defaultValue="overview" className="mt-1">
+        <TabsList className="mb-3">
+          <TabsTrigger value="overview">概览</TabsTrigger>
+          <TabsTrigger value="events">事件流</TabsTrigger>
+          <TabsTrigger value="conversations">关联会话</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview">
+          <OverviewTab t={t} loading={loading} />
+        </TabsContent>
+
+        <TabsContent value="events">
+          <EventsTab events={t?.events ?? []} loading={loading} />
+        </TabsContent>
+
+        <TabsContent value="conversations">
+          <ConversationsTab t={t} loading={loading} />
+        </TabsContent>
+      </Tabs>
     </PageContainer>
   );
 }
