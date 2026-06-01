@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { App as AntdApp, ConfigProvider } from "antd";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { Toaster } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPromptVersions, setRollout } from "../src/api/admin";
@@ -63,14 +63,15 @@ describe("admin api", () => {
 describe("PromptsRoute", () => {
   function renderRoute() {
     return render(
-      <>
-        <Toaster />
-        <MemoryRouter initialEntries={["/admin/prompts"]}>
-          <Routes>
-            <Route path="/admin/prompts" element={<PromptsRoute />} />
-          </Routes>
-        </MemoryRouter>
-      </>,
+      <ConfigProvider>
+        <AntdApp>
+          <MemoryRouter initialEntries={["/admin/prompts"]}>
+            <Routes>
+              <Route path="/admin/prompts" element={<PromptsRoute />} />
+            </Routes>
+          </MemoryRouter>
+        </AntdApp>
+      </ConfigProvider>,
     );
   }
 
@@ -103,14 +104,21 @@ describe("PromptsRoute", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    renderRoute();
+    const { container } = renderRoute();
     // 等版本行出现
-    await waitFor(() => expect(screen.getByText("v1.1.0")).toBeTruthy());
-    // 打开调整流量 Sheet
-    fireEvent.click(screen.getByText("调整流量"));
-    // Sheet 出现后点保存
-    await waitFor(() => expect(screen.getAllByText("保存").length).toBeGreaterThan(0));
-    fireEvent.click(screen.getAllByText("保存")[0]);
+    await screen.findByText("v1.1.0");
+    // 表格里的"调整流量" Button
+    const editBtn = await screen.findByText("调整流量");
+    fireEvent.click(editBtn);
+    // Drawer Portal 默认渲染到 document.body 外、动画完成才显示，增大 waitFor 容忍
+    await waitFor(
+      () => expect(screen.queryByText(/调整流量 —/)).toBeInTheDocument(),
+      { timeout: 3000 },
+    );
+    // 直接 submit form 绕过按钮位置不确定（Drawer body 内 Form htmlType=submit）
+    const forms = container.ownerDocument.querySelectorAll("form");
+    const drawerForm = forms[forms.length - 1];
+    fireEvent.submit(drawerForm);
     await waitFor(() => expect(screen.getByText("已保存并热加载")).toBeTruthy());
   });
 });

@@ -1,37 +1,9 @@
-import { zodResolver } from "@hookform/resolvers/zod";
+import { App, Button, Drawer, Form, InputNumber } from "antd";
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { toast } from "sonner";
-import * as z from "zod";
 
 import { setRollout } from "../../api/admin";
-import { Button } from "../../components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "../../components/ui/form";
-import { Input } from "../../components/ui/input";
-import {
-  Sheet,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "../../components/ui/sheet";
+
 import type { PromptRow } from "./PromptsRoute.columns";
-
-// ── Schema ────────────────────────────────────────────────────────────────────
-
-const rolloutSchema = z.object({
-  pct: z.number().min(0, "不能小于 0").max(100, "不能超过 100"),
-});
-type RolloutFormValues = z.infer<typeof rolloutSchema>;
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 type Props = {
   open: boolean;
@@ -42,98 +14,91 @@ type Props = {
   onSuccess: (next: Record<string, number>) => void;
 };
 
-// ── Form body ─────────────────────────────────────────────────────────────────
-
-function RolloutFormBody({
+export function RolloutSheet({
+  open,
+  onOpenChange,
   row,
+  token,
   currentRollout,
-  form,
-  onClose,
-}: {
-  row: PromptRow | null;
-  currentRollout: Record<string, number>;
-  form: ReturnType<typeof useForm<RolloutFormValues>>;
-  onClose: () => void;
-}) {
-  const total = Object.values(currentRollout).reduce((a, b) => a + (b || 0), 0);
-  return (
-    <>
-      <div className="flex-1 space-y-5 px-6 py-5">
-        <div className="rounded-md bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-          <p>当前所有版本合计：<span className="font-medium text-foreground">{total}%</span></p>
-          <p className="mt-1 text-xs">余量自动回落到 default 版本</p>
-        </div>
-        <FormField
-          control={form.control}
-          name="pct"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>流量比例（%）— <span className="font-mono">{row?.version}</span></FormLabel>
-              <FormControl>
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  aria-label={`${row?.version} 灰度比例`}
-                  {...field}
-                  onChange={(e) => field.onChange(Number(e.target.value))}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </div>
-      <SheetFooter className="border-t px-6 py-4">
-        <Button type="button" variant="outline" onClick={onClose}>取消</Button>
-        <Button type="submit" disabled={form.formState.isSubmitting}>保存</Button>
-      </SheetFooter>
-    </>
-  );
-}
-
-// ── Sheet ─────────────────────────────────────────────────────────────────────
-
-export function RolloutSheet({ open, onOpenChange, row, token, currentRollout, onSuccess }: Props) {
-  const form = useForm<RolloutFormValues>({
-    resolver: zodResolver(rolloutSchema),
-    defaultValues: { pct: 0 },
-  });
+  onSuccess,
+}: Props) {
+  const [form] = Form.useForm<{ pct: number }>();
+  const { message } = App.useApp();
 
   useEffect(() => {
-    if (open && row) form.reset({ pct: row.rollout });
+    if (open && row) form.setFieldsValue({ pct: row.rollout });
   }, [open, row, form]);
 
-  async function onSubmit(values: RolloutFormValues) {
+  async function onSubmit(values: { pct: number }) {
     if (!row) return;
     const next = { ...currentRollout, [row.version]: values.pct };
     const total = Object.values(next).reduce((a, b) => a + (b || 0), 0);
     if (total > 100) {
-      form.setError("pct", { message: `合计将达 ${total}%，超过 100` });
+      form.setFields([{ name: "pct", errors: [`合计将达 ${total}%，超过 100`] }]);
       return;
     }
     try {
       const saved = await setRollout(token, next);
-      toast.success("已保存并热加载");
+      message.success("已保存并热加载");
       onSuccess(saved);
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "保存失败");
+      message.error(err instanceof Error ? err.message : "保存失败");
     }
   }
 
+  const total = Object.values(currentRollout).reduce((a, b) => a + (b || 0), 0);
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex flex-col gap-0 p-0">
-        <SheetHeader className="border-b px-6 py-4">
-          <SheetTitle>调整流量 — {row?.version}</SheetTitle>
-        </SheetHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-1 flex-col overflow-y-auto">
-            <RolloutFormBody row={row} currentRollout={currentRollout} form={form} onClose={() => onOpenChange(false)} />
-          </form>
-        </Form>
-      </SheetContent>
-    </Sheet>
+    <Drawer
+      title={`调整流量 — ${row?.version ?? ""}`}
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="default"
+    >
+      <div
+        style={{
+          background: "rgba(0,0,0,0.03)",
+          borderRadius: 6,
+          padding: "12px 16px",
+          marginBottom: 20,
+          fontSize: 13,
+          color: "rgba(0,0,0,0.65)",
+        }}
+      >
+        <p style={{ margin: 0 }}>
+          当前所有版本合计：<strong>{total}%</strong>
+        </p>
+        <p style={{ margin: "4px 0 0 0", fontSize: 12 }}>
+          余量自动回落到 default 版本
+        </p>
+      </div>
+      <Form form={form} layout="vertical" onFinish={onSubmit}>
+        <Form.Item
+          name="pct"
+          label={
+            <>
+              流量比例（%）—{" "}
+              <span style={{ fontFamily: "ui-monospace, monospace" }}>
+                {row?.version}
+              </span>
+            </>
+          }
+          rules={[
+            { required: true, type: "number", min: 0, max: 100 },
+          ]}
+        >
+          <InputNumber min={0} max={100} style={{ width: "100%" }} />
+        </Form.Item>
+        <Form.Item style={{ marginBottom: 0 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <Button onClick={() => onOpenChange(false)}>取消</Button>
+            <Button type="primary" htmlType="submit">
+              保存
+            </Button>
+          </div>
+        </Form.Item>
+      </Form>
+    </Drawer>
   );
 }
