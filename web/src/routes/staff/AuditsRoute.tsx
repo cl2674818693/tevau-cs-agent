@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import type { ColumnDef } from "@tanstack/react-table";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { getRecentAudits } from "../../api/staff";
 import type { ToolAudit } from "../../api/staff";
+import { DataTable } from "../../components/admin/data-table/DataTable";
+import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
 import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
-import { EmptyState } from "../../components/ui/empty-state";
+import { Button } from "../../components/ui/button";
 import { PageContainer, PageHeader } from "../../components/ui/page";
 import { Pager } from "../../components/ui/pager";
-import { LoadingState } from "../../components/ui/spinner";
-import { Table, TableScroll, TBody, Td, Th, THead, Tr } from "../../components/ui/table";
+import { Skeleton } from "../../components/ui/skeleton";
+import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 const PAGE_SIZE = 100;
@@ -32,25 +35,109 @@ function isEmpty(a: ToolAudit): boolean {
   return a.is_empty === 1 || a.is_empty === true;
 }
 
+// ── Columns ───────────────────────────────────────────────────────────────────
+
+const columns: ColumnDef<ToolAudit>[] = [
+  {
+    accessorKey: "created_at",
+    header: "时间",
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+        {row.original.created_at}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "conversation_id",
+    header: "会话",
+    cell: ({ row }) =>
+      row.original.conversation_id != null ? (
+        <Link
+          to={`/staff/conversations/${row.original.conversation_id}/logs`}
+          className="font-mono text-xs text-primary hover:underline"
+        >
+          #{row.original.conversation_id}
+        </Link>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
+  },
+  {
+    accessorKey: "tool_name",
+    header: "工具",
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap font-mono text-xs">{row.original.tool_name}</span>
+    ),
+  },
+  {
+    id: "identity",
+    header: "身份",
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+        {row.original.user_type ?? "-"}
+        {row.original.subject_id ? `:${row.original.subject_id}` : ""}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "result_count",
+    header: "返回",
+    cell: ({ row }) => (
+      <span className={isEmpty(row.original) ? "text-destructive" : undefined}>
+        {row.original.result_count ?? 0} 条
+      </span>
+    ),
+  },
+  {
+    accessorKey: "duration_ms",
+    header: "耗时",
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap font-mono text-xs">{row.original.duration_ms}ms</span>
+    ),
+  },
+  {
+    accessorKey: "rejected",
+    header: "状态",
+    cell: ({ row }) =>
+      row.original.rejected ? (
+        <Badge variant="error">被拒：{row.original.reject_reason ?? "-"}</Badge>
+      ) : (
+        <Badge variant="success">ok</Badge>
+      ),
+  },
+];
+
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+
+function SkeletonRows() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Skeleton key={i} className="h-10 w-full rounded-md" />
+      ))}
+    </div>
+  );
+}
+
+// ── Route ─────────────────────────────────────────────────────────────────────
+
 // eslint-disable-next-line max-lines-per-function -- 审计页：筛选区 + 表格 + 页码分页
 export function AuditsRoute() {
   const { token } = useStaffSession();
-  const nav = useNavigate();
+
   const [rejectedOnly, setRejectedOnly] = useState(false);
   const [emptyOnly, setEmptyOnly] = useState(false);
   const [toolName, setToolName] = useState("");
   const [conversationId, setConversationId] = useState("");
-  const [rows, setRows] = useState<ToolAudit[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(true);
 
-  // 改任一筛选都回到第 1 页（与 page 同批更新，单次请求）
-  const onFilterChange = (fn: () => void) => {
-    fn();
-    setPage(1);
-  };
+  // 改任一筛选都回到第 1 页
+  function onFilter<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(1);
+    };
+  }
 
   const filter = useMemo(
     () => ({
@@ -58,34 +145,31 @@ export function AuditsRoute() {
       emptyOnly,
       toolName: toolName || undefined,
       conversationId: conversationId.trim() || undefined,
+      page,
+      limit: PAGE_SIZE,
     }),
-    [rejectedOnly, emptyOnly, toolName, conversationId],
+    [rejectedOnly, emptyOnly, toolName, conversationId, page],
   );
 
-  useEffect(() => {
-    if (!token) {
-      nav("/staff/login");
-      return;
-    }
-    setLoading(true);
-    setErr("");
-    getRecentAudits(token, { ...filter, page, limit: PAGE_SIZE })
-      .then((data) => {
-        setRows(data.audits);
-        setTotal(data.total);
-      })
-      .catch(() => setErr("加载失败"))
-      .finally(() => setLoading(false));
-  }, [token, filter, page, nav]);
+  const { data, loading, error } = useAsyncData(
+    () => (token ? getRecentAudits(token, filter) : null),
+    [token, filter],
+    "加载失败",
+  );
+
+  const rows = data?.audits ?? [];
+  const total = data?.total ?? 0;
 
   return (
     <PageContainer width="wide">
-      <PageHeader title="全局工具审计" />
-      <div className="mb-3 flex flex-wrap items-center gap-3 text-body3 text-ink-secondary">
+      <PageHeader title="工具审计" />
+
+      {/* Filter bar */}
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
         <select
           value={toolName}
-          onChange={(e) => onFilterChange(() => setToolName(e.target.value))}
-          className="rounded border border-line bg-surface-card px-2 py-1 text-ink-primary"
+          onChange={(e) => onFilter(setToolName)(e.target.value)}
+          className="rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         >
           <option value="">全部工具</option>
           {TOOL_OPTIONS.map((t) => (
@@ -94,88 +178,54 @@ export function AuditsRoute() {
             </option>
           ))}
         </select>
+
         <input
           type="text"
           inputMode="numeric"
           placeholder="会话号"
           value={conversationId}
-          onChange={(e) => onFilterChange(() => setConversationId(e.target.value))}
-          className="w-24 rounded border border-line bg-surface-card px-2 py-1 text-ink-primary"
+          onChange={(e) => onFilter(setConversationId)(e.target.value)}
+          className="w-24 rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         />
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={rejectedOnly}
-            onChange={(e) => onFilterChange(() => setRejectedOnly(e.target.checked))}
-          />
+
+        <Button
+          size="sm"
+          variant={rejectedOnly ? "default" : "outline"}
+          onClick={() => onFilter(setRejectedOnly)(!rejectedOnly)}
+          className="h-7 px-2.5 text-xs"
+        >
           只看被拒
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={emptyOnly}
-            onChange={(e) => onFilterChange(() => setEmptyOnly(e.target.checked))}
-          />
+        </Button>
+
+        <Button
+          size="sm"
+          variant={emptyOnly ? "default" : "outline"}
+          onClick={() => onFilter(setEmptyOnly)(!emptyOnly)}
+          className="h-7 px-2.5 text-xs"
+        >
           只看空结果
-        </label>
+        </Button>
       </div>
-      {err && (
-        <Alert variant="error" className="mb-2">
-          {err}
+
+      {error && (
+        <Alert variant="error" className="mb-3">
+          {error}
         </Alert>
       )}
+
       {loading ? (
-        <LoadingState />
-      ) : rows.length === 0 ? (
-        <EmptyState>暂无记录</EmptyState>
+        <SkeletonRows />
       ) : (
-        <TableScroll>
-          <Table className="min-w-[720px]">
-            <THead>
-              <tr>
-                <Th>时间</Th>
-                <Th>会话</Th>
-                <Th>工具</Th>
-                <Th>身份</Th>
-                <Th>返回</Th>
-                <Th>耗时</Th>
-                <Th>状态</Th>
-              </tr>
-            </THead>
-            <TBody>
-              {rows.map((a) => (
-                <Tr key={a.id} className="align-top">
-                  <Td className="whitespace-nowrap">{a.created_at}</Td>
-                  <Td>
-                    <Link
-                      to={`/staff/conversations/${a.conversation_id}/logs`}
-                      className="text-brand"
-                    >
-                      #{a.conversation_id}
-                    </Link>
-                  </Td>
-                  <Td className="whitespace-nowrap">{a.tool_name}</Td>
-                  <Td className="whitespace-nowrap text-ink-secondary">
-                    {a.user_type ?? "-"}
-                    {a.subject_id ? `:${a.subject_id}` : ""}
-                  </Td>
-                  <Td className={isEmpty(a) ? "text-status-error" : undefined}>
-                    {a.result_count ?? 0} 条
-                  </Td>
-                  <Td className="whitespace-nowrap">{a.duration_ms}ms</Td>
-                  <Td>
-                    {a.rejected ? (
-                      <Badge variant="error">被拒：{a.reject_reason ?? "-"}</Badge>
-                    ) : (
-                      <Badge variant="success">ok</Badge>
-                    )}
-                  </Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
-        </TableScroll>
+        <DataTable
+          columns={columns}
+          data={rows}
+          toolbar={(t) => (
+            <DataTableToolbar table={t} searchColumn="tool_name" placeholder="搜索工具名…" />
+          )}
+          empty="暂无记录"
+        />
       )}
+
       {!loading && total > 0 && (
         <Pager page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} className="mt-3" />
       )}

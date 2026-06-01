@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import type { ColumnDef } from "@tanstack/react-table";
+import { useCallback, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   getGapConversations,
@@ -11,13 +12,35 @@ import {
   type KnowledgeGaps,
   type ToolHealth,
 } from "../../api/staff";
+import { DataTable } from "../../components/admin/data-table/DataTable";
+import { DataTableToolbar } from "../../components/admin/data-table/DataTableToolbar";
 import { Alert } from "../../components/ui/alert";
+import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
-import { EmptyState } from "../../components/ui/empty-state";
 import { PageContainer, PageHeader } from "../../components/ui/page";
-import { LoadingState } from "../../components/ui/spinner";
-import { Table, TableScroll, TBody, Td, Th, THead, Tr } from "../../components/ui/table";
+import { Skeleton } from "../../components/ui/skeleton";
+import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
+
+// ── Range helpers ─────────────────────────────────────────────────────────────
+
+type RangeKey = "7d" | "30d" | "all";
+
+const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
+  { key: "7d", label: "近 7 天" },
+  { key: "30d", label: "近 30 天" },
+  { key: "all", label: "全部" },
+];
+
+function rangeOf(key: RangeKey): InsightsRange {
+  if (key === "all") return {};
+  const days = key === "7d" ? 7 : 30;
+  const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  // 后端按 created_at 字符串字典序比较，格式必须匹配 now_str()："YYYY-MM-DD HH:MM:SS"(UTC,无T无Z)
+  return { from: from.toISOString().slice(0, 19).replace("T", " ") };
+}
+
+// ── Gap cards ─────────────────────────────────────────────────────────────────
 
 const CARDS: { key: keyof KnowledgeGaps; kind: GapKind; label: string; hint: string }[] = [
   {
@@ -41,109 +64,201 @@ const CARDS: { key: keyof KnowledgeGaps; kind: GapKind; label: string; hint: str
   },
 ];
 
-type RangeKey = "7d" | "30d" | "all";
+// ── Tool health columns ───────────────────────────────────────────────────────
 
-const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
-  { key: "7d", label: "近 7 天" },
-  { key: "30d", label: "近 30 天" },
-  { key: "all", label: "全部" },
+const toolColumns: ColumnDef<ToolHealth>[] = [
+  {
+    accessorKey: "tool_name",
+    header: "工具",
+    cell: ({ row }) => (
+      <span className="font-mono text-xs">{row.original.tool_name}</span>
+    ),
+  },
+  {
+    accessorKey: "calls",
+    header: "调用数",
+    cell: ({ row }) => row.original.calls,
+  },
+  {
+    accessorKey: "empty",
+    header: "空结果数",
+    cell: ({ row }) => row.original.empty,
+  },
+  {
+    accessorKey: "empty_rate",
+    header: "空结果率",
+    cell: ({ row }) => {
+      const hot = row.original.empty_rate > 0.5;
+      return (
+        <span className={hot ? "text-destructive font-medium" : undefined}>
+          {(row.original.empty_rate * 100).toFixed(0)}%
+        </span>
+      );
+    },
+  },
+  {
+    accessorKey: "rejected",
+    header: "被拒数",
+    cell: ({ row }) => (
+      <span className={row.original.rejected > 0 ? "text-destructive font-medium" : undefined}>
+        {row.original.rejected}
+      </span>
+    ),
+  },
 ];
 
-function rangeOf(key: RangeKey): InsightsRange {
-  if (key === "all") return {};
-  const days = key === "7d" ? 7 : 30;
-  const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  // 后端按 created_at 字符串字典序比较，格式必须匹配 now_str()："YYYY-MM-DD HH:MM:SS"(UTC,无T无Z)
-  return { from: from.toISOString().slice(0, 19).replace("T", " ") };
+// ── Gap conversations columns ─────────────────────────────────────────────────
+
+const drillColumns: ColumnDef<GapConversation>[] = [
+  {
+    accessorKey: "conversation_id",
+    header: "会话",
+    cell: ({ row }) => (
+      <Link
+        to={`/staff/conversations/${row.original.conversation_id}/logs`}
+        className="font-mono text-xs text-primary hover:underline"
+      >
+        #{row.original.conversation_id}
+      </Link>
+    ),
+  },
+  {
+    accessorKey: "last_at",
+    header: "最近时间",
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+        {row.original.last_at}
+      </span>
+    ),
+  },
+];
+
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+
+function SkeletonRows() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <Skeleton key={i} className="h-10 w-full rounded-md" />
+      ))}
+    </div>
+  );
 }
 
-function rangeLabel(key: RangeKey): string {
-  return RANGE_OPTIONS.find((o) => o.key === key)?.label ?? "";
+// ── Drill panel ───────────────────────────────────────────────────────────────
+
+function DrillPanel({
+  token,
+  kind,
+  rangeKey,
+  label,
+}: {
+  token: string;
+  kind: GapKind;
+  rangeKey: RangeKey;
+  label: string;
+}) {
+  const rangeLabel = RANGE_OPTIONS.find((o) => o.key === rangeKey)?.label ?? "";
+  const { data, loading, error } = useAsyncData(
+    () => getGapConversations(token, kind, { ...rangeOf(rangeKey), limit: 50 }),
+    [token, kind, rangeKey],
+    "下钻加载失败",
+  );
+  const rows = data ?? [];
+
+  return (
+    <Card className="mt-3 px-3 py-3">
+      <div className="mb-2 text-sm text-muted-foreground">
+        {label} · {rangeLabel} · 最近 50 个会话
+      </div>
+      {error && (
+        <Alert variant="error" className="mb-2">
+          {error}
+        </Alert>
+      )}
+      {loading ? (
+        <SkeletonRows />
+      ) : (
+        <DataTable
+          columns={drillColumns}
+          data={rows}
+          toolbar={(t) => (
+            <DataTableToolbar table={t} searchColumn="conversation_id" placeholder="搜索会话号…" />
+          )}
+          empty="暂无记录"
+        />
+      )}
+    </Card>
+  );
 }
+
+// ── Route ─────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line max-lines-per-function -- 报表页：时间窗 + 四卡片下钻 + 工具健康表
 export function InsightsRoute() {
   const { token } = useStaffSession();
-  const nav = useNavigate();
   const [rangeKey, setRangeKey] = useState<RangeKey>("7d");
-  const [gaps, setGaps] = useState<KnowledgeGaps | null>(null);
-  const [tools, setTools] = useState<ToolHealth[]>([]);
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(true);
-
-  // 下钻：当前展开的卡片 + 其会话清单
   const [openKind, setOpenKind] = useState<GapKind | null>(null);
-  const [drillRows, setDrillRows] = useState<GapConversation[]>([]);
-  const [drillLoading, setDrillLoading] = useState(false);
 
-  useEffect(() => {
-    if (!token) {
-      nav("/staff/login");
-      return;
-    }
-    const range = rangeOf(rangeKey);
-    setOpenKind(null);
-    setDrillRows([]);
-    setLoading(true);
-    Promise.all([getKnowledgeGaps(token, range), getToolHealth(token, range)])
-      .then(([g, t]) => {
-        setGaps(g);
-        setTools(t);
-        setErr("");
-      })
-      .catch(() => setErr("加载失败"))
-      .finally(() => setLoading(false));
-  }, [token, rangeKey, nav]);
+  const range = rangeOf(rangeKey);
+
+  const {
+    data: gapsAndTools,
+    loading,
+    error,
+  } = useAsyncData(
+    () =>
+      token
+        ? Promise.all([getKnowledgeGaps(token, range), getToolHealth(token, range)])
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [token, rangeKey],
+    "加载失败",
+  );
+
+  const gaps = gapsAndTools?.[0] ?? null;
+  const tools = gapsAndTools?.[1] ?? [];
 
   const drill = useCallback(
     (kind: GapKind) => {
-      if (!token) return;
-      if (openKind === kind) {
-        setOpenKind(null);
-        return;
-      }
-      setOpenKind(kind);
-      setDrillRows([]);
-      setDrillLoading(true);
-      getGapConversations(token, kind, { ...rangeOf(rangeKey), limit: 50 })
-        .then(setDrillRows)
-        .catch(() => setErr("下钻加载失败"))
-        .finally(() => setDrillLoading(false));
+      setOpenKind((prev) => (prev === kind ? null : kind));
     },
-    [token, openKind, rangeKey],
+    [],
   );
 
   return (
     <PageContainer width="wide">
-      <PageHeader title="知识缺口报表" />
+      <PageHeader title="知识缺口" />
 
-      <div className="mb-3 flex items-center gap-2 text-body3">
+      {/* Range selector */}
+      <div className="mb-3 flex items-center gap-2">
         {RANGE_OPTIONS.map((o) => (
-          <button
+          <Button
             key={o.key}
-            type="button"
-            onClick={() => setRangeKey(o.key)}
-            className={
-              rangeKey === o.key
-                ? "rounded border border-brand bg-brand/10 px-3 py-1 text-brand"
-                : "rounded border border-line bg-surface-card px-3 py-1 text-ink-secondary"
-            }
+            size="sm"
+            variant={rangeKey === o.key ? "default" : "outline"}
+            onClick={() => {
+              setRangeKey(o.key);
+              setOpenKind(null);
+            }}
+            className="h-7 px-2.5 text-xs"
           >
             {o.label}
-          </button>
+          </Button>
         ))}
       </div>
 
-      {err && (
-        <Alert variant="error" className="mb-2">
-          {err}
+      {error && (
+        <Alert variant="error" className="mb-3">
+          {error}
         </Alert>
       )}
 
       {loading ? (
-        <LoadingState />
+        <SkeletonRows />
       ) : (
         <>
+          {/* Gap summary cards */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             {CARDS.map((c) => {
               const active = openKind === c.kind;
@@ -153,92 +268,48 @@ export function InsightsRoute() {
                   type="button"
                   onClick={() => drill(c.kind)}
                   className={
-                    "rounded border px-3 py-4 text-left " +
+                    "rounded-md border px-3 py-4 text-left transition-colors " +
                     (active
-                      ? "border-brand bg-brand/10"
-                      : "border-line bg-surface-card hover:border-brand")
+                      ? "border-primary bg-primary/10"
+                      : "border-border bg-card hover:border-primary")
                   }
                 >
-                  <div className="text-sh1 text-ink-primary">{gaps ? gaps[c.key] : "-"}</div>
-                  <div className="mt-1 text-body2 text-ink-primary">{c.label}</div>
-                  <div className="mt-1 text-footnote text-ink-secondary">{c.hint}</div>
+                  <div className="text-2xl font-semibold text-foreground">
+                    {gaps ? gaps[c.key] : "-"}
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-foreground">{c.label}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{c.hint}</div>
                 </button>
               );
             })}
           </div>
 
-          {openKind && (
-            <Card className="mt-3 px-3 py-3">
-              <div className="mb-2 text-body3 text-ink-secondary">
-                {CARDS.find((c) => c.kind === openKind)?.label} · {rangeLabel(rangeKey)} · 最近 50 个会话
-              </div>
-              {drillLoading && <div className="text-body3 text-ink-secondary">加载中…</div>}
-              {!drillLoading && drillRows.length === 0 && (
-                <div className="text-body3 text-ink-secondary">暂无记录</div>
-              )}
-              {!drillLoading && drillRows.length > 0 && (
-                <ul className="flex flex-col gap-1 text-body3">
-                  {drillRows.map((row) => (
-                    <li
-                      key={row.conversation_id}
-                      className="flex items-center gap-3 border-t border-line pt-1 first:border-t-0 first:pt-0"
-                    >
-                      <Link
-                        to={`/staff/conversations/${row.conversation_id}/logs`}
-                        className="text-brand"
-                      >
-                        #{row.conversation_id}
-                      </Link>
-                      <span className="whitespace-nowrap text-ink-secondary">{row.last_at}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
+          {/* Drill-down panel */}
+          {openKind && token && (
+            <DrillPanel
+              token={token}
+              kind={openKind}
+              rangeKey={rangeKey}
+              label={CARDS.find((c) => c.kind === openKind)?.label ?? ""}
+            />
           )}
 
+          {/* Tool health table */}
           <div className="mt-6">
-            <h3 className="mb-2 text-sh3 text-ink-primary">工具健康</h3>
-            {tools.length === 0 ? (
-              <EmptyState>暂无记录</EmptyState>
-            ) : (
-              <TableScroll>
-                <Table className="min-w-[480px]">
-                  <THead>
-                    <tr>
-                      <Th>工具</Th>
-                      <Th>调用数</Th>
-                      <Th>空结果数</Th>
-                      <Th>空结果率</Th>
-                      <Th>被拒数</Th>
-                    </tr>
-                  </THead>
-                  <TBody>
-                    {tools.map((t) => {
-                      const hot = t.empty_rate > 0.5;
-                      return (
-                        <Tr key={t.tool_name} className="align-top">
-                          <Td>{t.tool_name}</Td>
-                          <Td>{t.calls}</Td>
-                          <Td>{t.empty}</Td>
-                          <Td className={hot ? "text-status-error" : undefined}>
-                            {(t.empty_rate * 100).toFixed(0)}%
-                          </Td>
-                          <Td className={t.rejected > 0 ? "text-status-error" : undefined}>
-                            {t.rejected}
-                          </Td>
-                        </Tr>
-                      );
-                    })}
-                  </TBody>
-                </Table>
-              </TableScroll>
-            )}
+            <h3 className="mb-3 text-base font-semibold text-foreground">工具健康</h3>
+            <DataTable
+              columns={toolColumns}
+              data={tools}
+              toolbar={(t) => (
+                <DataTableToolbar table={t} searchColumn="tool_name" placeholder="搜索工具名…" />
+              )}
+              empty="暂无记录"
+            />
           </div>
         </>
       )}
 
-      <p className="mt-4 text-footnote text-ink-secondary">
+      <p className="mt-4 text-xs text-muted-foreground">
         明细可在「全局工具审计」或具体会话的留痕页查看。
       </p>
     </PageContainer>
