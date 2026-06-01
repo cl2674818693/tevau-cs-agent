@@ -75,6 +75,15 @@ async function isCSide(url: URLSearchParams): Promise<boolean> {
   return bridgePresent() || (await bridge.whenReady());
 }
 
+/** 是否已建立可发 user-scope 请求的真实身份；未登录态返回 false，调用方可据此跳过会 401 的探测请求。
+ *  - C 端：bridge.getToken() 拿得到 token
+ *  - B 端：setIdentity 已注入 buId（登录页/dev 回退）；纯 cookie 场景前端不可见，按未登录处理 */
+export async function isLoggedIn(): Promise<boolean> {
+  if (!_identity) return false;
+  if (_identity.kind === "b") return !!_identity.buId;
+  return !!(await _identity.getToken());
+}
+
 export async function resolveIdentity(): Promise<Identity> {
   if (_identity) return _identity;
   const url = new URLSearchParams(typeof location !== "undefined" ? location.search : "");
