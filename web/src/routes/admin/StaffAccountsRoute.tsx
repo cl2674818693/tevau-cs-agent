@@ -301,7 +301,7 @@ function EditSheet({
       await patchStaff(token, staff.staff_id, {
         display_name: values.display_name,
         role: values.role,
-        group_id: groupId ?? undefined,
+        group_id: groupId,
         skills: skillsArr,
         active: values.active ? 1 : 0,
       });

@@ -39,7 +39,7 @@ export async function createStaff(
 export async function patchStaff(
   token: string,
   staffId: string,
-  body: { display_name?: string; role?: string; active?: number; group_id?: number; skills?: string[] },
+  body: { display_name?: string; role?: string; active?: number; group_id?: number | null; skills?: string[] },
 ): Promise<void> {
   const r = await staffFetch(`/admin/api/v1/staff/${staffId}`, {
     method: "PATCH",
