@@ -77,11 +77,11 @@ function OverviewTab({
 
   return (
     <Card className="px-3 py-3">
-      <dl className="flex flex-col gap-2 text-body3">
+      <dl className="flex flex-col gap-2 text-xs">
         {rows.map(([label, value]) => (
           <div key={label} className="flex flex-wrap gap-x-3">
-            <dt className="w-24 shrink-0 text-ink-secondary">{label}</dt>
-            <dd className="text-ink-primary">{value}</dd>
+            <dt className="w-24 shrink-0 text-muted-foreground">{label}</dt>
+            <dd className="text-foreground">{value}</dd>
           </div>
         ))}
       </dl>
@@ -101,16 +101,16 @@ function EventsTab({
   return (
     <div className="flex flex-col gap-2">
       {events.length === 0 && (
-        <div className="py-4 text-center text-body3 text-ink-secondary">暂无事件</div>
+        <div className="py-4 text-center text-xs text-muted-foreground">暂无事件</div>
       )}
       {events.map((e, i) => (
         <Card key={i} className="px-3 py-2">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-body3">
-            <span className="font-medium text-ink-primary">{e.event}</span>
-            <span className="text-footnote text-ink-tertiary">{e.created_at}</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="font-medium text-foreground">{e.event}</span>
+            <span className="text-[10px] text-muted-foreground">{e.created_at}</span>
           </div>
           {(e.actor || e.comment) && (
-            <div className="mt-1 text-footnote text-ink-secondary">
+            <div className="mt-1 text-[10px] text-muted-foreground">
               {e.actor && <span>执行人：{e.actor}</span>}
               {e.actor && e.comment && <span className="mx-1">·</span>}
               {e.comment && <span>{e.comment}</span>}
@@ -141,16 +141,16 @@ function ConversationsTab({
   return (
     <div className="flex flex-col gap-2">
       <Card className="px-3 py-2">
-        <div className="flex flex-wrap items-center gap-2 text-body3">
-          <span className="text-ink-secondary">会话 ID</span>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-muted-foreground">会话 ID</span>
           <Link
-            className="font-medium text-brand hover:underline"
+            className="font-medium text-primary hover:underline"
             to={`/staff/conversations/${t.conversation_id}`}
           >
             #{t.conversation_id}
           </Link>
           <Link
-            className="ml-auto text-footnote text-ink-secondary hover:text-brand"
+            className="ml-auto text-[10px] text-muted-foreground hover:text-primary"
             to={`/staff/conversations/${t.conversation_id}/logs`}
           >
             查看日志 →

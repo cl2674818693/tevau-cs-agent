@@ -33,7 +33,7 @@ export function StaffLoginRoute() {
 
   return (
     <PageContainer width="narrow" center>
-      <h2 className="mb-4 text-center text-sh1 text-ink-primary">客服工作台登录</h2>
+      <h2 className="mb-4 text-center text-lg font-bold text-foreground">客服工作台登录</h2>
       <form onSubmit={submit} className="flex flex-col gap-3">
         <Field>
           <Input value={staffId} onChange={(e) => setStaffId(e.target.value)} placeholder="工号" />

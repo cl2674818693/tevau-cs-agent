@@ -21,7 +21,7 @@ function RolloutRow({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="flex-1 text-body2 text-ink-primary">{version}</span>
+      <span className="flex-1 text-sm text-foreground">{version}</span>
       <Input
         type="number"
         min={0}
@@ -29,9 +29,9 @@ function RolloutRow({
         aria-label={`${version} 灰度比例`}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-20 px-2 py-1 text-body2"
+        className="w-20 px-2 py-1 text-sm"
       />
-      <span className="text-body3 text-ink-secondary">%</span>
+      <span className="text-xs text-muted-foreground">%</span>
     </div>
   );
 }
@@ -135,27 +135,27 @@ export function PromptsRoute() {
                 ))}
               </div>
             </Card>
-            <div className="mt-2 text-footnote text-ink-secondary">
+            <div className="mt-2 text-[10px] text-muted-foreground">
               合计 {total}%（≤100，余量回落 default）
             </div>
-            <Button size="md" className="mt-3" onClick={save} disabled={total > 100}>
+            <Button size="sm" className="mt-3" onClick={save} disabled={total > 100}>
               保存
             </Button>
 
             {/* 各版本表现对比 */}
             <div className="mt-6">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-body2 font-medium text-ink-primary">各版本表现</span>
+          <span className="text-sm font-medium text-foreground">各版本表现</span>
           <div className="flex gap-1">
             {(["7d", "30d"] as WindowOption[]).map((opt) => (
               <button
                 key={opt}
                 onClick={() => setWindow(opt)}
                 className={[
-                  "px-2 py-0.5 rounded text-body3 transition-colors",
+                  "px-2 py-0.5 rounded text-xs transition-colors",
                   window === opt
-                    ? "bg-brand-primary text-white"
-                    : "text-ink-secondary hover:text-ink-primary",
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 ].join(" ")}
               >
                 {opt === "7d" ? "近 7 天" : "近 30 天"}
@@ -170,9 +170,9 @@ export function PromptsRoute() {
         )}
         <Card>
           <div className="overflow-x-auto">
-            <table className="w-full text-body3">
+            <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-line-default text-ink-secondary">
+                <tr className="border-b text-muted-foreground">
                   <th className="px-3 py-2 text-left font-normal">版本</th>
                   <th className="px-3 py-2 text-right font-normal">assistant 轮次</th>
                   <th className="px-3 py-2 text-right font-normal">失败数</th>
@@ -184,14 +184,14 @@ export function PromptsRoute() {
               <tbody>
                 {abLoading && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-4 text-center text-ink-tertiary">
+                    <td colSpan={6} className="px-3 py-4 text-center text-muted-foreground">
                       加载中…
                     </td>
                   </tr>
                 )}
                 {!abLoading && abStats.length === 0 && !abErr && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-4 text-center text-ink-tertiary">
+                    <td colSpan={6} className="px-3 py-4 text-center text-muted-foreground">
                       暂无数据
                     </td>
                   </tr>
@@ -201,15 +201,15 @@ export function PromptsRoute() {
                     const failedHigh = s.failed_rate > 0.1;
                     const downvoteHigh = s.downvote_rate > 0.2;
                     return (
-                      <tr key={s.version} className="border-b border-line-default last:border-0">
-                        <td className="px-3 py-2 text-ink-primary">{s.version}</td>
-                        <td className="px-3 py-2 text-right text-ink-secondary">
+                      <tr key={s.version} className="border-b last:border-0">
+                        <td className="px-3 py-2 text-foreground">{s.version}</td>
+                        <td className="px-3 py-2 text-right text-muted-foreground">
                           {s.assistant_turns}
                         </td>
                         <td
                           className={[
                             "px-3 py-2 text-right",
-                            failedHigh ? "text-status-error" : "text-ink-secondary",
+                            failedHigh ? "text-status-error" : "text-muted-foreground",
                           ].join(" ")}
                         >
                           {s.failed}
@@ -217,7 +217,7 @@ export function PromptsRoute() {
                         <td
                           className={[
                             "px-3 py-2 text-right",
-                            failedHigh ? "text-status-error" : "text-ink-secondary",
+                            failedHigh ? "text-status-error" : "text-muted-foreground",
                           ].join(" ")}
                         >
                           {(s.failed_rate * 100).toFixed(1)}%
@@ -225,7 +225,7 @@ export function PromptsRoute() {
                         <td
                           className={[
                             "px-3 py-2 text-right",
-                            downvoteHigh ? "text-status-error" : "text-ink-secondary",
+                            downvoteHigh ? "text-status-error" : "text-muted-foreground",
                           ].join(" ")}
                         >
                           {s.downvote}
@@ -233,7 +233,7 @@ export function PromptsRoute() {
                         <td
                           className={[
                             "px-3 py-2 text-right",
-                            downvoteHigh ? "text-status-error" : "text-ink-secondary",
+                            downvoteHigh ? "text-status-error" : "text-muted-foreground",
                           ].join(" ")}
                         >
                           {(s.downvote_rate * 100).toFixed(1)}%
@@ -245,7 +245,7 @@ export function PromptsRoute() {
             </table>
           </div>
         </Card>
-              <p className="mt-1 text-footnote text-ink-tertiary">
+              <p className="mt-1 text-[10px] text-muted-foreground">
                 差评率分母 = 该版本 assistant 消息数
               </p>
             </div>

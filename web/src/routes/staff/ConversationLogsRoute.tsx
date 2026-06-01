@@ -63,7 +63,7 @@ function ExpandableText({ text, maxLen = 300 }: { text: string; maxLen?: number 
   }
   return (
     <details className="group">
-      <summary className="cursor-pointer select-none list-none text-ink-secondary hover:text-ink-primary">
+      <summary className="cursor-pointer select-none list-none text-muted-foreground hover:text-foreground">
         <span className="group-open:hidden">{text.slice(0, maxLen)}…（点击展开）</span>
         <span className="hidden group-open:inline">收起</span>
       </summary>
@@ -185,13 +185,13 @@ function MessagesTab({
       )}
       {messages.map((m) => (
         <Card key={m.id} className="px-3 py-2">
-          <div className="mb-1 flex flex-wrap items-center text-footnote text-ink-secondary">
+          <div className="mb-1 flex flex-wrap items-center text-[10px] text-muted-foreground">
             <span className="font-medium capitalize">{m.role}</span>
             <span className="mx-1">·</span>
             <span>{m.created_at}</span>
             <MsgBadges m={m} />
           </div>
-          <div className="text-body3 text-ink-primary">
+          <div className="text-xs font-semibold text-foreground">
             <ExpandableText text={m.content} />
           </div>
           {m.attachments?.length ? (
@@ -204,7 +204,7 @@ function MessagesTab({
         </Card>
       ))}
       {messages.length === 0 && (
-        <div className="py-4 text-center text-body3 text-ink-secondary">无消息记录</div>
+        <div className="py-4 text-center text-xs text-muted-foreground">无消息记录</div>
       )}
     </div>
   );
@@ -217,20 +217,20 @@ function AuditsTab({ audits, loading }: { audits: ToolAudit[]; loading: boolean 
     <div className="flex flex-col gap-2">
       {audits.map((a) => (
         <Card key={a.id} className="px-3 py-2">
-          <div className="mb-1 flex flex-wrap items-center gap-2 text-body3">
-            <span className="font-medium text-ink-primary">{a.tool_name}</span>
-            <span className="text-ink-secondary">{a.duration_ms}ms</span>
+          <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-medium text-foreground">{a.tool_name}</span>
+            <span className="text-muted-foreground">{a.duration_ms}ms</span>
             <span
               className={
                 a.is_empty === 1 || a.is_empty === true
                   ? "text-status-error"
-                  : "text-ink-secondary"
+                  : "text-muted-foreground"
               }
             >
               返回 {a.result_count ?? 0} 条
             </span>
             {a.subject_id ? (
-              <span className="text-ink-secondary">身份 {a.subject_id}</span>
+              <span className="text-muted-foreground">身份 {a.subject_id}</span>
             ) : null}
             {a.rejected ? (
               <Badge variant="error">被拒：{a.reject_reason ?? "-"}</Badge>
@@ -239,15 +239,15 @@ function AuditsTab({ audits, loading }: { audits: ToolAudit[]; loading: boolean 
             )}
           </div>
           {a.params_json && (
-            <div className="mt-1 text-footnote text-ink-secondary">
+            <div className="mt-1 text-[10px] text-muted-foreground">
               <ExpandableText text={a.params_json} maxLen={200} />
             </div>
           )}
-          <div className="mt-0.5 text-footnote text-ink-secondary">{a.created_at}</div>
+          <div className="mt-0.5 text-[10px] text-muted-foreground">{a.created_at}</div>
         </Card>
       ))}
       {audits.length === 0 && (
-        <div className="py-4 text-center text-body3 text-ink-secondary">无工具调用记录</div>
+        <div className="py-4 text-center text-xs text-muted-foreground">无工具调用记录</div>
       )}
     </div>
   );
@@ -260,21 +260,21 @@ function FeedbackTab({ feedback, loading }: { feedback: MessageFeedback[]; loadi
     <div className="flex flex-col gap-2">
       {feedback.map((f) => (
         <Card key={f.id} className="px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2 text-body3">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
             <span
               className={f.rating === "down" ? "text-status-error" : "text-status-success"}
               aria-label={f.rating === "down" ? "thumbs down" : "thumbs up"}
             >
               {f.rating === "down" ? "👎" : "👍"}
             </span>
-            <span className="text-ink-secondary">消息 #{f.message_id}</span>
-            {f.reason ? <span className="text-ink-primary">{f.reason}</span> : null}
-            <span className="ml-auto text-footnote text-ink-secondary">{f.created_at}</span>
+            <span className="text-muted-foreground">消息 #{f.message_id}</span>
+            {f.reason ? <span className="text-foreground">{f.reason}</span> : null}
+            <span className="ml-auto text-[10px] text-muted-foreground">{f.created_at}</span>
           </div>
         </Card>
       ))}
       {feedback.length === 0 && (
-        <div className="py-4 text-center text-body3 text-ink-secondary">无用户反馈</div>
+        <div className="py-4 text-center text-xs text-muted-foreground">无用户反馈</div>
       )}
     </div>
   );

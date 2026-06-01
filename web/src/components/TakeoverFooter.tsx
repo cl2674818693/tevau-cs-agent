@@ -68,7 +68,7 @@ export function TakeoverFooter({ token, convId, onNotice, onReleased }: Props) {
           placeholder="回复用户…"
           className="flex-1 py-2"
         />
-        <Button size="md" onClick={send} disabled={!draft.trim() && ids.length === 0}>
+        <Button size="sm" onClick={send} disabled={!draft.trim() && ids.length === 0}>
           发送
         </Button>
       </div>

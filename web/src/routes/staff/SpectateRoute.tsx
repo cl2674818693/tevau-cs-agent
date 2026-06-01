@@ -82,7 +82,7 @@ export function SpectateRoute() {
             return (
               <li
                 key={i}
-                className={`text-body2 ${alert ? "text-status-error" : "text-ink-primary"}`}
+                className={`text-sm ${alert ? "text-status-error" : "text-foreground"}`}
               >
                 {label(ev)}
                 {ev.attachments?.length ? (

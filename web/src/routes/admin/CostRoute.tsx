@@ -110,7 +110,7 @@ function PricingForm({
           className="w-20"
           onChange={(e) => setCur(e.target.value)}
         />
-        <Button size="md" onClick={submit}>
+        <Button size="sm" onClick={submit}>
           保存单价
         </Button>
       </div>

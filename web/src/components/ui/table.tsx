@@ -115,18 +115,3 @@ export {
   TableCell,
   TableCaption,
 }
-
-// ── Backwards-compat aliases (old self-written table API) ──────────────────
-export const THead = TableHeader;
-export const TBody = TableBody;
-export const Tr = TableRow;
-export const Th = TableHead;
-export const Td = TableCell;
-/** @deprecated Use a wrapping div with overflow-x-auto instead */
-export const TableScroll = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("overflow-x-auto", className)} {...props} />
-))
-TableScroll.displayName = "TableScroll"
