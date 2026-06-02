@@ -14,7 +14,7 @@ run:
 	cd server && uvicorn ai_engine.main:app --reload --port 8000
 
 test:
-	cd server && pytest --cov=src/ai_engine --cov-report=term --cov-fail-under=75
+	cd server && pytest --cov=src/ai_engine --cov-report=term --cov-fail-under=85
 
 lint:
 	cd server && ruff check src tests

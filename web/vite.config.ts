@@ -35,10 +35,12 @@ export default defineConfig(({ mode }) => {
         include: ["src/**/*.{ts,tsx}"],
         exclude: ["src/main.tsx", "src/**/*.d.ts", "tests/**"],
         thresholds: {
-          lines: 75,
+          // v2 测试套件实测：lines 86.7 / branches 83.4 / functions 76.8 / statements 86.7
+          // 阈值定略低于现状，防回退；functions 偏低（部分 hook export 副作用没显式调）保持 75
+          lines: 85,
           functions: 75,
-          branches: 70,
-          statements: 75,
+          branches: 80,
+          statements: 85,
           autoUpdate: false,
         },
       },
