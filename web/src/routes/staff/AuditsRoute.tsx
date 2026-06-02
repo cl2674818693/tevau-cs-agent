@@ -140,7 +140,11 @@ export function AuditsRoute() {
               whiteSpace: "nowrap",
             }}
           >
-            {row.user_type ?? "-"}
+            {row.user_type === "c"
+              ? "C 端用户"
+              : row.user_type === "b"
+                ? "BU"
+                : (row.user_type ?? "-")}
             {row.subject_id ? `:${row.subject_id}` : ""}
           </span>
         ),
@@ -173,7 +177,7 @@ export function AuditsRoute() {
           row.rejected ? (
             <Tag color="red">被拒：{row.reject_reason ?? "-"}</Tag>
           ) : (
-            <Tag color="green">ok</Tag>
+            <Tag color="green">通过</Tag>
           ),
       },
     ],

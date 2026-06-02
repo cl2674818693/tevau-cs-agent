@@ -1,14 +1,14 @@
 import { clearStaffToken } from "../hooks/useStaffSession";
 
-// 多个并发请求可能同时收到 401，只处理一次，避免重复跳转 / 抖动。
-let handled = false;
-
 /** 客服 token 失效（任一 staff/admin 请求返回 401）：清本地 token + 跳登录页。
  * 用硬跳转（window.location）而非 router.navigate：整页重载可重置所有 React 态与
- * 残留的 SSE 流，落到登录页时 useStaffSession 自然读不到 token。 */
+ * 残留的 SSE 流，落到登录页时 useStaffSession 自然读不到 token。
+ *
+ * 不做防抖：window.location.href 本身是同步赋值、浏览器只 navigate 一次；
+ * clearStaffToken 幂等。旧版有 module-level handled flag 防多 401 抖动，但
+ * 若某次跳转因 StrictMode 双 mount / 用户后退中断，handled 永久为 true 后
+ * 续 401 静默不跳——比"抖一下"严重，故移除。 */
 function onStaffAuthExpired() {
-  if (handled) return;
-  handled = true;
   clearStaffToken();
   // 已在登录页（如登录请求自身 401）则不重复跳，避免刷掉错误提示。
   if (!window.location.pathname.endsWith("/staff/login")) {

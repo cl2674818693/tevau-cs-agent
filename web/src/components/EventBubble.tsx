@@ -1,9 +1,25 @@
 import { Avatar, Flex, Typography } from "antd";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { staffAttachmentUrl } from "../api/attachments";
-import type { StaffStreamEvent } from "../api/staff";
+import type { StaffMessage, StaffStreamEvent } from "../api/staff";
 
 import { StaffImageThumb } from "./StaffImageThumb";
+
+/** 把 messages 表里的历史消息映射成事件流条目；ai_draft / 未知 role 过滤掉。
+ *  不填 draft 字段，避免 useAiDraft 把历史草稿误判成新草稿弹出。
+ *  详情页和日志页共用。 */
+export function messageToStreamEvent(m: StaffMessage): StaffStreamEvent | null {
+  const typeByRole: Record<string, string> = {
+    user: "user_message",
+    assistant: "assistant_message",
+    human_agent: "human_message",
+  };
+  const type = typeByRole[m.role];
+  if (!type) return null;
+  return { type, content: m.content, attachments: m.attachments };
+}
 
 const { Text } = Typography;
 
@@ -178,6 +194,7 @@ function AssistantBubble({ content }: { content: string }) {
           AI
         </Text>
         <div
+          className="markdown-body-dark"
           style={{
             background: "#eef2ff",
             color: "#1e1b4b",
@@ -185,11 +202,23 @@ function AssistantBubble({ content }: { content: string }) {
             padding: "8px 12px",
             fontSize: 13,
             lineHeight: 1.6,
-            whiteSpace: "pre-wrap",
             wordBreak: "break-word",
           }}
         >
-          {content}
+          {/* 与 H5 MessageBubble 对齐：AI 回复走 markdown 渲染（粗体 / 代码 / 表格 / 列表）。
+              admin 端之前用纯 pre-wrap 显示 ** 和 ` 原文，与用户端不一致。 */}
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              table: ({ node: _node, ...props }) => (
+                <div style={{ overflowX: "auto" }}>
+                  <table {...props} />
+                </div>
+              ),
+            }}
+          >
+            {content}
+          </ReactMarkdown>
         </div>
       </Flex>
       <Avatar

@@ -4,6 +4,7 @@ import {
   cancelStream,
   fetchHistory,
   initConversation,
+  reportClientInfo,
   requestHuman,
   streamChat,
   streamConversationMessages,
@@ -118,6 +119,21 @@ function useChatInit(
       setMessages(() => [{ role: "system", content: info.greeting }, ...history]);
       persistConversation(sessionId, info.conversation_id);
       setStatus("ready");
+      // 上报客户端环境给 admin 详情页"会话信息"卡用（platform/版本/UA）。
+      // 异步触发，失败静默，不阻塞首屏。bridge 不可用时 platform/version 都为空字符串。
+      void (async () => {
+        try {
+          const { bridge } = await import("./useAppBridge");
+          const env = await bridge.getEnv();
+          await reportClientInfo(info.conversation_id, {
+            platform: env.platform ?? undefined,
+            app_version: env.version ?? undefined,
+            user_agent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+          });
+        } catch {
+          /* 静默 */
+        }
+      })();
     } catch (e) {
       console.error("init failed", e);
       setStatus("error");

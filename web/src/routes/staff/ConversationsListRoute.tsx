@@ -29,6 +29,20 @@ const FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "risk", label: "有风险信号" },
 ];
 
+const MODE_LABEL: Record<string, string> = {
+  ai: "AI 对话",
+  ai_draft: "AI 草稿",
+  human_pending: "等待人工",
+  human_takeover: "人工接管",
+};
+
+const MODE_COLOR: Record<string, string> = {
+  ai: "default",
+  ai_draft: "purple",
+  human_pending: "orange",
+  human_takeover: "blue",
+};
+
 // 风险角标：变量驱动，按真值显示（兼容 boolean / 0|1）
 // 列表里风险只是提示，不是 alert，用 antd Tag 的色阶传达严重程度。
 const RISK_BADGES: {
@@ -56,7 +70,7 @@ export function ConversationsListRoute() {
   const { data, loading, error } = useAsyncData(
     () => (token ? listStaffConversations(token, apiStatus, riskOnly) : null),
     [token, apiStatus, riskOnly],
-    "加载失败，请重新登录",
+    "加载失败",
   );
 
   const rawItems = data ?? [];
@@ -107,7 +121,9 @@ export function ConversationsListRoute() {
         title: "模式",
         dataIndex: "mode",
         width: 140,
-        render: (v: string) => <Tag>{v}</Tag>,
+        render: (v: string) => (
+          <Tag color={MODE_COLOR[v] ?? "default"}>{MODE_LABEL[v] ?? v}</Tag>
+        ),
       },
       {
         title: "负责人",
@@ -151,7 +167,7 @@ export function ConversationsListRoute() {
           <Flex gap="small">
             <Link to={`/staff/conversations/${row.id}/logs`}>
               <Button type="link" size="small" style={{ padding: 0 }}>
-                留痕
+                日志
               </Button>
             </Link>
             {canSpectate && (

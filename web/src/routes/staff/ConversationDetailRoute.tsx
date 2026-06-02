@@ -1,5 +1,5 @@
-import { Alert, Breadcrumb, Button, Card, Flex, Skeleton, Space, Typography } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { Alert, Breadcrumb, Button, Card, Skeleton, Space, Typography } from "antd";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -7,31 +7,17 @@ import {
   getStaffConversation,
   releaseConversation,
   type StaffConversation,
-  type StaffMessage,
   streamStaffEvents,
   takeConversation,
   type StaffStreamEvent,
 } from "../../api/staff";
 import { AiDraftPanel } from "../../components/AiDraftPanel";
 import { AiToolsPanel } from "../../components/AiToolsPanel";
-import { ConversationInfoCard } from "../../components/ConversationInfoCard";
-import { EventBubble } from "../../components/EventBubble";
+import { EventBubble, messageToStreamEvent } from "../../components/EventBubble";
+import { SubjectInfoCard } from "../../components/SubjectInfoCard";
 import { TakeoverFooter } from "../../components/TakeoverFooter";
 import { useAiDraft } from "../../hooks/useAiDraft";
 import { useStaffSession } from "../../hooks/useStaffSession";
-
-/** 把 messages 表的历史消息映射成事件流条目；ai_draft / 未知 role 过滤掉。
- *  不填 draft 字段，避免 useAiDraft 把历史草稿误判成新草稿弹出。 */
-function messageToStreamEvent(m: StaffMessage): StaffStreamEvent | null {
-  const typeByRole: Record<string, string> = {
-    user: "user_message",
-    assistant: "assistant_message",
-    human_agent: "human_message",
-  };
-  const type = typeByRole[m.role];
-  if (!type) return null;
-  return { type, content: m.content, attachments: m.attachments };
-}
 
 /**
  * 订阅会话事件总线，返回累积的事件列表（含 mount 前的历史 + SSE 增量）。
@@ -95,9 +81,31 @@ function useConvInfo(
   convId: number,
   events: StaffStreamEvent[],
   setTaken: (b: boolean) => void,
-): { conv: StaffConversation | null; loading: boolean } {
+): {
+  conv: StaffConversation | null;
+  loading: boolean;
+  refetch: () => Promise<void>;
+} {
   const [conv, setConv] = useState<StaffConversation | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // "我是否接管"只看 assigned_staff_id===staffId，不挂 mode：human_takeover →
+  // ai_draft（客服自己开启草稿模式）后 mode 变了，但 assigned 还是自己，按钮应继续
+  // 显示"释放回 AI"，而不是错误地回到"接管"。
+  const isMine = (c: StaffConversation): boolean =>
+    !!staffId && c.assigned_staff_id === staffId;
+
+  const refetch = useCallback(async () => {
+    if (!token) return;
+    try {
+      const c = await getStaffConversation(token, convId);
+      setConv(c);
+      setTaken(isMine(c));
+    } catch {
+      /* 取不到时保持当前态 */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, convId, staffId, setTaken]);
 
   useEffect(() => {
     if (!token) return;
@@ -107,8 +115,7 @@ function useConvInfo(
       .then((c) => {
         if (cancelled) return;
         setConv(c);
-        if (staffId)
-          setTaken(c.mode === "human_takeover" && c.assigned_staff_id === staffId);
+        setTaken(isMine(c));
       })
       .catch(() => {
         /* 取不到状态时保持未接管 */
@@ -119,7 +126,16 @@ function useConvInfo(
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, staffId, convId, setTaken]);
+
+  // conv 任何来源的变化（SSE mode_change / transferred / refetch）都立刻同步 taken。
+  // 否则别人 release 后 conv.assigned_staff_id 变 null、taken 仍 true，TakeoverFooter
+  // 继续显示、客服点发送 → 后端 mode!=human_takeover 直接 403。
+  useEffect(() => {
+    if (conv) setTaken(isMine(conv));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conv?.assigned_staff_id, conv?.mode, staffId]);
 
   // 实时事件 → 局部更新 conv.mode/assigned_staff_id，让 InfoCard 不必刷页面。
   // 关键：mode_change 的 by_staff_id 是"触发操作的人"（接管者/释放者/解决者），
@@ -147,7 +163,7 @@ function useConvInfo(
       );
   }, [events]);
 
-  return { conv, loading };
+  return { conv, loading, refetch };
 }
 
 function EventLog({
@@ -199,7 +215,7 @@ function EventLog({
         <Typography.Text type="secondary" style={{ fontSize: 12, textAlign: "center" }}>
           该会话暂无消息。
           <br />
-          完整留痕（工具调用 / 反馈）请查看{" "}
+          完整日志（工具调用 / 反馈）请查看{" "}
           <Link to={`/staff/conversations/${convId}/logs`}>会话日志</Link>
         </Typography.Text>
       </div>
@@ -234,7 +250,7 @@ export function ConversationDetailRoute() {
     setNotice,
   );
 
-  const { conv, loading: convLoading } = useConvInfo(
+  const { conv, refetch: refetchConv } = useConvInfo(
     token,
     staffId,
     convId,
@@ -252,6 +268,9 @@ export function ConversationDetailRoute() {
     const ok = await takeConversation(token, convId);
     setTaken(ok);
     setNotice(ok ? "已接管" : "该会话已被其他客服接管");
+    // 失败 = 后端已 human_takeover，但本地 conv 可能还是 ai/human_pending 没及时同步。
+    // 强制 refetch，让按钮立刻进入"已被 X 接管"禁用态，避免用户反复点同一个按钮。
+    if (!ok) await refetchConv();
   }
 
   async function onRelease() {
@@ -265,39 +284,69 @@ export function ConversationDetailRoute() {
     }
   }
 
+  // 接管按钮三态：未接管(可点) / 我接管(显示释放) / 他人接管(禁用)。
+  // 判定基于 assigned_staff_id 而不是 mode：ai_draft 也是"已接管"的子状态
+  // （客服接管后开草稿模式），assigned 仍指向接管者。挂 mode 会让 ai_draft
+  // 状态下负责人按钮错回"接管"，点了 409。
+  // staffId 拿不到时(JWT 解析失败)不进入"他人接管"分支，回退到可点的"接管"，
+  // 让后端 409 兜底拒绝——比 UI 永远禁用更安全。
+  const otherStaffTook =
+    !!staffId &&
+    !!conv &&
+    !!conv.assigned_staff_id &&
+    conv.assigned_staff_id !== staffId;
+
   return (
+    // AppShell 用 minHeight:100vh（可超出），h-full 子页面没有具体高度边界，
+    // EventLog 的 overflow-y-auto 失效会让对话区无限撑高。固定 = 100vh -
+    // AppShell.Header(56px) 让 flex 链路 minHeight:0 真正约束 EventLog 滚动。
+    //
+    // 移动端（< md）：Sider 自动折叠成 0，整屏给 Content。布局切纵向，对话卡占
+    // 主体（flex:1），InfoCard/Draft/Tools 折到下方并限高自滚，避免 320 右栏在
+    // 窄屏被并排压扁。
     <div
-      className="flex h-full flex-col"
-      style={{ gap: 16, padding: "20px 24px" }}
+      className="flex flex-col gap-3 p-3 md:gap-4 md:p-5"
+      style={{ height: "calc(100vh - 56px)" }}
     >
-      <Flex justify="space-between" align="center" gap="middle">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <Breadcrumb
           items={[
             { title: <Link to="/staff/conversations">会话列表</Link> },
             { title: <span style={{ fontWeight: 500 }}>会话 #{convId}</span> },
           ]}
         />
-        <Space>
-          <Button onClick={onToggleDraftMode}>
+        <Space wrap size={[8, 8]}>
+          <Button onClick={onToggleDraftMode} disabled={otherStaffTook}>
             {draftMode ? "关闭草稿模式" : "AI 草稿模式"}
           </Button>
           {taken ? (
             <Button onClick={onRelease}>释放回 AI</Button>
+          ) : otherStaffTook ? (
+            <Button disabled>
+              已被 {conv?.assigned_staff_id} 接管
+            </Button>
           ) : (
             <Button type="primary" onClick={onTake}>
               接管
             </Button>
           )}
         </Space>
-      </Flex>
+      </div>
 
       {notice && <Alert type="info" showIcon title={notice} />}
+      {otherStaffTook && !notice && (
+        <Alert
+          type="info"
+          showIcon
+          title={`该会话已被 ${conv?.assigned_staff_id} 接管，你处于只读状态`}
+        />
+      )}
 
-      <Flex gap="middle" style={{ flex: 1, minHeight: 0 }}>
+      <div className="flex flex-1 min-h-0 flex-col gap-3 md:flex-row md:gap-4">
         <Card
           title="对话"
           size="small"
-          style={{ flex: 1, display: "flex", flexDirection: "column" }}
+          style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
           styles={{
             body: {
               display: "flex",
@@ -333,17 +382,9 @@ export function ConversationDetailRoute() {
           )}
         </Card>
 
-        <div
-          style={{
-            width: 320,
-            flexShrink: 0,
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-            overflowY: "auto",
-          }}
-        >
-          <ConversationInfoCard conv={conv} loading={convLoading} />
+        {/* 桌面 320px 固定右栏；移动端整宽，限高 40vh 自滚，避免吃掉对话区 */}
+        <div className="flex flex-col gap-3 overflow-y-auto md:w-[320px] md:flex-shrink-0 md:max-h-none max-h-[40vh]">
+          <SubjectInfoCard token={token} convId={convId} />
           <AiDraftPanel
             draft={aiDraft}
             onApprove={approve}
@@ -353,7 +394,7 @@ export function ConversationDetailRoute() {
             <AiToolsPanel token={token} convId={convId} />
           )}
         </div>
-      </Flex>
+      </div>
     </div>
   );
 }

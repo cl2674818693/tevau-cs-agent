@@ -252,6 +252,18 @@ role_permissions = Table(
 )
 Index("ux_role_perm", role_permissions.c.role, role_permissions.c.permission_key, unique=True)
 
+# H5 上报的客户端环境（平台 / APP 版本 / UA），admin 端会话详情卡片展示用。
+# conversation_id 唯一约束：同一会话只保留最新一条；APP 升级 / 切端走 upsert。
+conversation_client_info = Table(
+    "conversation_client_info",
+    metadata,
+    Column("conversation_id", Integer, primary_key=True),
+    Column("platform", String(32)),
+    Column("app_version", String(64)),
+    Column("user_agent", Text),
+    Column("updated_at", String(32), nullable=False),
+)
+
 # 转人工超时事件去重：sweep 命中阈值推事项中心后写一行，避免同会话反复推送。
 pending_timeout_pushes = Table(
     "pending_timeout_pushes",

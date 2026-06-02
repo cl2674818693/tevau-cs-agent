@@ -28,23 +28,39 @@ function Attachments({
   );
 }
 
+/** 内容含 CJK 走中文，否则英文。让反馈条等"伴随 UI"跟随 AI 回复语言。 */
+const HAS_CJK = /[㐀-鿿]/;
+function langOf(text: string): "zh" | "en" {
+  return HAS_CJK.test(text) ? "zh" : "en";
+}
+
 /** AI 回复下方的 👍/👎 反馈条。点过一次即锁定并显示致谢。 */
-function FeedbackBar({ onFeedback }: { onFeedback: (rating: "up" | "down") => void }) {
+function FeedbackBar({
+  onFeedback,
+  lng,
+}: {
+  onFeedback: (rating: "up" | "down") => void;
+  lng: "zh" | "en";
+}) {
   const { t } = useTranslation();
   const [done, setDone] = useState(false);
   if (done)
-    return <div className="text-footnote text-ink-secondary">{t("chat.feedbackThanks")}</div>;
+    return (
+      <div className="text-footnote text-ink-secondary">{t("chat.feedbackThanks", { lng })}</div>
+    );
   const click = (rating: "up" | "down") => {
     setDone(true);
     onFeedback(rating);
   };
+  const up = t("chat.feedbackUp", { lng });
+  const down = t("chat.feedbackDown", { lng });
   return (
     <div className="flex gap-3 text-footnote text-ink-secondary">
-      <button type="button" aria-label={t("chat.feedbackUp")} onClick={() => click("up")}>
-        👍 {t("chat.feedbackUp")}
+      <button type="button" aria-label={up} onClick={() => click("up")}>
+        👍 {up}
       </button>
-      <button type="button" aria-label={t("chat.feedbackDown")} onClick={() => click("down")}>
-        👎 {t("chat.feedbackDown")}
+      <button type="button" aria-label={down} onClick={() => click("down")}>
+        👎 {down}
       </button>
     </div>
   );
@@ -56,10 +72,10 @@ type UrlFor = ((attachmentId: number) => string) | undefined;
 function UserBubble({ content, attachments, urlFor }: { content: string; attachments?: Attachment[]; urlFor: UrlFor }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[80%] flex flex-col items-end gap-1">
+      <div className="min-w-0 max-w-[80%] flex flex-col items-end gap-1">
         <Attachments attachments={attachments} urlFor={urlFor} />
         {content && (
-          <div className="rounded-lg rounded-tr-sm bg-brand text-ink-onbrand px-4 py-2.5 text-body1 font-medium whitespace-pre-wrap">
+          <div className="rounded-lg rounded-tr-sm bg-brand text-ink-onbrand px-4 py-2.5 text-body1 font-medium whitespace-pre-wrap [overflow-wrap:anywhere]">
             {content}
           </div>
         )}
@@ -70,7 +86,9 @@ function UserBubble({ content, attachments, urlFor }: { content: string; attachm
 
 type HumanAgentMsg = Extract<Message, { role: "human_agent" }>;
 
-/** 客服气泡：署名 + 已验证标识，文字气泡 + 附件。 */
+/** 客服气泡：✓ 已认证 标识 + 文字气泡 + 附件。
+ *  头像内容用 "T"（与 AI 统一），底色保留橙（区分 AI/客服 来源）；
+ *  不展示客服 display_name，避免暴露员工花名/真名给用户。 */
 function HumanAgentBubble({ m, urlFor }: { m: HumanAgentMsg; urlFor: UrlFor }) {
   const { t } = useTranslation();
   return (
@@ -80,15 +98,12 @@ function HumanAgentBubble({ m, urlFor }: { m: HumanAgentMsg; urlFor: UrlFor }) {
         size={28}
         style={{ background: "var(--soft-warning, #fff7ed)", color: "var(--status-warning, #d97706)", fontWeight: 700 }}
       >
-        {t("chat.agentAvatar")}
+        T
       </Avatar>
       <div className="flex-1 max-w-[85%]">
         <div className="flex items-center gap-1.5 mb-1 px-1">
-          <span className="text-footnote font-bold text-status-warning">
-            {t("chat.agentLabel")} {m.display_name ?? ""}
-          </span>
           <BadgeCheck className="h-3 w-3 text-status-warning" />
-          <span className="text-footnote text-ink-secondary">· {t("chat.agentVerified")}</span>
+          <span className="text-footnote text-ink-secondary">{t("chat.agentVerified")}</span>
         </div>
         {m.content && (
           <div className="bg-soft-warning border border-status-warning/30 rounded-lg rounded-tl-sm px-4 py-2.5 text-body1 text-ink whitespace-pre-wrap">
@@ -139,7 +154,7 @@ export function MessageBubble({
       >
         T
       </Avatar>
-      <div className="flex-1 max-w-[85%] bg-surface-card border border-line shadow-sm rounded-lg rounded-tl-sm px-4 py-3 space-y-2">
+      <div className="flex-1 min-w-0 max-w-[85%] bg-surface-card border border-line shadow-sm rounded-lg rounded-tl-sm px-4 py-3 space-y-2">
         {(m.tool_calls ?? []).map((tc, i) => (
           <ToolCallChip key={i} tc={tc} userType={userType} />
         ))}
@@ -162,7 +177,7 @@ export function MessageBubble({
           )}
         </div>
         <Attachments attachments={m.attachments} urlFor={urlFor} />
-        {m.content && onFeedback && <FeedbackBar onFeedback={onFeedback} />}
+        {m.content && onFeedback && <FeedbackBar onFeedback={onFeedback} lng={langOf(m.content)} />}
       </div>
     </div>
   );

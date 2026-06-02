@@ -10,6 +10,13 @@ body,
   height: 100%;
 }
 
+/* antd 的 <App> 会插一层 <div class="ant-app"> 用于 message/notification 上下文，
+   官方默认没给高度，会把 #root → 子页面的 h-full 链路截断（输入框无法贴底，
+   下方露出 body 背景成灰条）。这里让它做高度透传层。 */
+.ant-app {
+  height: 100%;
+}
+
 body {
   font-family:
     "Inter",
@@ -54,6 +61,7 @@ body {
   font-size: 14px;
   line-height: 1.6;
   color: #334155;
+  overflow-wrap: anywhere;
 }
 .markdown-body-dark p {
   margin: 0 0 8px 0;
@@ -196,4 +204,20 @@ body {
 
 @layer base {
   * { @apply border-border; }
+}
+
+/* antd Tabs 在 flex 父级里撑满高度：把 nav 设为自然高、content-holder 占剩余且可滚动。
+ * 仅作用于显式声明 flex/列方向的 .ant-tabs 实例（如详情页留痕日志页），避免影响默认 Tabs。 */
+.ant-tabs[style*="flex-direction: column"] > .ant-tabs-content-holder {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ant-tabs[style*="flex-direction: column"] > .ant-tabs-content-holder > .ant-tabs-content {
+  flex: 1;
+  min-height: 0;
+}
+.ant-tabs[style*="flex-direction: column"] > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
+  height: 100%;
 }

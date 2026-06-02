@@ -48,7 +48,12 @@ function buildMenuItems(
   }).filter(Boolean) as MenuItem[];
 }
 
-export function AppSidebar() {
+export interface AppSidebarProps {
+  /** 叶子菜单项被点击后触发（用于移动端关闭抽屉）。展开/折叠分组标题不触发。 */
+  onNavigate?: () => void;
+}
+
+export function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
   const { role } = useStaffSession();
   const { matrix } = useDynamicMenu();
   const { collapsed, toggle } = useSidebarCollapsed();
@@ -76,7 +81,10 @@ export function AppSidebar() {
           items={items}
           selectedKeys={[pathname]}
           openKeys={openKeys}
-          onClick={({ key }) => nav(key)}
+          onClick={({ key }) => {
+            nav(key);
+            onNavigate?.();
+          }}
           onOpenChange={(keys) => {
             // 比较新旧 openKeys，把被切换的 groupId 写入 useSidebarCollapsed
             const before = new Set(openKeys);

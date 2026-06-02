@@ -1,10 +1,12 @@
-import { Button, Flex, Input } from "antd";
-import { useState } from "react";
+import { Button, Flex, Input, Select } from "antd";
+import { useEffect, useState } from "react";
 
 import { uploadStaffAttachment } from "../api/attachments";
 import {
+  listTransferCandidates,
   resolveConversation,
   sendStaffMessage,
+  type TransferCandidate,
   transferConversation,
 } from "../api/staff";
 
@@ -30,6 +32,23 @@ export function TakeoverFooter({
   const [draft, setDraft] = useState("");
   const [target, setTarget] = useState("");
   const [ids, setIds] = useState<number[]>([]);
+  const [candidates, setCandidates] = useState<TransferCandidate[]>([]);
+
+  // 拉转派目标候选（active 客服，已过滤当前用户 + agent 限 engineer）。
+  // 转派窗口默认关闭，仅 mount 时拉一次足够；目标新增/下线属罕见事件，不做轮询。
+  useEffect(() => {
+    let cancelled = false;
+    listTransferCandidates(token)
+      .then((cs) => {
+        if (!cancelled) setCandidates(cs);
+      })
+      .catch(() => {
+        /* 拉失败时下拉空，不阻塞回复 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   async function send() {
     if (!draft.trim() && ids.length === 0) return;
@@ -91,11 +110,21 @@ export function TakeoverFooter({
         </Button>
       </Flex>
       <Flex gap="small">
-        <Input
-          value={target}
-          onChange={(e) => setTarget(e.target.value)}
-          placeholder="转派给 staff_id…"
+        <Select
+          value={target || undefined}
+          onChange={(v) => setTarget(v ?? "")}
+          placeholder={
+            candidates.length === 0 ? "暂无可转派目标" : "选择转派目标客服…"
+          }
+          showSearch
+          allowClear
+          optionFilterProp="label"
           style={{ flex: 1 }}
+          disabled={candidates.length === 0}
+          options={candidates.map((c) => ({
+            value: c.staff_id,
+            label: `${c.display_name}（${c.staff_id}） · ${c.role}`,
+          }))}
         />
         <Button type="text" onClick={transfer} disabled={!target.trim()}>
           转派

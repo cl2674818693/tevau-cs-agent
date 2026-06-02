@@ -125,7 +125,10 @@ export function ChatWindow() {
 
   return (
     <div
-      className="mx-auto flex h-full max-w-[720px] flex-col bg-surface-page text-ink"
+      // 作为 top-level 路由自己声明视口高度（对齐 SpectateRoute h-screen / 登录页 min-h-screen
+      // 的全局模式），不再依赖 #root → .ant-app → 这里的 h-full 链路；
+      // 键盘弹起时 inset = innerHeight - visualViewport.height，与 100vh 语义匹配。
+      className="mx-auto flex h-screen max-w-[720px] flex-col bg-surface-page text-ink md:my-6 md:h-[calc(100vh-3rem)] md:rounded-2xl md:border md:border-line md:bg-surface-card md:shadow-lg md:overflow-hidden"
       style={{ paddingBottom: inset }}
     >
       <ChatHeader mode={mode} staffName={chat.staffName} sending={sending} onStop={chat.stop} />

@@ -14,13 +14,37 @@ type Props = {
 export function AiDraftPanel({ draft, onApprove, onReject }: Props) {
   const [rewrite, setRewrite] = useState("");
   const [editing, setEditing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setRewrite(draft ?? "");
     setEditing(false);
+    setSubmitting(false);
   }, [draft]);
 
   if (draft === null) return null;
+
+  async function handleApprove() {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await onApprove();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleReject() {
+    if (submitting) return;
+    const text = rewrite.trim();
+    if (!text) return;
+    setSubmitting(true);
+    try {
+      await onReject(text);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <Card
@@ -36,8 +60,9 @@ export function AiDraftPanel({ draft, onApprove, onReject }: Props) {
         <TextArea
           value={rewrite}
           onChange={(e) => setRewrite(e.target.value)}
-          rows={4}
+          autoSize={{ minRows: 8, maxRows: 24 }}
           style={{ fontSize: 13 }}
+          disabled={submitting}
         />
       ) : (
         <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{draft}</div>
@@ -47,17 +72,29 @@ export function AiDraftPanel({ draft, onApprove, onReject }: Props) {
           <Button
             type="primary"
             size="small"
-            onClick={() => onReject(rewrite.trim())}
-            disabled={!rewrite.trim()}
+            loading={submitting}
+            disabled={!rewrite.trim() || submitting}
+            onClick={handleReject}
           >
             改写后发送
           </Button>
         ) : (
           <>
-            <Button type="primary" size="small" onClick={() => onApprove()}>
+            <Button
+              type="primary"
+              size="small"
+              loading={submitting}
+              disabled={submitting}
+              onClick={handleApprove}
+            >
               直接发出
             </Button>
-            <Button type="text" size="small" onClick={() => setEditing(true)}>
+            <Button
+              type="text"
+              size="small"
+              disabled={submitting}
+              onClick={() => setEditing(true)}
+            >
               改写
             </Button>
           </>

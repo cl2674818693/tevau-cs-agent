@@ -24,8 +24,8 @@ export function MobileSidebar() {
         styles={{ body: { padding: 0 } }}
         closable={false}
       >
-        <div onClick={() => setOpen(false)} className="h-full">
-          <AppSidebar />
+        <div className="h-full">
+          <AppSidebar onNavigate={() => setOpen(false)} />
         </div>
       </Drawer>
     </>

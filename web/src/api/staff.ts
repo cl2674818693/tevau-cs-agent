@@ -132,6 +132,58 @@ export async function transferConversation(
   return r.ok;
 }
 
+export type TransferCandidate = {
+  staff_id: string;
+  display_name: string;
+  role: string;
+};
+
+export type SubjectInfo = {
+  subject: {
+    user_type: string;
+    subject_id: string;
+    found: boolean;
+    // C 端
+    user_id?: number;
+    user_code?: string;
+    nick_name?: string;
+    email?: string;
+    phone?: string;
+    user_status?: string;
+    kyc_status?: string;
+    open_card_status?: string;
+    registration_time?: string;
+    last_login_time?: string;
+    recent_30d_transactions?: { currency: string; count: number; amount: string }[];
+    // B 端
+    tenant_id?: string;
+    company_name?: string;
+    status?: string;
+  };
+  client_info: {
+    platform: string | null;
+    app_version: string | null;
+    user_agent: string | null;
+    updated_at: string;
+  } | null;
+};
+
+export async function getSubjectInfo(token: string, convId: number): Promise<SubjectInfo> {
+  const r = await staffFetch(`/staff/api/v1/conversations/${convId}/subject-info`, {
+    headers: authHeaders(token),
+  });
+  if (!r.ok) throw new Error(`subject-info failed ${r.status}`);
+  return r.json();
+}
+
+export async function listTransferCandidates(token: string): Promise<TransferCandidate[]> {
+  const r = await staffFetch("/staff/api/v1/transfer-candidates", {
+    headers: authHeaders(token),
+  });
+  if (!r.ok) throw new Error(`transfer candidates failed ${r.status}`);
+  return ((await r.json()).candidates ?? []) as TransferCandidate[];
+}
+
 export async function resolveConversation(token: string, id: number): Promise<void> {
   await postStaff(token, `/staff/api/v1/conversations/${id}/resolve`);
 }

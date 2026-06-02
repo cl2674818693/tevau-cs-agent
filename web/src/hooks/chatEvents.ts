@@ -86,7 +86,12 @@ async function handleErrorEvent(
 export async function handleStreamEvent(ev: ChatEvent, a: ChatActions): Promise<void> {
   if (ev.type === "mode_change") {
     a.setMode(ev.to as ConversationMode);
-    if (ev.to !== "ai") pushSystem(a, "已为您转接人工客服，请稍候…");
+    // 用户在 human_takeover/human_pending 状态下发消息时，后端 chat 端点会
+    // 推一次 mode_change to=当前 mode（告诉前端"消息已转给客服侧"）。旧版本
+    // 在 to !== "ai" 时无差别 push 这条 system 提示——但 human_takeover 时
+    // 客服早就在线了，再说"请稍候"是 bug。只有真正进入 human_pending 才 push。
+    if (ev.to === "human_pending")
+      pushSystem(a, "已为您转接人工客服，请稍候…");
   } else if (ev.type === "warning") {
     if (typeof ev.pct === "number") a.setLimitPct(ev.pct);
     if (ev.text) pushSystem(a, ev.text);

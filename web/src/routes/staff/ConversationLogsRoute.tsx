@@ -12,7 +12,6 @@ import {
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { staffAttachmentUrl } from "../../api/attachments";
 import {
   getConversationAudits,
   getConversationFeedback,
@@ -21,7 +20,7 @@ import {
   type StaffMessage,
   type ToolAudit,
 } from "../../api/staff";
-import { StaffImageThumb } from "../../components/StaffImageThumb";
+import { EventBubble, messageToStreamEvent } from "../../components/EventBubble";
 import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
@@ -29,20 +28,29 @@ const { Title, Text } = Typography;
 
 const MSG_PAGE = 50;
 
+// topic_verdict: schema 定义为 yes/no/uncertain；yes（相关）默认不显示
+const TOPIC_VERDICT_LABEL: Record<string, string> = {
+  no: "超范围",
+  uncertain: "不确定",
+  yes: "相关",
+};
+
 /** 消息行状态徽章 */
 function MsgBadges({ m }: { m: StaffMessage }) {
   return (
     <>
       {m.status === "failed" && (
         <Tag color="red" style={{ marginLeft: 8 }}>
-          failed:{m.error_code ?? "-"}
+          失败：{m.error_code ?? "-"}
         </Tag>
       )}
       {m.status === "processing" && (
-        <Tag style={{ marginLeft: 8 }}>processing</Tag>
+        <Tag style={{ marginLeft: 8 }}>处理中</Tag>
       )}
       {m.topic_verdict && m.topic_verdict !== "yes" && (
-        <Tag style={{ marginLeft: 8 }}>verdict:{m.topic_verdict}</Tag>
+        <Tag style={{ marginLeft: 8 }}>
+          判定：{TOPIC_VERDICT_LABEL[m.topic_verdict] ?? m.topic_verdict}
+        </Tag>
       )}
     </>
   );
@@ -144,8 +152,19 @@ function MessagesTab({
     );
   }
 
+  if (messages.length === 0) {
+    return (
+      <Text type="secondary" style={{ textAlign: "center", padding: 16, fontSize: 12, display: "block" }}>
+        无消息记录
+      </Text>
+    );
+  }
+
+  // 复用详情页同款 IM 气泡（用户左灰 / AI 右紫 / 客服右橙）。
+  // 留痕特有的 created_at + status/verdict badge 显示在气泡上方/下方，
+  // 不丢留痕信息，又比之前每条 Card 框框直观。
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col" style={{ gap: 12 }}>
       {hasMore && (
         <Flex justify="center">
           <Button onClick={loadEarlier} loading={loadingMore}>
@@ -153,37 +172,30 @@ function MessagesTab({
           </Button>
         </Flex>
       )}
-      {messages.map((m) => (
-        <Card key={m.id} size="small">
-          <Flex wrap="wrap" align="center" style={{ fontSize: 10, color: "rgba(0,0,0,0.45)", marginBottom: 4 }}>
-            <Text strong style={{ textTransform: "capitalize" }}>
-              {m.role}
-            </Text>
-            <span style={{ margin: "0 4px" }}>·</span>
-            <span>{m.created_at}</span>
-            <MsgBadges m={m} />
-          </Flex>
-          <div style={{ fontSize: 12, fontWeight: 600 }}>
-            <ExpandableText text={m.content} />
-          </div>
-          {m.attachments?.length && token ? (
-            <Flex wrap="wrap" gap="small" style={{ marginTop: 8 }}>
-              {m.attachments.map((a) => (
-                <StaffImageThumb
-                  key={a.id}
-                  src={staffAttachmentUrl(convId, a.id)}
-                  token={token}
-                />
-              ))}
+      {messages.map((m) => {
+        const ev = messageToStreamEvent(m);
+        if (!ev) return null;
+        const isRight = ev.type !== "user_message";
+        return (
+          <div key={m.id} className="flex flex-col" style={{ gap: 2 }}>
+            <EventBubble ev={ev} convId={convId} token={token} />
+            <Flex
+              align="center"
+              gap={6}
+              style={{
+                fontSize: 10,
+                color: "rgba(0,0,0,0.45)",
+                paddingLeft: isRight ? 0 : 40,
+                paddingRight: isRight ? 40 : 0,
+                justifyContent: isRight ? "flex-end" : "flex-start",
+              }}
+            >
+              <span>{m.created_at}</span>
+              <MsgBadges m={m} />
             </Flex>
-          ) : null}
-        </Card>
-      ))}
-      {messages.length === 0 && (
-        <Text type="secondary" style={{ textAlign: "center", padding: 16, fontSize: 12 }}>
-          无消息记录
-        </Text>
-      )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -217,7 +229,7 @@ function AuditsTab({ audits, loading }: { audits: ToolAudit[]; loading: boolean 
             {a.rejected ? (
               <Tag color="red">被拒：{a.reject_reason ?? "-"}</Tag>
             ) : (
-              <Tag color="green">ok</Tag>
+              <Tag color="green">通过</Tag>
             )}
           </Flex>
           {a.params_json && (
@@ -302,8 +314,19 @@ export function ConversationLogsRoute() {
   );
   const [audits, feedback] = extra ?? [[], []];
 
+  // 高度链路同详情页：固定 100vh - AppShell.Header(56px)，flex-col + minHeight:0
+  // 让 Tabs flex:1，antd 内部 .ant-tabs-content-holder 在 flex 父级里会自动撑满，
+  // tabPaneScroll 让每个 Tab 内容超出时内部滚动，不撑外层。
+  const tabPaneScroll: React.CSSProperties = {
+    overflowY: "auto",
+    height: "100%",
+    paddingRight: 4,
+  };
   return (
-    <div className="space-y-4 p-6">
+    <div
+      className="flex flex-col p-6"
+      style={{ height: "calc(100vh - 56px)", gap: 16 }}
+    >
       <Breadcrumb
         items={[
           { title: <Link to="/staff/conversations">会话</Link> },
@@ -325,31 +348,48 @@ export function ConversationLogsRoute() {
 
       <Tabs
         defaultActiveKey="messages"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+        tabBarStyle={{ marginBottom: 12 }}
         items={[
           {
             key: "messages",
             label: "消息流",
             children: (
-              <MessagesTab
-                convId={convId}
-                messages={messages}
-                hasMore={hasMore}
-                loading={loading}
-                loadingMore={loadingMore}
-                loadEarlier={loadEarlier}
-                token={token}
-              />
+              <div style={tabPaneScroll}>
+                <MessagesTab
+                  convId={convId}
+                  messages={messages}
+                  hasMore={hasMore}
+                  loading={loading}
+                  loadingMore={loadingMore}
+                  loadEarlier={loadEarlier}
+                  token={token}
+                />
+              </div>
             ),
           },
           {
             key: "audits",
             label: "工具调用",
-            children: <AuditsTab audits={audits as ToolAudit[]} loading={extraLoading} />,
+            children: (
+              <div style={tabPaneScroll}>
+                <AuditsTab audits={audits as ToolAudit[]} loading={extraLoading} />
+              </div>
+            ),
           },
           {
             key: "feedback",
             label: "反馈",
-            children: <FeedbackTab feedback={feedback as MessageFeedback[]} loading={extraLoading} />,
+            children: (
+              <div style={tabPaneScroll}>
+                <FeedbackTab feedback={feedback as MessageFeedback[]} loading={extraLoading} />
+              </div>
+            ),
           },
         ]}
       />

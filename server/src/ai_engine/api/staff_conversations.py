@@ -226,6 +226,33 @@ async def resolve(conv_id: int, staff: dict[str, Any] = Depends(require_staff)) 
     return {"ok": True}
 
 
+@router.get("/staff/api/v1/transfer-candidates")
+async def transfer_candidates(
+    staff: dict[str, Any] = Depends(require_staff),
+) -> dict[str, Any]:
+    """转派目标候选：返回所有 active 客服（除自己）的 staff_id/display_name/role。
+    后端按调用方 role 过滤候选范围与现有 transfer_to 端点的鉴权规则保持一致：
+    agent 仅看 engineer；senior/engineer/admin 看全部。"""
+    from ai_engine.persistence.staff import list_staff
+
+    me = staff["sub"]
+    my_role = staff.get("role")
+    rows = await list_staff()
+    active = [r for r in rows if int(r["active"]) == 1 and r["staff_id"] != me]
+    if my_role == "agent":
+        active = [r for r in active if r["role"] == "engineer"]
+    return {
+        "candidates": [
+            {
+                "staff_id": r["staff_id"],
+                "display_name": r["display_name"],
+                "role": r["role"],
+            }
+            for r in active
+        ]
+    }
+
+
 @router.post("/staff/api/v1/conversations/{conv_id}/transfer-to/{target_staff_id}")
 async def transfer_to(
     conv_id: int,

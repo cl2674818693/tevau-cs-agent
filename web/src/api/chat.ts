@@ -165,6 +165,24 @@ export async function requestHuman(conversationId: number, reason?: string): Pro
   });
 }
 
+/** 上报客户端环境（bridge.getEnv 拿到的 platform/version + navigator.userAgent）。
+ *  admin 详情页 InfoCard 据此展示用户的平台/APP 版本，便于排查"是不是某版本 bug"。
+ *  静默失败：上报失败不影响主对话流。 */
+export async function reportClientInfo(
+  conversationId: number,
+  info: { platform?: string; app_version?: string; user_agent?: string },
+): Promise<void> {
+  try {
+    await authedFetch(`/api/v1/conversations/${conversationId}/client-info`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(info),
+    });
+  } catch {
+    /* 上报失败静默 */
+  }
+}
+
 /**
  * 用户对工单确认（已解决 / 未解决）→ 反向 webhook（spec §7.6）。
  */

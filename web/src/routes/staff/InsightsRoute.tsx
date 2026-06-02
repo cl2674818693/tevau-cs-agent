@@ -317,7 +317,7 @@ export function InsightsRoute() {
       )}
 
       <Text type="secondary" style={{ fontSize: 12 }}>
-        明细可在「全局工具审计」或具体会话的留痕页查看。
+        明细可在「全局工具审计」或具体会话的日志页查看。
       </Text>
     </div>
   );

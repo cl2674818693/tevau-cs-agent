@@ -95,7 +95,34 @@ async def run(
         text = f"[兜底] 工单 {ext_id} 推事项中心失败：{category} / {severity} / {summary[:80]}"
         await _notify_lark({"text": text})
 
+    # 4. 人工介入类工单：同步切 mode=human_pending，与 /request-human 端点行为对齐。
+    #    否则会话仍是 mode='ai'，admin "会话" 列表筛 mode!=ai 看不到这个待接管会话。
+    #    已经在 human_takeover/human_pending 的不重切（避免 mode_change 抖动 + 重复 SSE）。
+    if category == "人工介入" and conversation_id:
+        await _ensure_human_pending(conversation_id)
+
     return {"external_ticket_id": ext_id, "pushed_to_event_center": pushed}
+
+
+async def _ensure_human_pending(conversation_id: int) -> None:
+    """当前 mode=ai 时切到 human_pending 并广播 mode_change。失败不阻断工单创建。
+    import 内置在函数体内避免与 staff_conversations._publish 形成循环依赖。"""
+    try:
+        from ai_engine.api.staff_conversations import publish_conversation_event
+        from ai_engine.persistence import conversations as conv_dao
+        from ai_engine.persistence.staff_metrics import refresh_human_pending
+
+        mode, _ = await conv_dao.get_mode(conversation_id)
+        if mode != "ai":
+            return
+        await conv_dao.set_mode(conversation_id, "human_pending")
+        await refresh_human_pending()
+        publish_conversation_event(
+            conversation_id, {"type": "mode_change", "to": "human_pending"}
+        )
+    except Exception:
+        # 切 mode 失败不阻断工单创建——工单已经入库，事项中心已推送
+        pass
 
 
 register(

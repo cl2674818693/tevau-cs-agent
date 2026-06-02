@@ -93,3 +93,28 @@ async def user_events(external_id: str, body: UserEventIn, request: Request) -> 
         return {"ok": True}
 
     raise HTTPException(400, "unknown event")
+
+
+class ClientInfoIn(BaseModel):
+    platform: str | None = None
+    app_version: str | None = None
+    user_agent: str | None = None
+
+
+@router.post("/api/v1/conversations/{conv_id}/client-info")
+async def report_client_info(
+    conv_id: int, body: ClientInfoIn, request: Request
+) -> dict[str, Any]:
+    """H5 端通过 bridge.getEnv() + navigator.userAgent 拿到的客户端环境上报。
+    admin 详情页"会话信息"卡据此展示用户的平台/APP 版本，便于排查"是不是某版本 bug"。
+    幂等：同会话 upsert，多次调用最新覆盖。鉴权按会话归属（不限 user/guest）。"""
+    user_type, subject_id = await resolve_identity(request)
+    conv = await conv_dao.get_conversation(conv_id)
+    if conv is None or conv["subject_id"] != subject_id or conv["user_type"] != user_type:
+        raise HTTPException(403, "not your conversation")
+    from ai_engine.persistence import client_info as ci_dao
+
+    await ci_dao.upsert_client_info(
+        conv_id, body.platform, body.app_version, body.user_agent
+    )
+    return {"ok": True}

@@ -78,7 +78,7 @@ export function InputBox({
 
   return (
     <div className="border-t border-line bg-surface-card px-page py-block-sm safe-bottom">
-      <div className="flex flex-wrap items-end gap-2 rounded-md bg-surface-page border border-line px-3 py-2 transition-all focus-within:border-brand focus-within:shadow-focus">
+      <div className="flex flex-wrap items-center gap-2 rounded-md bg-surface-page border border-line px-3 py-2 transition-all focus-within:border-brand focus-within:shadow-focus">
         {upload && (
           <AttachButton
             upload={upload}
@@ -96,7 +96,7 @@ export function InputBox({
           onChange={(e) => setV(e.target.value)}
           onKeyDown={onKey}
           onPaste={onPaste}
-          className="flex-1 resize-none bg-transparent text-body1 leading-6 text-ink placeholder:text-ink-placeholder outline-none max-h-32 overflow-y-auto scrollbar-hide py-0.5"
+          className="flex-1 resize-none bg-transparent text-body1 leading-6 text-ink placeholder:text-ink-placeholder outline-none max-h-32 overflow-y-auto scrollbar-hide py-2"
         />
         <button
           onClick={submit}
