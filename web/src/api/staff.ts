@@ -6,6 +6,8 @@ export type StaffConversation = {
   subject_id: string;
   mode: string;
   assigned_staff_id: string | null;
+  /** 仅 get_meta_with_risk 返回；list_for_staff 不带（旧 SQL 未 SELECT）。null 表示从未接管过。 */
+  assigned_at?: string | null;
   created_at: string;
   // 风险标记（后端可能返回 boolean 或 0/1，渲染时用 !!x 判断）
   has_failed?: boolean | number;

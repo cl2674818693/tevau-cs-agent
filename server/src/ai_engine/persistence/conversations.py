@@ -235,6 +235,16 @@ async def get_conversation_meta(conv_id: int) -> dict[str, object] | None:
     )
 
 
+async def get_meta_with_risk(conv_id: int) -> dict[str, object] | None:
+    """详情页右侧信息卡用：元信息 + 风险信号（与列表页 list_for_staff 同一套口径）。"""
+    return await db.fetch_one(
+        f"SELECT c.id, c.user_type, c.subject_id, c.mode, c.assigned_staff_id, "
+        f"c.assigned_at, c.needs_review, c.created_at, {_RISK_SELECT} "
+        "FROM conversations c WHERE c.id=:id",
+        {"id": conv_id},
+    )
+
+
 async def get_mode(conv_id: int) -> tuple[str, str | None]:
     row = await db.fetch_one(
         "SELECT mode, assigned_staff_id FROM conversations WHERE id=:id", {"id": conv_id}

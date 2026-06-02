@@ -110,6 +110,39 @@ async def test_risk_only_excludes_clean_conversation(temp_db_url):
     assert cid not in [c["id"] for c in risky]
 
 
+async def test_get_meta_with_risk_returns_signals(temp_db_url):
+    """详情页右侧信息卡：单会话拿到与列表页同口径的风险信号。"""
+    from ai_engine.persistence.conversations import (
+        append_user_turn,
+        create_conversation,
+        finalize_turn,
+        get_meta_with_risk,
+    )
+    from ai_engine.persistence.db import init_db
+
+    await init_db()
+    cid = await create_conversation(user_type="c", subject_id="U1")
+    turn = await append_user_turn(cid, content="出问题了", client_message_id=None)
+    await finalize_turn(turn, status="failed", error_code="X")
+
+    row = await get_meta_with_risk(cid)
+    assert row is not None
+    assert row["id"] == cid
+    assert row["user_type"] == "c"
+    assert row["subject_id"] == "U1"
+    assert int(row["has_failed"]) == 1
+    assert int(row["has_downvote"]) == 0
+    assert int(row["needs_review"]) == 0
+
+
+async def test_get_meta_with_risk_not_found(temp_db_url):
+    from ai_engine.persistence.conversations import get_meta_with_risk
+    from ai_engine.persistence.db import init_db
+
+    await init_db()
+    assert await get_meta_with_risk(999999) is None
+
+
 async def test_default_mode_filter_unchanged_regression(temp_db_url):
     """risk_only=False（默认）时，原有 mode 过滤行为不变。"""
     from ai_engine.persistence.conversations import (

@@ -339,6 +339,10 @@ async def ai_draft_reject(
 ) -> dict[str, bool]:
     """否决草稿：客服改写后以 human_agent 身份发给用户。"""
     await _require_assigned(conv_id, staff["sub"])
+    # 与 approve 对齐：草稿不存在时拒绝，避免前端误触/重复点击时把同一段改写写两次
+    draft = await conv_dao.get_latest_ai_draft(conv_id)
+    if draft is None:
+        raise HTTPException(404, "no pending draft")
     await conv_dao.clear_ai_drafts(conv_id)
     await conv_dao.append_human_message(conv_id, staff["sub"], body.rewrite)
     _publish(conv_id, await _human_message_event(staff["sub"], body.rewrite))

@@ -1,12 +1,12 @@
 import { Alert, Breadcrumb, Button, Card, Flex, Skeleton, Space, Typography } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { staffAttachmentUrl } from "../../api/attachments";
 import {
   getConversationMessages,
   getStaffConversation,
   releaseConversation,
+  type StaffConversation,
   type StaffMessage,
   streamStaffEvents,
   takeConversation,
@@ -14,7 +14,8 @@ import {
 } from "../../api/staff";
 import { AiDraftPanel } from "../../components/AiDraftPanel";
 import { AiToolsPanel } from "../../components/AiToolsPanel";
-import { StaffImageThumb } from "../../components/StaffImageThumb";
+import { ConversationInfoCard } from "../../components/ConversationInfoCard";
+import { EventBubble } from "../../components/EventBubble";
 import { TakeoverFooter } from "../../components/TakeoverFooter";
 import { useAiDraft } from "../../hooks/useAiDraft";
 import { useStaffSession } from "../../hooks/useStaffSession";
@@ -86,30 +87,67 @@ function useStaffStream(
   return { events, historyLoading };
 }
 
-/** 按会话真实状态初始化接管态：本客服已接管 → 直接渲染回复区，刷新后不丢。 */
-function useInitialTaken(
+/** 拉单会话信息（含风险标记），同时给右侧 InfoCard 用 + 初始化接管态。
+ *  SSE mode_change / transferred 事件来了乐观更新 conv，避免刷页面才看到接管/转派。 */
+function useConvInfo(
   token: string | null,
   staffId: string | null,
   convId: number,
+  events: StaffStreamEvent[],
   setTaken: (b: boolean) => void,
-): void {
+): { conv: StaffConversation | null; loading: boolean } {
+  const [conv, setConv] = useState<StaffConversation | null>(null);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    if (!token || !staffId) return;
+    if (!token) return;
     let cancelled = false;
+    setLoading(true);
     getStaffConversation(token, convId)
       .then((c) => {
-        if (!cancelled)
-          setTaken(
-            c.mode === "human_takeover" && c.assigned_staff_id === staffId,
-          );
+        if (cancelled) return;
+        setConv(c);
+        if (staffId)
+          setTaken(c.mode === "human_takeover" && c.assigned_staff_id === staffId);
       })
       .catch(() => {
         /* 取不到状态时保持未接管 */
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [token, staffId, convId, setTaken]);
+
+  // 实时事件 → 局部更新 conv.mode/assigned_staff_id，让 InfoCard 不必刷页面。
+  // 关键：mode_change 的 by_staff_id 是"触发操作的人"（接管者/释放者/解决者），
+  // 不是负责人。只有 to=human_takeover 时它才 = 新负责人；to=ai/human_pending
+  // 时（release/resolved）必须清空 assigned；ai_draft 切换不影响负责人。
+  useEffect(() => {
+    const last = events[events.length - 1];
+    if (!last) return;
+    if (last.type === "mode_change" && last.to) {
+      const to = last.to;
+      setConv((prev) => {
+        if (!prev) return prev;
+        const assigned =
+          to === "human_takeover"
+            ? (last.by_staff_id ?? prev.assigned_staff_id)
+            : to === "ai" || to === "human_pending"
+              ? null
+              : prev.assigned_staff_id;
+        return { ...prev, mode: to, assigned_staff_id: assigned };
+      });
+    }
+    if (last.type === "transferred")
+      setConv((prev) =>
+        prev ? { ...prev, mode: "human_takeover", assigned_staff_id: last.to_staff_id ?? null } : prev,
+      );
+  }, [events]);
+
+  return { conv, loading };
 }
 
 function EventLog({
@@ -123,7 +161,28 @@ function EventLog({
   convId: number;
   token: string | null;
 }) {
-  // mount 时先回放历史消息（user/assistant/human_agent），之后续 SSE 增量。
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const didInitialScrollRef = useRef(false);
+
+  // IM 标准滚动：用户在底部才自动滚（不打断翻阅）；首次历史回放完用瞬时滚，
+  // 后续 SSE 增量用平滑。底部判定阈值 80px 容忍小幅滚动。
+  useEffect(() => {
+    if (events.length === 0) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const first = !didInitialScrollRef.current;
+    if (first || nearBottom) {
+      bottomRef.current?.scrollIntoView({
+        behavior: first ? "auto" : "smooth",
+        block: "end",
+      });
+      didInitialScrollRef.current = true;
+    }
+  }, [events.length]);
+
   if (historyLoading && events.length === 0) {
     return (
       <div style={{ padding: 16 }}>
@@ -147,40 +206,16 @@ function EventLog({
     );
   }
   return (
-    <ul
+    <div
+      ref={scrollRef}
       className="flex flex-1 flex-col overflow-y-auto"
-      style={{ margin: 0, padding: 0, listStyle: "none", gap: 6 }}
+      style={{ padding: "8px 4px", gap: 10 }}
     >
       {events.map((ev, i) => (
-        <li
-          key={i}
-          style={{ fontSize: 13, lineHeight: 1.6 }}
-        >
-          <span
-            style={{
-              marginRight: 6,
-              fontSize: 12,
-              fontFamily: "ui-monospace, monospace",
-              color: "rgba(0,0,0,0.45)",
-            }}
-          >
-            [{ev.type}]
-          </span>
-          {ev.content ?? ev.to ?? ""}
-          {ev.attachments?.length && token ? (
-            <Flex wrap="wrap" gap="small" style={{ marginTop: 4 }}>
-              {ev.attachments.map((a) => (
-                <StaffImageThumb
-                  key={a.id}
-                  src={staffAttachmentUrl(convId, a.id)}
-                  token={token}
-                />
-              ))}
-            </Flex>
-          ) : null}
-        </li>
+        <EventBubble key={i} ev={ev} convId={convId} token={token} />
       ))}
-    </ul>
+      <div ref={bottomRef} />
+    </div>
   );
 }
 
@@ -199,7 +234,13 @@ export function ConversationDetailRoute() {
     setNotice,
   );
 
-  useInitialTaken(token, staffId, convId, setTaken);
+  const { conv, loading: convLoading } = useConvInfo(
+    token,
+    staffId,
+    convId,
+    events,
+    setTaken,
+  );
 
   async function onToggleDraftMode() {
     const msg = await toggleDraftMode();
@@ -254,7 +295,7 @@ export function ConversationDetailRoute() {
 
       <Flex gap="middle" style={{ flex: 1, minHeight: 0 }}>
         <Card
-          title="事件流"
+          title="对话"
           size="small"
           style={{ flex: 1, display: "flex", flexDirection: "column" }}
           styles={{
@@ -299,8 +340,10 @@ export function ConversationDetailRoute() {
             display: "flex",
             flexDirection: "column",
             gap: 16,
+            overflowY: "auto",
           }}
         >
+          <ConversationInfoCard conv={conv} loading={convLoading} />
           <AiDraftPanel
             draft={aiDraft}
             onApprove={approve}
