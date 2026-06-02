@@ -447,8 +447,15 @@ async def _agent_loop(
     warned_budget = False
 
     while True:
+        # self-check 修订轮硬禁工具：避免 LLM 在 self-check 时补调 create_ticket，
+        # 导致下一轮再输出一份"工单已建+完整结论"，造成回复重复。
+        tool_choice = {"type": "none"} if self_check_done else None
         req = build_messages_request(
-            system_blocks=system_blocks, messages=messages, tools=tools, model=model
+            system_blocks=system_blocks,
+            messages=messages,
+            tools=tools,
+            model=model,
+            tool_choice=tool_choice,
         )
         # self-check 已完成 → 本轮是最终回复，真 token 流式实时推出；否则（首轮/工具轮）先缓冲，
         # 因为首轮 end_turn 文本会被 self-check 修订，不能提前发给用户。

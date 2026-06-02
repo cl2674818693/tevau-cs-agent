@@ -33,20 +33,27 @@ def build_messages_request(
     tools: list[dict[str, Any]] | None,
     model: str,
     max_tokens: int = 4096,
+    tool_choice: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """构造 Anthropic Messages API 请求体；对前 _MAX_CACHE_BLOCKS 个 system 块加 ephemeral
-    cache_control（受 Anthropic「最多 4 个 cache_control 块」限制），其余块原样下发。"""
+    cache_control（受 Anthropic「最多 4 个 cache_control 块」限制），其余块原样下发。
+
+    tool_choice：传 {"type":"none"} 强制本轮不调工具（self-check 修订轮专用，防回复重复）。
+    """
     cached_system = [
         {**blk, "cache_control": {"type": "ephemeral"}} if i < _MAX_CACHE_BLOCKS else blk
         for i, blk in enumerate(system_blocks)
     ]
-    return {
+    req: dict[str, Any] = {
         "model": model,
         "system": cached_system,
         "messages": messages,
         "tools": tools or [],
         "max_tokens": max_tokens,
     }
+    if tool_choice is not None:
+        req["tool_choice"] = tool_choice
+    return req
 
 
 _CLASSIFY_SYSTEM = (
