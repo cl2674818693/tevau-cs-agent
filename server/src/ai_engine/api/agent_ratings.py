@@ -1,7 +1,8 @@
 """客服满意度：C/B 端用户提交 + 后台聚合查询。
 
-用户端鉴权：B 端走 DEV_TRUST_BU_HEADER（测试/B 端）或 bu_session；C 端走 c_session（若存在）。
-本文件用一个最小 _resolve_subject 内联依赖：先尝试 BU header，再尝试 C session。
+用户端鉴权：
+- B 端：走 DEV_TRUST_BU_HEADER（测试/B 端 dev 信任）或 bu_session（生产签名 cookie）。
+- C 端：走 Authorization: Bearer <Sa-Token> → c_session.resolve_c_user 调 gateway 换 userCode。
 """
 
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 
+from ai_engine.auth import c_session as _c_session
 from ai_engine.auth.staff_session import require_roles
 from ai_engine.persistence import agent_ratings, db
 
@@ -19,20 +21,23 @@ _view = require_roles("supervisor", "manager", "admin")
 async def _resolve_subject(
     request: Request, x_bu_id: str = Header(default="")
 ) -> tuple[str, str]:
-    """返回 (subject_id, user_type)。生产请按项目鉴权配置完善 C 端走 c_session 的分支。"""
+    """返回 (subject_id, user_type)。
+
+    修复 Bug #12：原实现 `from ai_engine.auth.c_session import resolve_subject_from_request`
+    导入的是不存在的函数，except ImportError: pass 后 C 端 Sa-Token 通道始终走不通，
+    只能依赖 X-BU-ID（B 端口径）。现改用 c_session 实际导出的 `resolve_c_user(token)`。
+    """
     from ai_engine.config import settings
 
     if settings.dev_trust_bu_header and x_bu_id:
         return x_bu_id, "b"
-    # C 端：尝试从 c_session 读 userCode（按项目现有方式；空则 401）
-    try:
-        from ai_engine.auth.c_session import resolve_subject_from_request  # type: ignore
-
-        subj = await resolve_subject_from_request(request)
-        if subj:
-            return subj, "c"
-    except ImportError:
-        pass
+    # C 端：从 Authorization: Bearer <Sa-Token> 拿裸 token 调 gateway 换 userCode
+    # 用模块属性访问 c_session.resolve_c_user，便于测试 monkeypatch 模块属性生效。
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        user_code = await _c_session.resolve_c_user(auth[7:])
+        if user_code:
+            return user_code, "c"
     raise HTTPException(401, "no subject")
 
 

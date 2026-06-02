@@ -2,8 +2,10 @@
 
 被测：admin_staff_groups CRUD。
 覆盖：鉴权（supervisor + admin 通过；其他 403）；create + list；
-     重名 (UNIQUE INDEX ux_staff_group_name) → IntegrityError（API 未捕，记 source bug）；
-     patch name / description / active；delete 后成员关系不级联（schema 无 FK，是设计）；
+     重名 (UNIQUE INDEX ux_staff_group_name) → 端点捕获转 409（修复 source bug #3）；
+     patch name / description / active；patch 不存在 ID → 404（修复 bug #5）；
+     delete 不存在 ID → 404（修复 bug #6）；
+     delete 时级联清空 staff.group_id 引用（修复 bug #7）；
      422 缺字段。
 """
 
@@ -82,25 +84,21 @@ class TestGroupsCrud:
         )
         assert r.status_code == 422
 
-    async def test_create_duplicate_name_raises(
+    async def test_create_duplicate_name_returns_409(
         self, client, admin_headers
     ) -> None:
-        """同名组：UNIQUE INDEX 触发 IntegrityError，API 未捕 → 异常透传。
-        spec 期望 409；记录为 source bug。
-        """
-        from sqlalchemy.exc import IntegrityError
-
+        """同名组：UNIQUE INDEX 由端点捕获并转 409（bug #3 已修）。"""
         await client.post(
             "/admin/api/v1/staff-groups",
             json={"name": "dup"},
             headers=admin_headers,
         )
-        with pytest.raises(IntegrityError):
-            await client.post(
-                "/admin/api/v1/staff-groups",
-                json={"name": "dup"},
-                headers=admin_headers,
-            )
+        r = await client.post(
+            "/admin/api/v1/staff-groups",
+            json={"name": "dup"},
+            headers=admin_headers,
+        )
+        assert r.status_code == 409
 
 
 @pytest.mark.usefixtures("init_self_db")
@@ -165,23 +163,32 @@ class TestGroupsPatch:
     async def test_patch_empty_body_is_noop_200(
         self, client, admin_headers
     ) -> None:
-        """空 body：API 没强制要求至少一个字段（与 shifts 不同），不会 400。"""
+        """空 body 且 group 存在：API 不强制至少一个字段（与 shifts 不同）→ 200 noop。"""
         gid = await self._create(client, admin_headers)
         r = await client.patch(
             f"/admin/api/v1/staff-groups/{gid}", json={}, headers=admin_headers,
         )
         assert r.status_code == 200
 
-    async def test_patch_nonexistent_silent_200(
+    async def test_patch_empty_body_nonexistent_returns_404(
         self, client, admin_headers
     ) -> None:
-        """对不存在的 group_id patch：UPDATE 0 行 → 不报错（无 404 检查，source 设计）。"""
+        """空 body 但 group_id 不存在：仍应 404（不能让 noop 掩盖存在性 bug）。"""
+        r = await client.patch(
+            "/admin/api/v1/staff-groups/999999", json={}, headers=admin_headers,
+        )
+        assert r.status_code == 404
+
+    async def test_patch_nonexistent_returns_404(
+        self, client, admin_headers
+    ) -> None:
+        """对不存在的 group_id patch：rowcount=0 → 404（bug #5 已修）。"""
         r = await client.patch(
             "/admin/api/v1/staff-groups/999999",
             json={"name": "ghost"},
             headers=admin_headers,
         )
-        assert r.status_code in (200, 404)
+        assert r.status_code == 404
 
 
 @pytest.mark.usefixtures("init_self_db")
@@ -203,19 +210,20 @@ class TestGroupsDelete:
         ).json()["groups"]
         assert rows == []
 
-    async def test_delete_nonexistent_idempotent(
+    async def test_delete_nonexistent_returns_404(
         self, client, admin_headers
     ) -> None:
+        """DELETE 不存在 ID：rowcount=0 → 404（bug #6 已修）。"""
         r = await client.delete(
             "/admin/api/v1/staff-groups/999999", headers=admin_headers,
         )
-        assert r.status_code == 200
+        assert r.status_code == 404
 
-    async def test_delete_does_not_cascade_staff_group_id(
+    async def test_delete_does_cascade_staff_group_id(
         self, client, admin_headers
     ) -> None:
-        """删组后引用该组的 staff.group_id 保留（schema 无 FK，不级联）。
-        前端/上层需感知并自行解绑。记录为已知设计行为，避免误以为级联会发生。
+        """删组后引用该组的 staff.group_id 应被级联清空为 NULL（bug #7 已修）。
+        DAO 在事务内先 UPDATE staff SET group_id=NULL 再 DELETE，避免孤儿引用。
         """
         # 建组 + 一个绑定该组的客服
         r = await client.post(
@@ -239,7 +247,7 @@ class TestGroupsDelete:
         await client.delete(
             f"/admin/api/v1/staff-groups/{gid}", headers=admin_headers,
         )
-        # 客服仍带原 group_id（孤儿引用，前端需处理）
+        # 客服的 group_id 已被清空
         rows = (await client.get("/admin/api/v1/staff", headers=admin_headers)).json()["staff"]
         m1 = next(x for x in rows if x["staff_id"] == "m1")
-        assert m1["group_id"] == gid  # 未被级联清空
+        assert m1["group_id"] is None

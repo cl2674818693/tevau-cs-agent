@@ -259,11 +259,11 @@ class TestShiftsDelete:
         r3 = await client.get("/admin/api/v1/shifts", headers=admin_headers)
         assert r3.json()["shifts"] == []
 
-    async def test_delete_nonexistent_is_idempotent(
+    async def test_delete_nonexistent_returns_404(
         self, client, admin_headers
     ) -> None:
-        """DELETE 不存在 ID 不返回 404（DAO 直接 DELETE，无 rowcount 检查）。"""
+        """DELETE 不存在 ID：DAO 返 rowcount=0 → 端点 404（bug #6 已修）。"""
         r = await client.delete(
             "/admin/api/v1/shifts/999999", headers=admin_headers,
         )
-        assert r.status_code == 200
+        assert r.status_code == 404

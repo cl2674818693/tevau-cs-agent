@@ -138,16 +138,26 @@ def _collect_blocks(resp: object) -> tuple[list[dict[str, Any]], list[dict[str, 
 async def _maybe_compact(
     conversation_id: int,
 ) -> tuple[int, dict[str, Any] | None, list[dict[str, Any]]]:
-    """超限则总结老会话、开新会话。返回 (会话id, 给前端的 system 事件 or None, 预置 messages)。"""
-    if not await should_compact(conversation_id):
+    """超限则总结老会话、开新会话。返回 (会话id, 给前端的 system 事件 or None, 预置 messages)。
+
+    fail-soft：should_compact/compact_conversation 抛错时记 warning 并退化为"不压缩"，
+    让主流程照常用现有会话继续，避免上游统计/总结服务故障拖垮整轮对话。
+    """
+    try:
+        if not await should_compact(conversation_id):
+            return conversation_id, None, []
+        new_id = await compact_conversation(conversation_id)
+        summary = next(
+            (str(m["content"]) for m in await list_messages(new_id) if m["role"] == "system"), ""
+        )
+        event = {"type": "system", "text": f"会话过长，已为您开启新对话，conversation_id={new_id}"}
+        seed = [{"role": "user", "content": f"[上文摘要]\n{summary}"}] if summary else []
+        return new_id, event, seed
+    except Exception:
+        logger.warning(
+            "compactor failed for conversation_id=%s, skipping compact", conversation_id, exc_info=True
+        )
         return conversation_id, None, []
-    new_id = await compact_conversation(conversation_id)
-    summary = next(
-        (str(m["content"]) for m in await list_messages(new_id) if m["role"] == "system"), ""
-    )
-    event = {"type": "system", "text": f"会话过长，已为您开启新对话，conversation_id={new_id}"}
-    seed = [{"role": "user", "content": f"[上文摘要]\n{summary}"}] if summary else []
-    return new_id, event, seed
 
 
 # 还原逻辑已下沉 persistence.message_content_text（与历史接口共用），此处保留别名兼容现有调用。

@@ -34,15 +34,19 @@ async def list_policies() -> list[dict[str, Any]]:
     )
 
 
-async def set_policy_active(policy_id: int, active: int) -> None:
-    await db.execute(
+async def set_policy_active(policy_id: int, active: int) -> int:
+    """切换 active；返回受影响行数（0 表示 policy_id 不存在）。"""
+    return await db.execute_rowcount(
         "UPDATE sla_policies SET active = :a WHERE id = :id",
         {"a": int(active), "id": int(policy_id)},
     )
 
 
-async def delete_policy(policy_id: int) -> None:
-    await db.execute("DELETE FROM sla_policies WHERE id = :id", {"id": int(policy_id)})
+async def delete_policy(policy_id: int) -> int:
+    """删除策略；返回受影响行数（0 表示 policy_id 不存在，端点用于 404 判定）。"""
+    return await db.execute_rowcount(
+        "DELETE FROM sla_policies WHERE id = :id", {"id": int(policy_id)}
+    )
 
 
 def _elapsed(since: str) -> float:

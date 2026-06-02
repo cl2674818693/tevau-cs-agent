@@ -48,5 +48,8 @@ async def patch_shift(shift_id: int, fields: dict) -> dict | None:
     return rows[0] if rows else None
 
 
-async def delete_shift(shift_id: int) -> None:
-    await db.execute("DELETE FROM staff_shifts WHERE id = :id", {"id": int(shift_id)})
+async def delete_shift(shift_id: int) -> int:
+    """删除班次；返回受影响行数（0 表示 shift_id 不存在，端点用于 404 判定）。"""
+    return await db.execute_rowcount(
+        "DELETE FROM staff_shifts WHERE id = :id", {"id": int(shift_id)}
+    )

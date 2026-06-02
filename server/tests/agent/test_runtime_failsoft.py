@@ -143,10 +143,14 @@ class TestToolDispatchException:
 
 
 class TestCompactorFailureBubblesToFailsoft:
-    """会话压缩抛错：runtime 内 await _maybe_compact 在 try 外，应直接走 fail-soft 兜底。"""
+    """会话压缩抛错：_maybe_compact 内部 fail-soft，退化为"不压缩"继续主流程。
 
-    async def test_compact_raises_triggers_failsoft(
-        self, monkeypatch, seeded_db
+    历史行为（已修复 Bug #8）：异常会直接传播，外层 try 抓住后用 fail-soft 文案兜底；
+    修复后改为局部吞错 + warning，保持当前会话继续走 LLM，用户感知无中断。
+    """
+
+    async def test_compact_raises_does_not_break_turn(
+        self, monkeypatch, seeded_db, fake_stream, make_resp, caplog
     ) -> None:
         async def _should(_id):
             return True
@@ -156,17 +160,34 @@ class TestCompactorFailureBubblesToFailsoft:
 
         monkeypatch.setattr(rt, "should_compact", _should)
         monkeypatch.setattr(rt, "compact_conversation", _compact)
+        # LLM 走通：第 1 轮直出文本结束（self-check 跳过分支：end_turn+texts → 触发 self-check 一轮）
+        monkeypatch.setattr(
+            _ac._client.messages,
+            "stream",
+            fake_stream([make_resp(text="你好"), make_resp(text="你好")]),
+        )
 
         conv = await create_conversation("c", "U001")
-        # 当前 runtime 的 _maybe_compact 在 try 外抛错会直接传播（没有 fail-soft）
-        with pytest.raises(RuntimeError, match="summary down"):
-            async for _ in rt.run_turn(
-                conversation_id=conv,
-                user_type="c",
-                subject_id="U001",
-                user_message="hi",
-            ):
-                pass
+        import logging as _logging
+
+        with caplog.at_level(_logging.WARNING, logger=rt.logger.name):
+            events = [
+                e
+                async for e in rt.run_turn(
+                    conversation_id=conv,
+                    user_type="c",
+                    subject_id="U001",
+                    user_message="hi",
+                )
+            ]
+        # 没有 error 事件、最终有 text；user 行 status=done
+        assert not any(e.get("type") == "error" for e in events)
+        assert any(e.get("type") == "text" and "你好" in e.get("text", "") for e in events)
+        msgs = await list_messages(conv)
+        user_rows = [m for m in msgs if m["role"] == "user"]
+        assert user_rows and user_rows[-1]["status"] == "done"
+        # 应有一条 compactor 失败的 warning
+        assert any("compactor failed" in rec.getMessage() for rec in caplog.records)
 
 
 class TestUserRowAlwaysWritten:

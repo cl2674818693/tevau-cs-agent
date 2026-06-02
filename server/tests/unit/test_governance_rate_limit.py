@@ -64,12 +64,10 @@ class TestLocalCheckBoundary:
         assert allowed is False
 
     def test_limit_zero_always_rejects(self, fake_clock) -> None:
-        """limit=0 边界：第一发就拒，且 dq 为空时 dq[0] 不存在 → 触发 IndexError？
-        实际逻辑：先判 len(dq) >= 0 始终 True，但 dq 为空读 dq[0] 会 IndexError。
-        记为"已知边界"——不期望工程上传 limit=0，但展示一下当前行为。
-        """
-        with pytest.raises(IndexError):
-            rl._local_check("k", limit=0)
+        """limit=0 边界：直接拒绝且 retry=0（不进入 dq 索引分支，避免 IndexError）。"""
+        assert rl._local_check("k", limit=0) == (False, 0)
+        # 多次调用同样幂等拒绝
+        assert rl._local_check("k", limit=0) == (False, 0)
 
     def test_limit_one_first_allow_then_reject(self, fake_clock) -> None:
         a1, _ = rl._local_check("k", limit=1)

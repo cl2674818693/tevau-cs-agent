@@ -80,11 +80,11 @@ async def list_staff() -> list[dict[str, Any]]:
 
 async def update_staff(
     staff_id: str, display_name: str | None = None, role: str | None = None
-) -> None:
-    """部分更新 display_name / role（传 None 的字段保留原值）。"""
+) -> int:
+    """部分更新 display_name / role（传 None 的字段保留原值）。返回受影响行数（0 表示 staff_id 不存在，端点用于 404 判定）。"""
     if role is not None and role not in _VALID_ROLES:
         raise ValueError("invalid role")
-    await db.execute(
+    return await db.execute_rowcount(
         "UPDATE staff SET "
         "display_name = COALESCE(CAST(:name AS TEXT), display_name), "
         "role = COALESCE(CAST(:role AS TEXT), role) "
@@ -93,15 +93,17 @@ async def update_staff(
     )
 
 
-async def set_staff_active(staff_id: str, active: int) -> None:
-    await db.execute(
+async def set_staff_active(staff_id: str, active: int) -> int:
+    """切换 active；返回受影响行数（0 表示 staff_id 不存在）。"""
+    return await db.execute_rowcount(
         "UPDATE staff SET active = :a WHERE staff_id = :sid",
         {"a": int(active), "sid": staff_id},
     )
 
 
-async def reset_staff_password(staff_id: str, new_password: str) -> None:
-    await db.execute(
+async def reset_staff_password(staff_id: str, new_password: str) -> int:
+    """重置密码；返回受影响行数（0 表示 staff_id 不存在，端点用于 404 判定）。"""
+    return await db.execute_rowcount(
         "UPDATE staff SET password_hash = :pw WHERE staff_id = :sid",
         {"pw": hash_password(new_password), "sid": staff_id},
     )
@@ -110,19 +112,29 @@ async def reset_staff_password(staff_id: str, new_password: str) -> None:
 # ─ M3a 扩展 ─────────────────────────────────────────────────────────────────
 
 
-async def set_staff_group(staff_id: str, group_id: int | None) -> None:
+async def set_staff_group(staff_id: str, group_id: int | None) -> int:
+    """设置/清空所属组；返回受影响行数（0 表示 staff_id 不存在）。"""
     # M4: 接受 0 视为清空（前端用 0 表示 "—"）。
     g: int | None = None
     if group_id is not None and int(group_id) != 0:
         g = int(group_id)
-    await db.execute(
+    return await db.execute_rowcount(
         "UPDATE staff SET group_id = :g WHERE staff_id = :sid",
         {"g": g, "sid": staff_id},
     )
 
 
-async def set_staff_skills(staff_id: str, skills: list[str]) -> None:
-    await db.execute(
+async def set_staff_skills(staff_id: str, skills: list[str]) -> int:
+    """覆盖技能集；返回受影响行数（0 表示 staff_id 不存在）。"""
+    return await db.execute_rowcount(
         "UPDATE staff SET skills = :s WHERE staff_id = :sid",
         {"s": json.dumps(skills, ensure_ascii=False), "sid": staff_id},
+    )
+
+
+async def clear_staff_group_refs(group_id: int) -> int:
+    """删组前级联清空引用该组的 staff.group_id（schema 无 FK，需手工解绑）。返回清理的 staff 行数。"""
+    return await db.execute_rowcount(
+        "UPDATE staff SET group_id = NULL WHERE group_id = :g",
+        {"g": int(group_id)},
     )

@@ -156,7 +156,7 @@ class TestRealGrep:
 
 
 class TestTimeoutHandling:
-    """模拟 wait_for TimeoutError，应返回 note='搜索超时…'。"""
+    """模拟 wait_for TimeoutError，应返回 note='搜索超时…'，且不留未 await 的协程警告。"""
 
     async def test_timeout_returns_note(self, monkeypatch, tmp_path) -> None:
         # 准备一个合法 repo（必须 isdir）
@@ -167,8 +167,10 @@ class TestTimeoutHandling:
 
         monkeypatch.setattr(_settings, "code_repo_paths", {"app_backend": str(repo)})
 
-        # 替换 asyncio.wait_for 让它直接抛 TimeoutError
-        async def _raise_timeout(*_a, **_k):  # noqa: ANN002,ANN003
+        # 替换 asyncio.wait_for 让它"先消耗传入的协程再抛 TimeoutError"——模拟真实
+        # wait_for 调度+cancel 协程的行为，否则 mock 自身会泄漏未 await 的 communicate()。
+        async def _raise_timeout(coro, *_a, **_k):  # noqa: ANN001,ANN002,ANN003
+            coro.close()  # 关闭协程，避免被丢弃产生 RuntimeWarning
             raise TimeoutError("simulated")
 
         monkeypatch.setattr(sc.asyncio, "wait_for", _raise_timeout)
@@ -176,6 +178,29 @@ class TestTimeoutHandling:
         out = await sc.run("app_backend", "needle", 5)
         assert out["hits"] == []
         assert "超时" in out["note"]
+
+    async def test_timeout_does_not_leak_warnings(
+        self, monkeypatch, tmp_path, recwarn
+    ) -> None:
+        """Bug #9 回归：超时分支需 kill+wait 子进程，确保不产生 RuntimeWarning。"""
+        repo = tmp_path / "r"
+        repo.mkdir()
+        (repo / "x.py").write_text("hello")
+        from ai_engine.config import settings as _settings
+
+        monkeypatch.setattr(_settings, "code_repo_paths", {"app_backend": str(repo)})
+
+        async def _raise_timeout(coro, *_a, **_k):  # noqa: ANN001,ANN002,ANN003
+            coro.close()
+            raise TimeoutError("simulated")
+
+        monkeypatch.setattr(sc.asyncio, "wait_for", _raise_timeout)
+
+        out = await sc.run("app_backend", "needle", 5)
+        assert "超时" in out["note"]
+        # 不应有 ResourceWarning / RuntimeWarning（"coroutine was never awaited" / 未关闭子进程）
+        leaks = [w for w in recwarn.list if issubclass(w.category, (RuntimeWarning, ResourceWarning))]
+        assert leaks == [], f"unexpected warnings: {[str(w.message) for w in leaks]}"
 
 
 class TestSymlinkResolved:

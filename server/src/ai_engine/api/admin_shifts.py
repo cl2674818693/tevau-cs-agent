@@ -65,5 +65,7 @@ async def patch_shift(
 
 @router.delete("/admin/api/v1/shifts/{shift_id}")
 async def delete_shift(shift_id: int, staff: dict[str, Any] = Depends(_sup)) -> dict[str, Any]:
-    await admin_shifts.delete_shift(shift_id)
+    # DELETE 0 行 → 404，避免对不存在 ID 的删除请求静默成功。
+    if await admin_shifts.delete_shift(shift_id) == 0:
+        raise HTTPException(404, "shift not found")
     return {"ok": True}

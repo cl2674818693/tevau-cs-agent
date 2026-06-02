@@ -84,8 +84,24 @@ class TestSetGroupActive:
 class TestDeleteGroup:
     async def test_delete(self, db_ready) -> None:
         gid = await g.create_group("g1", None)
-        await g.delete_group(gid)
+        affected = await g.delete_group(gid)
+        assert affected == 1
         assert await g.list_groups() == []
 
-    async def test_delete_missing_no_error(self, db_ready) -> None:
-        await g.delete_group(99999)
+    async def test_delete_missing_returns_zero(self, db_ready) -> None:
+        """删不存在 ID：DAO 不抛错，返 0（端点据此 404）。"""
+        affected = await g.delete_group(99999)
+        assert affected == 0
+
+    async def test_delete_cascades_staff_group_ref(self, db_ready) -> None:
+        """删组前先 UPDATE staff SET group_id=NULL，避免孤儿引用（bug #7 已修）。"""
+        from ai_engine.persistence import staff as staff_mod
+
+        gid = await g.create_group("g1", None)
+        await staff_mod.create_staff("s1", "Name", "agent", "pw")
+        await staff_mod.set_staff_group("s1", gid)
+        # 删组：staff.group_id 应被解绑成 NULL
+        await g.delete_group(gid)
+        row = await staff_mod.get_staff("s1")
+        assert row is not None
+        assert row["group_id"] is None

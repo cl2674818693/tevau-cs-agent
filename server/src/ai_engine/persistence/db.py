@@ -67,6 +67,13 @@ async def execute(sql: str, params: dict[str, Any] | None = None) -> None:
         await conn.execute(text(sql), params or {})
 
 
+async def execute_rowcount(sql: str, params: dict[str, Any] | None = None) -> int:
+    """执行 UPDATE/DELETE 并返回受影响行数（用于 404 判定）。"""
+    async with _engine().begin() as conn:
+        res = await conn.execute(text(sql), params or {})
+        return int(res.rowcount or 0)
+
+
 async def insert_returning_id(sql: str, params: dict[str, Any] | None = None) -> int:
     """sql 必须以 RETURNING id 结尾（SQLite>=3.35 与 Postgres 均支持）。"""
     async with _engine().begin() as conn:

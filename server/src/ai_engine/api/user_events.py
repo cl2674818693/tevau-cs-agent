@@ -10,6 +10,7 @@ from ai_engine.auth.bu_session import USER_TYPE_GUEST, resolve_identity
 from ai_engine.integrations.event_center_client import push_event_center
 from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
+from ai_engine.persistence import db
 from ai_engine.persistence import tickets as ticket_dao
 from ai_engine.persistence.staff_metrics import refresh_human_pending
 
@@ -31,6 +32,21 @@ async def request_human(conv_id: int, body: RequestHumanIn, request: Request) ->
     mode, _ = await conv_dao.get_mode(conv_id)
     if mode == "human_takeover":
         return {"ok": True, "note": "already human-handled"}
+    # 修复 Bug #15：已经 pending 时再次调入会重复 create_ticket（推 evidence + Lark + 事项中心）。
+    # 直接幂等返回当前会话最新的 ticket external_id，避免重复推送。
+    if mode == "human_pending":
+        row = await db.fetch_one(
+            "SELECT external_id FROM tickets WHERE conversation_id = :cid "
+            "ORDER BY created_at DESC LIMIT 1",
+            {"cid": conv_id},
+        )
+        existing_ticket = str(row["external_id"]) if row else None
+        return {
+            "ok": True,
+            "status": "already_pending",
+            "ticket_id": existing_ticket,
+            "note": "already pending human takeover",
+        }
     await conv_dao.set_mode(conv_id, "human_pending")
     await refresh_human_pending()
     out = await create_ticket_run(

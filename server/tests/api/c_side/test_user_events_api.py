@@ -74,6 +74,85 @@ class TestRequestHuman:
         mode, _ = await conv_dao.get_mode(conv_id)
         assert mode == "human_takeover"
 
+    async def test_idempotent_for_already_pending(
+        self, c_client: AsyncClient, conv_id: int, monkeypatch
+    ) -> None:
+        """Bug #15：mode=human_pending 时再次请求不应重复 create_ticket（不再推 evidence/Lark/事项中心）。
+
+        原行为：第二次调走 create_ticket → `find_open_ticket_for_subject` 命中后会
+        往同 ticket 追加一条 evidence_added 事件，且仍会经历整条工单创建路径走一遍，
+        增加无意义的事项中心/Lark 调用风险。
+        修复后：端点识别 pending 直接返回 already_pending + 已有 ticket_id，create_ticket 不被调。
+
+        本用例用真实 create_ticket_run（让第一次真正落 tickets 表），
+        只 stub 外部 HTTP（事项中心 POST + Lark webhook），第二次断言：
+          - create_ticket_run 不被调用（spy 计数）
+          - ticket_events 不再追加 evidence_added
+          - 返回体携带 status=already_pending + 同一个 ticket_id
+        """
+        import ai_engine.agent.tools.create_ticket as _ct_mod
+
+        # 拦截事项中心 HTTP（避免真打外网）
+        async def _fake_post(url: str, json: dict[str, Any], headers: dict[str, str]):
+            class _Resp:
+                status_code = 200
+            return _Resp()
+
+        async def _fake_lark(_payload: dict[str, Any]) -> None:
+            return None
+
+        monkeypatch.setattr(_ct_mod, "_post", _fake_post)
+        monkeypatch.setattr(_ct_mod, "_notify_lark", _fake_lark)
+
+        async def _fake_push(_payload: dict[str, Any]) -> None:
+            return None
+
+        monkeypatch.setattr("ai_engine.api.user_events.push_event_center", _fake_push)
+
+        # spy create_ticket_run（包真实实现，统计调用次数）
+        real_create_ticket_run = _ct_mod.run
+        call_count = {"n": 0}
+
+        async def _spy_create_ticket(**kw: Any) -> dict[str, Any]:
+            call_count["n"] += 1
+            return await real_create_ticket_run(**kw)
+
+        monkeypatch.setattr(
+            "ai_engine.api.user_events.create_ticket_run", _spy_create_ticket
+        )
+
+        # 第一次：正常建单 → mode 变 pending，tickets 表落一条
+        r1 = await c_client.post(
+            f"/api/v1/conversations/{conv_id}/request-human", json={"reason": "first"}
+        )
+        assert r1.status_code == 200, r1.text
+        first_ticket = r1.json()["ticket_id"]
+        assert first_ticket and first_ticket.startswith("AI-")
+        mode, _ = await conv_dao.get_mode(conv_id)
+        assert mode == "human_pending"
+        assert call_count["n"] == 1
+
+        # 第二次：mode 仍 pending → 应去重，不再调 create_ticket
+        r2 = await c_client.post(
+            f"/api/v1/conversations/{conv_id}/request-human", json={"reason": "again"}
+        )
+        assert r2.status_code == 200, r2.text
+        body = r2.json()
+        assert body.get("status") == "already_pending"
+        assert body.get("ticket_id") == first_ticket
+        # 关键断言：create_ticket 没被第二次调用 → 不会重复推事项中心 / Lark
+        assert call_count["n"] == 1, (
+            "request-human 在 pending 时应去重，不应再次 create_ticket"
+        )
+        # mode 没被改写
+        mode, _ = await conv_dao.get_mode(conv_id)
+        assert mode == "human_pending"
+        # ticket_events 不应追加 evidence_added（去重路径根本不进 create_ticket_run）
+        t = await ticket_dao.get_ticket(first_ticket)
+        assert t is not None
+        events = t["events"]  # type: ignore[index]
+        assert not any(ev["event"] == "evidence_added" for ev in events)
+
     async def test_guest_forbidden_403(
         self, client: AsyncClient, conv_id: int, _no_external
     ) -> None:

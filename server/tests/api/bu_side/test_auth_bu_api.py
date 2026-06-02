@@ -80,11 +80,17 @@ class TestBuLoginHappyPath:
         resp = await client.post("/api/v1/auth/bu/login", json={"bu_id": "T0"})
         assert resp.status_code == 200
 
-    async def test_login_with_null_status_treated_as_zero(self, client, monkeypatch) -> None:
-        """status=None → int(0) → 允许登录（防止历史脏数据被一刀切。)"""
+    async def test_login_with_null_status_rejected(self, client, monkeypatch) -> None:
+        """status=None（租户未配置完毕）→ 401 拒登。
+
+        修复 Bug #10：原实现 `int(row.get("status") or 0)` 把 NULL 当 0 通过，
+        意味着 t_nexus_company_info 任意 status 列脏数据/未初始化的租户都能登录。
+        收紧后 NULL 显式拒绝。
+        """
         _mock_get_db(monkeypatch, row={"tenant_id": "T1", "status": None})
         resp = await client.post("/api/v1/auth/bu/login", json={"bu_id": "T1"})
-        assert resp.status_code == 200
+        assert resp.status_code == 401
+        assert resp.cookies.get(SESSION_COOKIE) is None
 
 
 class TestBuLoginRejected:

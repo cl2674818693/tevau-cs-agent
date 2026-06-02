@@ -1,15 +1,15 @@
 """C 端客服评分：/api/v1/conversations/{cid}/agent-rating[/eligibility]。
 
-⚠️ 注意：源码 `agent_ratings.py::_resolve_subject` 走的是 X-BU-ID 优先 + c_session 兜底，
-但 `ai_engine.auth.c_session` 实际并未导出 `resolve_subject_from_request`（端点 try/except
-ImportError 后落到 401）。也就是说当前端点的"用户身份分支"只能通过 X-BU-ID（B 端口径）走通；
-真正的 C 端 Sa-Token 通道在该文件未接入。
+源码 `agent_ratings.py::_resolve_subject` 解析顺序：
+1) 若开启 DEV_TRUST_BU_HEADER 且带 X-BU-ID → 取 BU 身份 (user_type='b')。
+2) 否则尝试 Authorization: Bearer <Sa-Token> → c_session.resolve_c_user → C 端身份 (user_type='c')。
+3) 都不行 → 401。
 
-本测试因此用 X-BU-ID 头模拟用户（端点视角 user_type='b'）覆盖核心矩阵：
+本测试用 X-BU-ID 头模拟用户（端点视角 user_type='b'）覆盖核心矩阵：
 - eligibility：未指派 / 已指派 / 已评过
 - submit：成功 / 重复 409 / 越界 422 / 无客服 400 / 越权 403
 - 401：完全不带身份头
-此文件同时把"C 端 Sa-Token 接不通"作为 source-bug 备注（见末尾 TestSourceBugNotice）。
+末尾 TestCSideSaToken 正向验证 C 端 Sa-Token 通道（Bug #12 修复后已接通）。
 """
 
 from typing import Any
@@ -224,20 +224,40 @@ class TestSubmit:
         assert r.status_code == 403
 
 
-# ────────── 备注：源码已知 gap ──────────
+# ────────── C 端 Sa-Token 通道（Bug #12 修复后正向验证） ──────────
 
 
-class TestSourceBugNotice:
-    """此处不做硬断言，仅以测试形式标记一处 source-side 接缝问题（不修源码）。
+class TestCSideSaToken:
+    """Bug #12 修复后，C 端用户用 Authorization: Bearer <Sa-Token> 调评分端点应能走通。
 
-    `agent_ratings._resolve_subject` 尝试 `from ai_engine.auth.c_session import
-    resolve_subject_from_request`，但该函数当前不存在于 c_session.py。
-    因此对 C 端用户来说，agent-rating 端点用 Authorization: Bearer Sa-Token 通道
-    走不通 —— 必须依赖 X-BU-ID（B 端口径）。
+    c_side conftest 已 monkeypatch `c_session.resolve_c_user`：TOKEN_A → USER_CODE_A。
+    端点解析出 (USER_CODE_A, 'c') 后按 (subject_id=user_code, user_type='c') 校验会话归属。
     """
 
-    def test_c_session_resolve_subject_helper_not_exported(self) -> None:
-        import ai_engine.auth.c_session as _c
-        assert not hasattr(_c, "resolve_subject_from_request"), (
-            "若已修复 source（导出该函数），请把本测试改成断言 C 端 Sa-Token 也能走通。"
+    async def test_c_user_with_bearer_token_can_query_eligibility(
+        self, c_client: AsyncClient, db_ready: str
+    ) -> None:
+        from .conftest import USER_CODE_A
+
+        # c_client 默认带 Authorization: Bearer TOKEN_A → c_session.resolve_c_user 解 USER_CODE_A
+        cid = await conv_dao.create_conversation("c", USER_CODE_A)
+        r = await c_client.get(f"/api/v1/conversations/{cid}/agent-rating/eligibility")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        # 未指派客服：eligible=False；关键是不再 401
+        assert body == {"eligible": False, "already_rated": False, "staff_id": None}
+
+    async def test_c_user_with_bearer_token_can_submit_rating(
+        self, c_client: AsyncClient, db_ready: str
+    ) -> None:
+        from .conftest import USER_CODE_A
+
+        await _seed_staff()
+        cid = await conv_dao.create_conversation("c", USER_CODE_A)
+        await conv_dao.set_mode(cid, "human_takeover", assigned_staff_id="S100")
+        r = await c_client.post(
+            f"/api/v1/conversations/{cid}/agent-rating",
+            json={"rating": 5, "comment": "ok"},
         )
+        assert r.status_code == 200, r.text
+        assert r.json()["ok"] is True

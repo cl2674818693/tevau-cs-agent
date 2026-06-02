@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 
 from ai_engine.auth.staff_session import require_roles
 from ai_engine.persistence import staff as staff_mod
@@ -34,6 +35,9 @@ async def create_staff(
         )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+    except IntegrityError as e:
+        # 重复 staff_id 触发 UNIQUE 约束：转 409 而不是 500（避免裸 IntegrityError 透传）。
+        raise HTTPException(409, "staff_id already exists") from e
     return {"ok": True, "id": new_id}
 
 
@@ -49,6 +53,9 @@ class StaffPatchIn(BaseModel):
 async def patch_staff(
     staff_id: str, body: StaffPatchIn, admin: dict[str, Any] = Depends(_admin)
 ) -> dict[str, Any]:
+    # 先存在性检查：避免对不存在 staff_id 的 patch 静默成功（原 source bug）。
+    if await staff_mod.get_staff(staff_id) is None:
+        raise HTTPException(404, "staff not found")
     try:
         if body.display_name is not None or body.role is not None:
             await staff_mod.update_staff(staff_id, display_name=body.display_name, role=body.role)
@@ -71,5 +78,8 @@ class ResetPwIn(BaseModel):
 async def reset_password(
     staff_id: str, body: ResetPwIn, admin: dict[str, Any] = Depends(_admin)
 ) -> dict[str, Any]:
-    await staff_mod.reset_staff_password(staff_id, body.password)
+    # 用 rowcount 判定存在性：UPDATE 0 行说明 staff_id 不存在 → 404（避免静默成功）。
+    affected = await staff_mod.reset_staff_password(staff_id, body.password)
+    if affected == 0:
+        raise HTTPException(404, "staff not found")
     return {"ok": True}

@@ -183,11 +183,12 @@ class TestSlaPolicyCrud:
         r3 = await client.get("/admin/api/v1/sla/policies", headers=admin_headers)
         assert r3.json()["policies"] == []
 
-    async def test_delete_nonexistent_idempotent(self, client, admin_headers) -> None:
+    async def test_delete_nonexistent_returns_404(self, client, admin_headers) -> None:
+        """DELETE 不存在 ID：DAO 返 rowcount=0 → 端点 404（bug #6 已修）。"""
         r = await client.delete(
             "/admin/api/v1/sla/policies/999999", headers=admin_headers,
         )
-        assert r.status_code == 200
+        assert r.status_code == 404
 
 
 async def _make_pending_conv(seconds_ago: int) -> int:

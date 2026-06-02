@@ -119,10 +119,11 @@ class TestStaffLoginValidation:
 
 
 class TestStaffLoginSecretMissing:
-    """STAFF_JWT_SECRET 空时 issue_staff_token 抛 RuntimeError（防空密钥伪造）。
-    端点未捕获 → FastAPI 默认 500。"""
+    """STAFF_JWT_SECRET 空时端点显式返 503（服务未就绪），不再让 issue_staff_token 裸抛 500。
+    防止空密钥下 HS256 空串签名被攻击者伪造 admin token 的旁路也覆盖在 issue_staff_token 自身。
+    """
 
-    async def test_login_without_secret_raises(
+    async def test_login_without_secret_returns_503(
         self, init_self_db, client, monkeypatch
     ) -> None:
         from ai_engine.config import settings
@@ -130,17 +131,12 @@ class TestStaffLoginSecretMissing:
         monkeypatch.setenv("STAFF_JWT_SECRET", "")
         settings.reload()
         await insert_staff("agent-z", "Z", "agent", "pw-zz")
-        # FastAPI 默认对未捕获的 RuntimeError 直接 500（无 detail），用 pytest.raises 抓不到
-        # 因为是 ASGI 内部已转 500 响应；这里只断言状态码。
-        try:
-            resp = await client.post(
-                "/staff/api/v1/auth/login",
-                json={"staff_id": "agent-z", "password": "pw-zz"},
-            )
-            assert resp.status_code == 500
-        except RuntimeError as e:
-            # 部分 transport 会直接传播；接受两种行为
-            assert "not configured" in str(e)
+        resp = await client.post(
+            "/staff/api/v1/auth/login",
+            json={"staff_id": "agent-z", "password": "pw-zz"},
+        )
+        assert resp.status_code == 503
+        assert "not configured" in resp.json()["detail"]
 
 
 class TestVerifyStaffTokenRejection:

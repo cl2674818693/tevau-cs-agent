@@ -4,9 +4,12 @@ admin 详情页 InfoCard 调一次拿全：用户基本信息 + 近 30 天交易
 不复用 agent.tools.query_user 直接返回脱敏字段——admin 是内部员工，给明文（与 spec §13.3 一致）。
 """
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+
+logger = logging.getLogger(__name__)
 
 from ai_engine.auth.staff_session import require_staff
 from ai_engine.persistence import client_info as ci_dao
@@ -120,7 +123,12 @@ async def subject_info(
         elif user_type == "b":
             subject = {"user_type": "b", "subject_id": subject_id, **await _b_subject_info(subject_id)}
     except Exception:
-        # 业务库未连/SQL 失败时不阻断接口：client_info 仍能返回，subject.found=False 即可
+        # 业务库未连/SQL 失败时不阻断接口：client_info 仍能返回，subject.found=False 即可。
+        # 加 warning 日志：默默吃掉异常会让"接口正常但 InfoCard 空"的运维问题难以定位。
+        logger.warning(
+            "subject info lookup failed for conv_id=%s user_type=%s subject_id=%s",
+            conv_id, user_type, subject_id, exc_info=True,
+        )
         subject["found"] = False
 
     return {

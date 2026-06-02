@@ -55,6 +55,9 @@ def _get_redis() -> "Redis | None":
 
 
 def _local_check(key: str, limit: int) -> tuple[bool, int]:
+    # limit<=0 直接拒（且无重试建议）：避免空 dq 取 dq[0] IndexError，并语义上"零额度=永拒"。
+    if limit <= 0:
+        return False, 0
     now = time.monotonic()
     dq = _hits[key]
     while dq and now - dq[0] >= _WINDOW_SECONDS:

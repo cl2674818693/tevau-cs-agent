@@ -49,7 +49,9 @@ async def patch_policy(
 
 @router.delete("/admin/api/v1/sla/policies/{policy_id}")
 async def delete_policy(policy_id: int, staff: dict[str, Any] = Depends(_sup)) -> dict[str, Any]:
-    await admin_sla.delete_policy(policy_id)
+    # DELETE 0 行 → 404，避免对不存在 ID 的删除请求静默成功。
+    if await admin_sla.delete_policy(policy_id) == 0:
+        raise HTTPException(404, "policy not found")
     return {"ok": True}
 
 

@@ -1,5 +1,6 @@
 """客服在线状态：自心跳（任何 staff）+ 后台查询（supervisor/admin）。"""
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 from ai_engine.auth.staff_session import require_roles, require_staff
 from ai_engine.persistence import staff_presence
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 _sup = require_roles("supervisor", "admin")
 
@@ -22,7 +24,12 @@ class HeartbeatIn(BaseModel):
 async def heartbeat(
     body: HeartbeatIn, staff: dict[str, Any] = Depends(require_staff)
 ) -> dict[str, Any]:
-    status = body.status if body.status in _VALID_STATUS else "online"
+    # 非白名单 status 静默回退 online 保持兼容；加 debug 日志便于排查"前端发了什么"。
+    if body.status not in _VALID_STATUS:
+        logger.debug("invalid presence status %r, defaulting to online", body.status)
+        status = "online"
+    else:
+        status = body.status
     staff_id = str(staff.get("sub", ""))
     if not staff_id:
         return {"ok": False}

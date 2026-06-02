@@ -13,8 +13,8 @@
     4. 在新会话继续 chat → 走正常 ai 路径。
 
 异常分支：
-    - _summarize 抛错 → runtime 自身无 try/except，冒到 chat.py 顶层 try →
-      回 INTERNAL_ERROR。
+    - _summarize 抛错 → runtime._maybe_compact 内部 fail-soft：记 warning 并退化为
+      "不压缩、继续用老会话"，主流程照常走完，对外不产生 INTERNAL_ERROR。
 """
 
 from types import SimpleNamespace
@@ -141,25 +141,49 @@ class TestCompactor:
 
         assert await should_compact(cid) is False
 
-    async def test_summarize_failure_falls_back_to_internal_error(
+    async def test_summarize_failure_falls_back_to_no_compact(
         self,
         c_client: AsyncClient,
         long_conv_id: int,
         monkeypatch,
     ) -> None:
-        """_summarize 抛错 → runtime.run_turn 顶层捕获 → user 端口 internal error 兜底文案。"""
+        """_summarize 抛错 → _maybe_compact 内部吞错 + warning，主流程退化为不压缩继续走。
+
+        修复 Bug #8 后：不再冒到 chat.py 顶层 → 不再 INTERNAL_ERROR；
+        老会话保持未归档；用户照常收到 LLM 文本。
+        """
         from ai_engine.agent import conversation_compactor as cc
+        from ai_engine.agent import runtime as _rt
+        from ai_engine.integrations import anthropic_client as _ac
 
         async def _boom(history: str) -> str:
             raise RuntimeError("anthropic down")
 
+        async def _fake_stream(req):
+            yield {"text_delta": "好的，已收到。"}
+            final = SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="好的，已收到。")],
+                stop_reason="end_turn",
+                usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+            )
+            yield {"final": final}
+
         monkeypatch.setattr(cc, "_summarize", _boom)
+        monkeypatch.setattr(_ac, "stream_turn", _fake_stream)
+        monkeypatch.setattr(_rt.settings, "topic_classifier_enabled", False, raising=False)
+
         r = await c_client.get(
             "/api/v1/chat",
             params={"conversation_id": long_conv_id, "message": "再来一条"},
         )
-        # SSE 200 但 body 是 error 帧
         assert r.status_code == 200
         frames = await parse_sse(r)
-        errors = event_data(frames, "error")
-        assert any(e.get("code") == "INTERNAL_ERROR" for e in errors)
+        # 没有 error 帧
+        assert event_data(frames, "error") == []
+        # 老会话仍未归档（_maybe_compact 退化为 no-op）
+        from ai_engine.persistence import db as db_mod
+
+        row = await db_mod.fetch_one(
+            "SELECT archived FROM conversations WHERE id=:id", {"id": long_conv_id}
+        )
+        assert int(row["archived"]) == 0

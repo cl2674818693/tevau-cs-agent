@@ -5,8 +5,9 @@
 - 鉴权（仅 admin）
 - 创建 + 列表
 - role 白名单 400
-- 重复 staff_id：UNIQUE 未被 API 捕获 → IntegrityError 透传（source bug，记录）
+- 重复 staff_id：UNIQUE 被端点捕获 → 409（修复 source bug #2）
 - patch 各字段 / group_id=0 清空语义 / skills 列表序列化 / role 非法 400
+- patch / reset-password 对不存在 staff_id → 404（修复 source bug #4）
 - 启用/禁用 active；reset-password 端点；非法 active 类型 422
 """
 
@@ -102,30 +103,23 @@ class TestStaffCreate:
         )
         assert r.status_code == 422
 
-    async def test_create_duplicate_staff_id_raises(
+    async def test_create_duplicate_staff_id_returns_409(
         self, client, admin_headers
     ) -> None:
-        """同 staff_id 二次创建：DB UNIQUE 抛 IntegrityError 直接冒泡。
-
-        API source bug：admin_staff.create_staff 只捕获 ValueError，未捕 IntegrityError；
-        ASGI in-process（无 ServerErrorMiddleware）下异常透传到 client 调用栈。
-        spec 期望 409；记录为 source bug。
-        """
-        from sqlalchemy.exc import IntegrityError
-
+        """同 staff_id 二次创建：UNIQUE 由端点捕获并转 409（spec 行为，bug #2 已修）。"""
         await client.post(
             "/admin/api/v1/staff",
             json={"staff_id": "dup", "display_name": "A",
                   "role": "agent", "password": "pw"},
             headers=admin_headers,
         )
-        with pytest.raises(IntegrityError):
-            await client.post(
-                "/admin/api/v1/staff",
-                json={"staff_id": "dup", "display_name": "B",
-                      "role": "agent", "password": "pw"},
-                headers=admin_headers,
-            )
+        r = await client.post(
+            "/admin/api/v1/staff",
+            json={"staff_id": "dup", "display_name": "B",
+                  "role": "agent", "password": "pw"},
+            headers=admin_headers,
+        )
+        assert r.status_code == 409
 
 
 @pytest.mark.usefixtures("init_self_db")
@@ -258,20 +252,16 @@ class TestStaffPatch:
         )
         assert r.status_code == 200
 
-    async def test_patch_nonexistent_silent_success(
+    async def test_patch_nonexistent_returns_404(
         self, client, admin_headers
     ) -> None:
-        """patch 不存在的 staff_id：UPDATE 0 行无错误 → 200。
-
-        合理性：admin UI 上能控的列表都来自 list_staff，理论上不会拿到不存在 id；
-        若未来强约束要求 404，此测试需更新。当前为 source 设计（记录）。
-        """
+        """patch 不存在的 staff_id：端点先查存在性 → 404（bug #4 已修）。"""
         r = await client.patch(
             "/admin/api/v1/staff/no_such",
             json={"display_name": "x"},
             headers=admin_headers,
         )
-        assert r.status_code in (200, 404)
+        assert r.status_code == 404
 
     async def test_patch_active_type_error_422(
         self, client, admin_headers
@@ -319,13 +309,13 @@ class TestStaffResetPassword:
         )
         assert r.status_code == 422
 
-    async def test_reset_nonexistent_silent_success(
+    async def test_reset_nonexistent_returns_404(
         self, client, admin_headers
     ) -> None:
-        """对不存在 staff_id reset：当前 UPDATE 0 行不报错 → 200。记录为 source 行为。"""
+        """对不存在 staff_id reset：DAO 返 rowcount=0 → 端点 404（bug #4 已修）。"""
         r = await client.post(
             "/admin/api/v1/staff/ghost/reset-password",
             json={"password": "x"},
             headers=admin_headers,
         )
-        assert r.status_code in (200, 404)
+        assert r.status_code == 404

@@ -65,7 +65,13 @@ async def run(repo: str, query: str, max_hits: int = MAX_HITS_DEFAULT) -> dict[s
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), timeout=_TIMEOUT)
     except TimeoutError:
+        # wait_for 取消 communicate() 会留下未 await 的协程触发 RuntimeWarning；
+        # kill 后显式 wait 子进程退出，回收管道/协程，避免 pytest 警告与僵尸子进程。
         proc.kill()
+        try:
+            await proc.wait()
+        except Exception:
+            pass
         return {"hits": [], "note": "搜索超时，请用更具体的关键词"}
 
     return {"hits": _parse_grep(out, base, max_hits)}

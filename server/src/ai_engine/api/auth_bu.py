@@ -41,14 +41,21 @@ async def bu_login(body: LoginIn, request: Request, response: Response) -> dict[
         raise HTTPException(429, "too many attempts, please wait")
 
     # 校验主账户身份：查 nexus 真实租户主表 t_nexus_company_info（按 tenant_id）。
-    # status: 0待开启 1运行中 2已停用；仅拒绝「已停用」。原 unlimitpay.bu 简化表已弃用。
+    # status: 0待开启 1运行中 2已停用；仅拒绝「已停用」与「未配置(NULL)」。
+    # 修复：原 `int(row.get("status") or 0)` 会把 NULL 当 0 通过，
+    # 导致脏数据/未初始化租户全部能登。NULL 视为"租户未配置完毕"显式拒登。
     db = get_db("nexus")
     row = await db.fetch_one(
         "SELECT tenant_id, status FROM t_nexus_company_info WHERE tenant_id=%s AND del_flag=0",
         (body.bu_id,),
     )
-    if not row or int(row.get("status") or 0) == 2:
+    if not row:
         raise HTTPException(401, "主账户不存在或已停用")  # 通用错误，防枚举
+    status_val = row.get("status")
+    if status_val is None:
+        raise HTTPException(401, "主账户不存在或已停用")
+    if int(status_val) == 2:
+        raise HTTPException(401, "主账户不存在或已停用")
 
     # 签发签名 session cookie（HttpOnly + SameSite=Strict + 8h）。
     # cookie 值是 HS256 签名 token（含 bu_id + 过期），服务端验签，无法伪造。
