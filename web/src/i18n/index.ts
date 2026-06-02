@@ -10,6 +10,7 @@ const resources = {
         title: "Tevau AI 客服",
         staffMode: "客服 {{name}} · 已认证",
         aiMode: "由 AI 驱动 · 复杂问题转人工",
+        pendingMode: "等待人工客服接入…",
         stop: "停止生成",
       },
       chat: {
@@ -75,6 +76,7 @@ const resources = {
         title: "Tevau AI Support",
         staffMode: "Agent {{name}} · Verified",
         aiMode: "AI-powered · Escalate to human for complex issues",
+        pendingMode: "Waiting for an agent…",
         stop: "Stop",
       },
       chat: {

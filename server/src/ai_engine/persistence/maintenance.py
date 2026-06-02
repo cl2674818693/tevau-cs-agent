@@ -1,7 +1,8 @@
-"""僵尸回合清理：把 processing 卡太久的 user 回合标 failed，避免永久挂起。
+"""僵尸回合清理 + 转人工超时事项中心推送：后台 sweep_loop 周期触发。
 
-触发场景：服务进程在 agent loop 中途崩溃/被 kill，回合 status 永远停在 processing。
-后台 sweep_loop 周期扫描；reclaim_stale_turns 也可被单元测试/手动调用。
+- reclaim_stale_turns: processing 卡太久的 user 回合标 failed，避免永久挂起。
+- push_pending_takeover_timeouts: human_pending 超 sla_policies.take_time 阈值时
+  推 pending_takeover_timeout 事件到事项中心，按会话去重（pending_timeout_pushes）。
 """
 
 import asyncio
@@ -9,8 +10,10 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from ai_engine.config import settings
+from ai_engine.integrations.event_center_client import push_event_center
 from ai_engine.observability import metrics
-from ai_engine.persistence import db
+from ai_engine.persistence import admin_sla, db
+from ai_engine.persistence.schema import now_str
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +38,62 @@ async def reclaim_stale_turns(timeout_seconds: int) -> int:
     return n
 
 
+async def push_pending_takeover_timeouts() -> int:
+    """对超 SLA take_time 阈值且未推送过的会话推 pending_takeover_timeout 事件。
+
+    去重表 pending_timeout_pushes 按 conversation_id 主键；推送失败不写表，
+    下次扫描可重试，避免事件丢失。返回本次成功推送条数。
+    """
+    breaches = await admin_sla.compute_breaches()
+    take_breaches = [b for b in breaches if b["metric"] == "take_time"]
+    if not take_breaches:
+        return 0
+
+    pushed_count = 0
+    for b in take_breaches:
+        cid = int(b["conversation_id"])
+        already = await db.fetch_one(
+            "SELECT conversation_id FROM pending_timeout_pushes WHERE conversation_id=:cid",
+            {"cid": cid},
+        )
+        if already:
+            continue
+        conv = await db.fetch_one(
+            "SELECT user_type, subject_id, created_at FROM conversations WHERE id=:id",
+            {"id": cid},
+        )
+        if not conv:
+            continue
+        payload = {
+            "type": "pending_takeover_timeout",
+            "conversation_id": cid,
+            "user_type": str(conv["user_type"]),
+            "subject_id": str(conv["subject_id"]),
+            "elapsed_seconds": int(b["elapsed_seconds"]),
+            "threshold_seconds": int(b["threshold_seconds"]),
+            "created_at": str(conv["created_at"]),
+            "source": "ai_engine",
+        }
+        ok = await push_event_center(payload)
+        if not ok:
+            continue
+        await db.execute(
+            "INSERT INTO pending_timeout_pushes(conversation_id, pushed_at, threshold_seconds) "
+            "VALUES (:cid, :at, :th)",
+            {"cid": cid, "at": now_str(), "th": int(b["threshold_seconds"])},
+        )
+        pushed_count += 1
+        logger.info(
+            "pending_takeover_timeout pushed conv=%d elapsed=%ds threshold=%ds",
+            cid,
+            int(b["elapsed_seconds"]),
+            int(b["threshold_seconds"]),
+        )
+    return pushed_count
+
+
 async def sweep_loop() -> None:
-    """后台周期清理。interval<=0 时立即退出（关闭）。"""
+    """后台周期清理 + 转人工超时推送。interval<=0 时立即退出（关闭）。"""
     interval = settings.stale_sweep_interval_seconds
     if interval <= 0:
         return
@@ -45,4 +102,8 @@ async def sweep_loop() -> None:
             await reclaim_stale_turns(settings.stale_turn_timeout_seconds)
         except Exception:
             logger.exception("stale sweep iteration failed")
+        try:
+            await push_pending_takeover_timeouts()
+        except Exception:
+            logger.exception("pending takeover timeout sweep failed")
         await asyncio.sleep(interval)

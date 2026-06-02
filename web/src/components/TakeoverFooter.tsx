@@ -66,7 +66,9 @@ export function TakeoverFooter({
 
   return (
     <Flex vertical gap="small">
-      <Flex align="center" gap="small">
+      {/* wrap="wrap" 让 AttachButton 的缩略图行（w-full）自然换到上方一行，
+          否则会和 Input 横向争空间把输入框压到几乎不可用。 */}
+      <Flex align="center" gap="small" wrap="wrap">
         <AttachButton
           upload={(f) => uploadStaffAttachment(convId, f, token)}
           ids={ids}
@@ -77,7 +79,7 @@ export function TakeoverFooter({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="回复用户…"
-          style={{ flex: 1 }}
+          style={{ flex: 1, minWidth: 200 }}
           onPressEnter={send}
         />
         <Button

@@ -14,6 +14,16 @@ export function ChatHeader({
   onStop: () => void;
 }) {
   const { t } = useTranslation();
+  // human_pending：橙色点 + 等待文案，让刷新后用户仍能看到自己在排队（事件触发的临时气泡不回放）。
+  // human_takeover：隐藏状态点，文案带客服名。其余（ai / ai_draft）维持原 AI 模式。
+  const subtitle =
+    mode === "human_takeover"
+      ? t("header.staffMode", { name: staffName ?? "" })
+      : mode === "human_pending"
+        ? t("header.pendingMode")
+        : t("header.aiMode");
+  const dotClass =
+    mode === "human_pending" ? "bg-status-warning" : "bg-status-success";
   return (
     <header className="safe-top sticky top-0 z-10 flex items-center justify-between px-page py-3 bg-surface-card border-b border-line">
       <div className="flex items-center gap-3">
@@ -24,13 +34,9 @@ export function ChatHeader({
           <div className="text-sh3 font-bold text-ink-primary leading-none">{t("header.title")}</div>
           <div className="flex items-center gap-1.5 mt-1">
             {mode !== "human_takeover" && (
-              <span className="w-1.5 h-1.5 rounded-full bg-status-success" />
+              <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
             )}
-            <span className="text-footnote text-ink-secondary">
-              {mode === "human_takeover"
-                ? t("header.staffMode", { name: staffName ?? "" })
-                : t("header.aiMode")}
-            </span>
+            <span className="text-footnote text-ink-secondary">{subtitle}</span>
           </div>
         </div>
       </div>

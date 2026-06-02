@@ -252,6 +252,15 @@ role_permissions = Table(
 )
 Index("ux_role_perm", role_permissions.c.role, role_permissions.c.permission_key, unique=True)
 
+# 转人工超时事件去重：sweep 命中阈值推事项中心后写一行，避免同会话反复推送。
+pending_timeout_pushes = Table(
+    "pending_timeout_pushes",
+    metadata,
+    Column("conversation_id", Integer, primary_key=True),
+    Column("pushed_at", String(32), nullable=False),
+    Column("threshold_seconds", Integer, nullable=False),
+)
+
 # By-model 拆分表（M3c）：彻底解决 M2 同 subject 同日多模型时 model 列被覆盖问题。
 daily_token_usage_by_model = Table(
     "daily_token_usage_by_model",

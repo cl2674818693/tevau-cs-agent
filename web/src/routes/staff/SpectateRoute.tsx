@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { staffAttachmentUrl } from "../../api/attachments";
 import { streamSpectateEvents, type StaffStreamEvent } from "../../api/staff";
-import { ImageThumb } from "../../components/ImageThumb";
+import { StaffImageThumb } from "../../components/StaffImageThumb";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 const { Text } = Typography;
@@ -107,12 +107,13 @@ export function SpectateRoute() {
                 }}
               >
                 {label(ev)}
-                {ev.attachments?.length ? (
+                {ev.attachments?.length && token ? (
                   <div className="mt-1 flex flex-wrap gap-2">
                     {ev.attachments.map((a) => (
-                      <ImageThumb
+                      <StaffImageThumb
                         key={a.id}
                         src={staffAttachmentUrl(convId, a.id)}
+                        token={token}
                       />
                     ))}
                   </div>

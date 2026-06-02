@@ -21,7 +21,7 @@ import {
   type StaffMessage,
   type ToolAudit,
 } from "../../api/staff";
-import { ImageThumb } from "../../components/ImageThumb";
+import { StaffImageThumb } from "../../components/StaffImageThumb";
 import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
@@ -122,6 +122,7 @@ function MessagesTab({
   loading,
   loadingMore,
   loadEarlier,
+  token,
 }: {
   convId: number;
   messages: StaffMessage[];
@@ -129,6 +130,7 @@ function MessagesTab({
   loading: boolean;
   loadingMore: boolean;
   loadEarlier: () => void;
+  token: string | null;
 }) {
   if (loading) {
     return (
@@ -164,10 +166,14 @@ function MessagesTab({
           <div style={{ fontSize: 12, fontWeight: 600 }}>
             <ExpandableText text={m.content} />
           </div>
-          {m.attachments?.length ? (
+          {m.attachments?.length && token ? (
             <Flex wrap="wrap" gap="small" style={{ marginTop: 8 }}>
               {m.attachments.map((a) => (
-                <ImageThumb key={a.id} src={staffAttachmentUrl(convId, a.id)} />
+                <StaffImageThumb
+                  key={a.id}
+                  src={staffAttachmentUrl(convId, a.id)}
+                  token={token}
+                />
               ))}
             </Flex>
           ) : null}
@@ -331,6 +337,7 @@ export function ConversationLogsRoute() {
                 loading={loading}
                 loadingMore={loadingMore}
                 loadEarlier={loadEarlier}
+                token={token}
               />
             ),
           },

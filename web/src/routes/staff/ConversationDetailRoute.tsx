@@ -1,36 +1,74 @@
-import { Alert, Breadcrumb, Button, Card, Flex, Space, Typography } from "antd";
+import { Alert, Breadcrumb, Button, Card, Flex, Skeleton, Space, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { staffAttachmentUrl } from "../../api/attachments";
 import {
+  getConversationMessages,
   getStaffConversation,
   releaseConversation,
+  type StaffMessage,
   streamStaffEvents,
   takeConversation,
   type StaffStreamEvent,
 } from "../../api/staff";
 import { AiDraftPanel } from "../../components/AiDraftPanel";
 import { AiToolsPanel } from "../../components/AiToolsPanel";
-import { ImageThumb } from "../../components/ImageThumb";
+import { StaffImageThumb } from "../../components/StaffImageThumb";
 import { TakeoverFooter } from "../../components/TakeoverFooter";
 import { useAiDraft } from "../../hooks/useAiDraft";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
+/** 把 messages 表的历史消息映射成事件流条目；ai_draft / 未知 role 过滤掉。
+ *  不填 draft 字段，避免 useAiDraft 把历史草稿误判成新草稿弹出。 */
+function messageToStreamEvent(m: StaffMessage): StaffStreamEvent | null {
+  const typeByRole: Record<string, string> = {
+    user: "user_message",
+    assistant: "assistant_message",
+    human_agent: "human_message",
+  };
+  const type = typeByRole[m.role];
+  if (!type) return null;
+  return { type, content: m.content, attachments: m.attachments };
+}
+
 /**
- * 订阅会话事件总线，返回累积的事件列表。
+ * 订阅会话事件总线，返回累积的事件列表（含 mount 前的历史 + SSE 增量）。
  * stopped 必须是 effect 闭包内的局部变量，不能用 useRef：StrictMode 下 effect 会
  * mount→unmount→mount，两次 mount 共享同一个 ref，第二次 mount 会把 stopped 重置成
  * false，导致第一个订阅的 for-await 永不 break → 双订阅 → 每个事件被 push 两次。
+ *
+ * 历史 prepend 而非覆盖：SSE 可能先返回事件，历史晚到，prepend 保证时序正确不丢新事件。
+ * 历史 / SSE 接缝处可能有短暂重叠（同一条消息被回放又被推送），暂不去重——
+ * 极端情况下用户看到重复气泡，刷新即可消除，避免引入 message_id 同步开销。
  */
 function useStaffStream(
   token: string | null,
   convId: number,
-): StaffStreamEvent[] {
+): { events: StaffStreamEvent[]; historyLoading: boolean } {
   const [events, setEvents] = useState<StaffStreamEvent[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
   useEffect(() => {
     if (!token) return;
     let stopped = false;
+    setHistoryLoading(true);
+    setEvents([]);
+
+    getConversationMessages(token, convId, { limit: 100 })
+      .then((page) => {
+        if (stopped) return;
+        const history = page.messages
+          .map(messageToStreamEvent)
+          .filter((e): e is StaffStreamEvent => e !== null);
+        setEvents((prev) => [...history, ...prev]);
+      })
+      .catch(() => {
+        /* 历史拉失败不影响 SSE 增量展示 */
+      })
+      .finally(() => {
+        if (!stopped) setHistoryLoading(false);
+      });
+
     (async () => {
       try {
         for await (const ev of streamStaffEvents(token, convId)) {
@@ -45,7 +83,7 @@ function useStaffStream(
       stopped = true;
     };
   }, [token, convId]);
-  return events;
+  return { events, historyLoading };
 }
 
 /** 按会话真实状态初始化接管态：本客服已接管 → 直接渲染回复区，刷新后不丢。 */
@@ -76,12 +114,23 @@ function useInitialTaken(
 
 function EventLog({
   events,
+  historyLoading,
   convId,
+  token,
 }: {
   events: StaffStreamEvent[];
+  historyLoading: boolean;
   convId: number;
+  token: string | null;
 }) {
-  // 实时流面板：只显示订阅开始之后的新事件，历史聊天看 /logs。
+  // mount 时先回放历史消息（user/assistant/human_agent），之后续 SSE 增量。
+  if (historyLoading && events.length === 0) {
+    return (
+      <div style={{ padding: 16 }}>
+        <Skeleton active paragraph={{ rows: 4 }} />
+      </div>
+    );
+  }
   if (events.length === 0) {
     return (
       <div
@@ -89,9 +138,9 @@ function EventLog({
         style={{ padding: 16 }}
       >
         <Typography.Text type="secondary" style={{ fontSize: 12, textAlign: "center" }}>
-          暂无新事件
+          该会话暂无消息。
           <br />
-          历史聊天记录请查看{" "}
+          完整留痕（工具调用 / 反馈）请查看{" "}
           <Link to={`/staff/conversations/${convId}/logs`}>会话日志</Link>
         </Typography.Text>
       </div>
@@ -118,12 +167,13 @@ function EventLog({
             [{ev.type}]
           </span>
           {ev.content ?? ev.to ?? ""}
-          {ev.attachments?.length ? (
+          {ev.attachments?.length && token ? (
             <Flex wrap="wrap" gap="small" style={{ marginTop: 4 }}>
               {ev.attachments.map((a) => (
-                <ImageThumb
+                <StaffImageThumb
                   key={a.id}
                   src={staffAttachmentUrl(convId, a.id)}
+                  token={token}
                 />
               ))}
             </Flex>
@@ -139,7 +189,7 @@ export function ConversationDetailRoute() {
   const convId = Number(id);
   const { token, role, staffId } = useStaffSession();
   const canUseTools = role === "senior" || role === "engineer";
-  const events = useStaffStream(token, convId);
+  const { events, historyLoading } = useStaffStream(token, convId);
   const [taken, setTaken] = useState(false);
   const [notice, setNotice] = useState("");
   const { draftMode, aiDraft, toggleDraftMode, approve, reject } = useAiDraft(
@@ -218,7 +268,12 @@ export function ConversationDetailRoute() {
             },
           }}
         >
-          <EventLog events={events} convId={convId} />
+          <EventLog
+            events={events}
+            historyLoading={historyLoading}
+            convId={convId}
+            token={token}
+          />
           {taken && token && (
             <div
               style={{
