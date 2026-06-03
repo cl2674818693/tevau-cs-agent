@@ -1,10 +1,13 @@
 """Tool: create_ticket（含人工接待 handoff 路径）
 
 被测对象：tools.create_ticket.run
+事项中心契约（docs/event-center-onboarding.md）：通过 event_center_client.create_task
+推送，payload 字段为 event_id/action_type/source_module/event_type/context/priority/
+entities/source_ref/callback_url。
 - 参数校验：category / severity / user_type 枚举。
 - 风暴对策：subject 24h 内已有未关闭工单 → 追加证据不新建。
-- C/B subject_key：c → user_id；b → bu_id。
-- 推事项中心：HTTP 2xx → pushed_to_event_center=True；否则 Lark 兜底。
+- C/B entities：c → {type:customer, id}；b → {type:partner, id}。
+- 推事项中心：create_task 返回 True → pushed_to_event_center=True；False → Lark 兜底。
 - 人工介入工单：触发 _ensure_human_pending → 调 set_mode + broadcast。
 """
 
@@ -15,25 +18,21 @@ from ai_engine.persistence.conversations import create_conversation, get_mode, s
 from ai_engine.persistence.tickets import find_open_ticket_for_subject
 
 
-class _FakeResp:
-    def __init__(self, status_code: int) -> None:
-        self.status_code = status_code
-
-
 @pytest.fixture(autouse=True)
 def _mock_outbound(monkeypatch):
-    """统一拦截 HTTP/Lark/广播副作用，避免真正走网络。"""
-    calls = {"post": [], "lark": [], "mode_change": []}
+    """拦截 create_task / Lark / 广播副作用，记录调用参数供断言。"""
+    calls = {"create_task": [], "lark": [], "mode_change": []}
 
-    async def _post(url, json, headers):  # noqa: ANN001,ARG001
-        calls["post"].append({"url": url, "json": json, "headers": headers})
-        return _FakeResp(200)
+    async def _create_task(**kwargs):
+        calls["create_task"].append(kwargs)
+        return True
 
     async def _lark(payload):
         calls["lark"].append(payload)
         return None
 
-    monkeypatch.setattr(ct, "_post", _post)
+    # patch 在 create_ticket 模块的引用名（from-import 后变成模块自己的属性）
+    monkeypatch.setattr(ct, "create_task", _create_task)
     monkeypatch.setattr(ct, "_notify_lark", _lark)
 
     # broadcast 广播副作用拦截
@@ -44,9 +43,6 @@ def _mock_outbound(monkeypatch):
 
     monkeypatch.setattr(sc, "publish_conversation_event", _publish)
 
-    # 不再 monkeypatch settings.event_center_*：_post 已 mock，url 取真实值无网络发起；
-    # _sign 用 .env 的 EVENT_CENTER_SECRET_CURRENT，非空即可（直接 monkeypatch _SettingsProxy
-    # 会导致进程级状态泄漏到后续测试模块）。
     yield calls
 
 
@@ -93,10 +89,10 @@ class TestValidation:
             )
 
 
-class TestSubjectKey:
-    """C 端工单填 user_id；B 端填 bu_id。"""
+class TestSubjectEntities:
+    """C 端 entities 含 type=customer；B 端 entities 含 type=partner。新契约用 entities 数组替代 user_id/bu_id 字段。"""
 
-    async def test_c_user_id_in_payload(self, _mock_outbound, seeded_db) -> None:
+    async def test_c_customer_in_entities(self, _mock_outbound, seeded_db) -> None:
         conv = await create_conversation("c", "U001")
         out = await ct.run(
             subject_id="U001",
@@ -108,11 +104,12 @@ class TestSubjectKey:
             evidence={"err": "x"},
         )
         assert out["external_ticket_id"].startswith("AI-")
-        body = _mock_outbound["post"][0]["json"]
-        assert body["user_id"] == "U001"
-        assert "bu_id" not in body
+        kw = _mock_outbound["create_task"][0]
+        # 新契约：event_id 替代 external_ticket_id；entities 列表替代 user_id/bu_id
+        assert kw["event_id"] == out["external_ticket_id"]
+        assert kw["entities"][0] == {"type": "customer", "id": "U001"}
 
-    async def test_b_bu_id_in_payload(self, _mock_outbound, seeded_db) -> None:
+    async def test_b_partner_in_entities(self, _mock_outbound, seeded_db) -> None:
         conv = await create_conversation("b", "BU01")
         out = await ct.run(
             subject_id="BU01",
@@ -124,9 +121,63 @@ class TestSubjectKey:
             evidence={"trace": "t"},
         )
         assert out["pushed_to_event_center"] is True
-        body = _mock_outbound["post"][0]["json"]
-        assert body["bu_id"] == "BU01"
-        assert "user_id" not in body
+        kw = _mock_outbound["create_task"][0]
+        assert kw["entities"][0] == {"type": "partner", "id": "BU01"}
+        # severity p1 → priority 3（cs-engine p0 最高→事项中心 4 最高的反向映射）
+        assert kw["priority"] == 3
+        assert kw["action_type"] == "task"  # bug → task
+
+
+class TestCategoryMapping:
+    """category → action_type 映射：bug/事务/人工介入/CQ → task；无信息 → notify。"""
+
+    async def test_no_info_maps_to_notify(self, _mock_outbound, seeded_db) -> None:
+        conv = await create_conversation("c", "U002")
+        await ct.run(
+            subject_id="U002",
+            user_type="c",
+            conversation_id=conv,
+            category="无信息",
+            summary="not enough info to proceed",
+            severity="p3",
+            evidence={},
+        )
+        kw = _mock_outbound["create_task"][0]
+        assert kw["action_type"] == "notify"
+        assert kw["priority"] == 1  # p3 → 1（最低）
+
+
+class TestEntityExtraction:
+    """从 evidence 抽取 card_id / transaction_id 等关联实体。"""
+
+    async def test_card_id_extracted(self, _mock_outbound, seeded_db) -> None:
+        conv = await create_conversation("c", "U003")
+        await ct.run(
+            subject_id="U003",
+            user_type="c",
+            conversation_id=conv,
+            category="bug",
+            summary="card lock issue",
+            severity="p2",
+            evidence={"card_id": "CIDV012345"},
+        )
+        ents = _mock_outbound["create_task"][0]["entities"]
+        assert {"type": "card", "id": "CIDV012345"} in ents
+
+    async def test_transaction_extracted_camelcase(self, _mock_outbound, seeded_db) -> None:
+        # AI 可能用 camelCase 或 snake_case，两种命名都要识别
+        conv = await create_conversation("c", "U004")
+        await ct.run(
+            subject_id="U004",
+            user_type="c",
+            conversation_id=conv,
+            category="bug",
+            summary="txn missing",
+            severity="p2",
+            evidence={"orderId": "ORDER_001"},
+        )
+        ents = _mock_outbound["create_task"][0]["entities"]
+        assert {"type": "transaction", "id": "ORDER_001"} in ents
 
 
 class TestStormDedupe:
@@ -154,18 +205,21 @@ class TestStormDedupe:
         )
         assert second["external_ticket_id"] == first["external_ticket_id"]
         assert second["appended_to_existing"] is True
-        # 第 2 次不重复 POST
-        assert len(_mock_outbound["post"]) == 1
+        # 第 2 次不重复 POST（复用现有 ticket）
+        assert len(_mock_outbound["create_task"]) == 1
 
 
 class TestPushFailureTriggersLark:
     """推事项中心失败 → 走 Lark 兜底；返回 pushed_to_event_center=False。"""
 
-    async def test_non_2xx_triggers_lark(self, _mock_outbound, monkeypatch, seeded_db) -> None:
-        async def _post500(url, json, headers):  # noqa: ANN001,ARG001
-            return _FakeResp(500)
+    async def test_create_task_returns_false_triggers_lark(
+        self, _mock_outbound, monkeypatch, seeded_db
+    ) -> None:
+        """create_task 返回 False（HTTP 非 2xx 或异常时由 client 内部捕获）→ 走 Lark 兜底。"""
+        async def _fail(**_kwargs):
+            return False
 
-        monkeypatch.setattr(ct, "_post", _post500)
+        monkeypatch.setattr(ct, "create_task", _fail)
         conv = await create_conversation("c", "U001")
         out = await ct.run(
             subject_id="U001",
@@ -179,26 +233,6 @@ class TestPushFailureTriggersLark:
         assert out["pushed_to_event_center"] is False
         assert len(_mock_outbound["lark"]) == 1
         assert "兜底" in _mock_outbound["lark"][0]["text"]
-
-    async def test_http_exception_triggers_lark(
-        self, _mock_outbound, monkeypatch, seeded_db
-    ) -> None:
-        async def _boom(*_a, **_k):  # noqa: ANN002,ANN003
-            raise RuntimeError("connreset")
-
-        monkeypatch.setattr(ct, "_post", _boom)
-        conv = await create_conversation("c", "U001")
-        out = await ct.run(
-            subject_id="U001",
-            user_type="c",
-            conversation_id=conv,
-            category="bug",
-            summary="net down on send",
-            severity="p1",
-            evidence={},
-        )
-        assert out["pushed_to_event_center"] is False
-        assert len(_mock_outbound["lark"]) == 1
 
 
 class TestHumanHandoff:

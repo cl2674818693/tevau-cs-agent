@@ -78,11 +78,14 @@ class TestDefaults:
         assert s.attachment_url_ttl_seconds == 300
 
     def test_default_event_center_empty(self, monkeypatch) -> None:
-        """生产保护：默认空 → 调用方走 Lark 兜底，不静默打不存在的 mock。"""
+        """生产保护：默认空 → 调用方走 Lark 兜底，不静默打不存在的 mock。
+        契约改造后 HMAC secret 已删（改用 Bearer token），断言迁移到 token / callback_url 系列。"""
         _pure_defaults_env(monkeypatch)
         s = Settings(_env_file=None)  # type: ignore[call-arg]
         assert s.event_center_url == ""
-        assert s.event_center_secret_current == ""
+        assert s.event_center_token == ""
+        assert s.event_center_callback_url == ""
+        assert s.event_center_callback_token == ""
         assert s.mock_event_center is False
 
     def test_default_security_flags(self) -> None:

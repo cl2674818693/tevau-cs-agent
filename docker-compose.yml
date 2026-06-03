@@ -15,11 +15,13 @@ services:
       - PROMPTS_DIR=/app/src/ai_engine/prompts
       # 代码搜索/读取：把 3 个仓库 clone 到宿主机 ./repos/code/<别名>，已挂载为容器内 /repos/code
       - CODE_REPO_PATHS={"app_frontend":"/repos/code/app_frontend","app_backend":"/repos/code/app_backend","openapi_backend":"/repos/code/openapi_backend"}
+      # 事项中心契约（POST /api/tasks + Bearer Authorization）：URL + 出站 token
       - EVENT_CENTER_URL=${EVENT_CENTER_URL:-http://api:8000/_mock/event-center}
-      # HMAC 双 key 热轮换（spec §7.4）：先灌 CURRENT，轮换时把旧值移到 PREVIOUS。
-      # 必填强随机值（缺失则启动报错）：旧的硬编码默认 "mvp1-shared-secret" 已移除，防伪造回调。
-      - EVENT_CENTER_SECRET_CURRENT=${EVENT_CENTER_SECRET_CURRENT:?set a strong random secret}
-      - EVENT_CENTER_SECRET_PREVIOUS=${EVENT_CENTER_SECRET_PREVIOUS:-}
+      - EVENT_CENTER_TOKEN=${EVENT_CENTER_TOKEN:-}
+      # cs-engine 暴露的回调端点（事项中心结案后回调此地址，每条 ticket 在 callback_url 字段带）
+      - EVENT_CENTER_CALLBACK_URL=${EVENT_CENTER_CALLBACK_URL:-}
+      # 事项中心回调 cs-engine 时携带的 Bearer token（cs-engine 验签用，应与出站 token 不同）
+      - EVENT_CENTER_CALLBACK_TOKEN=${EVENT_CENTER_CALLBACK_TOKEN:-}
       # 生产保持 false（不挂 /_mock/event-center）；本地联调置 true
       - MOCK_EVENT_CENTER=${MOCK_EVENT_CENTER:-false}
       - LARK_WEBHOOK_URL=${LARK_WEBHOOK_URL:-}

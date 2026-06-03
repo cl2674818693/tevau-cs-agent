@@ -10,7 +10,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from ai_engine.config import settings
-from ai_engine.integrations.event_center_client import push_event_center
+from ai_engine.integrations.event_center_client import create_task
 from ai_engine.observability import metrics
 from ai_engine.persistence import admin_sla, db
 from ai_engine.persistence.schema import now_str
@@ -64,17 +64,23 @@ async def push_pending_takeover_timeouts() -> int:
         )
         if not conv:
             continue
+        # 事项中心契约：SLA 升级 → 当成"紧急"新工单推过去，让事项中心分流上级。
+        # event_id 用 timeout-{cid}-{threshold} 保证同会话同阈值幂等（重扫不重推）。
+        user_type = str(conv["user_type"])
+        subject_id = str(conv["subject_id"])
+        entity_type = "customer" if user_type == "c" else "partner"
         payload = {
-            "type": "pending_takeover_timeout",
-            "conversation_id": cid,
-            "user_type": str(conv["user_type"]),
-            "subject_id": str(conv["subject_id"]),
-            "elapsed_seconds": int(b["elapsed_seconds"]),
-            "threshold_seconds": int(b["threshold_seconds"]),
-            "created_at": str(conv["created_at"]),
-            "source": "ai_engine",
+            "event_id": f"timeout-{cid}-{int(b['threshold_seconds'])}",
+            "context": (
+                f"会话 #{cid}（{user_type} 端 {subject_id}）已等候人工 "
+                f"{int(b['elapsed_seconds'])} 秒，超 SLA 阈值 {int(b['threshold_seconds'])} 秒，"
+                "请加急分派人工客服接管。"
+            ),
+            "priority": 4,  # 紧急
+            "entities": [{"type": entity_type, "id": subject_id}],
+            "source_ref": f"conversation:{cid}",
         }
-        ok = await push_event_center(payload)
+        ok = await create_task(**payload)
         if not ok:
             continue
         await db.execute(

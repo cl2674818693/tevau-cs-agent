@@ -28,13 +28,19 @@ class Settings(BaseSettings):
     openapi_doc_path: str = "./repos/api-docs/openapi.json"  # 单文件兼容（deprecated，优先用目录）
     prompts_dir: str = "./src/ai_engine/prompts"
     lark_webhook_url: str | None = None
-    # 事项中心推送地址。默认空：未配置时工单推送失败→走 Lark 兜底（安全可见），
-    # 而不是静默打到一个不存在的 localhost mock。生产必配；本地 dev 用 mock 时设为
-    # http://localhost:8000/_mock/event-center 并开 MOCK_EVENT_CENTER=true。
+    # 事项中心推送地址（POST /api/tasks）。默认空：未配置时工单推送失败→走 Lark 兜底
+    # （安全可见），而不是静默打到一个不存在的 localhost mock。生产填 http://192.168.2.6:922/api/tasks
+    # 本地 dev 用 mock 时设为 http://localhost:8000/_mock/event-center 并开 MOCK_EVENT_CENTER=true。
     event_center_url: str = ""
-    event_center_secret: str = ""  # deprecated（MVP-3 用 _current/_previous）
-    event_center_secret_current: str = ""  # HMAC 双 key 轮换（spec §7.4）；必填，空则拒所有回调
-    event_center_secret_previous: str | None = None
+    # 事项中心 Bearer 出站 token（cs-engine→事项中心的 Authorization header）。
+    # 由事项中心团队下发，按环境一份（dev/prod）。空 → 出站不带 Authorization，401 兜 Lark。
+    event_center_token: str = ""
+    # cs-engine 自己暴露的回调端点完整 URL，每条 ticket 推送时塞进 callback_url 字段，
+    # 事项中心结案后回调此地址。生产填 https://cs-engine.tevau.internal/api/v1/event-center/callback
+    event_center_callback_url: str = ""
+    # 事项中心回调 cs-engine 时携带的 Bearer token（cs-engine 验签用）；空 → 拒所有回调。
+    # 应与 event_center_token 不同（区分入站/出站，便于独立轮换 + 万一一方泄漏隔离影响面）。
+    event_center_callback_token: str = ""
     mock_event_center: bool = False  # 仅本地 dev 挂 /_mock/event-center receiver
     staff_jwt_secret: str = ""  # 客服 JWT 签名密钥（HS256）；空则拒签发/验签（防空密钥伪造）
     bu_session_secret: str = ""  # B 端 session cookie 签名密钥（HS256）；空则拒签发/验签

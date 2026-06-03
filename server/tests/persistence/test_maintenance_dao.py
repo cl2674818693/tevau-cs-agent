@@ -82,7 +82,11 @@ class TestPushPendingTakeoverTimeouts:
         async def _push(_p):
             raise AssertionError("should not be called")
 
-        monkeypatch.setattr(maintenance, "push_event_center", _push)
+        # 契约改造后 maintenance 调 create_task（kwargs 签名），而非旧 push_event_center
+        async def _push_kw(**_kwargs):
+            return await _push(_kwargs)
+
+        monkeypatch.setattr(maintenance, "create_task", _push_kw)
         assert await maintenance.push_pending_takeover_timeouts() == 0
 
     async def test_push_success_writes_dedup_row(self, db_ready, monkeypatch) -> None:
@@ -99,11 +103,18 @@ class TestPushPendingTakeoverTimeouts:
             pushed.append(payload)
             return True
 
-        monkeypatch.setattr(maintenance, "push_event_center", _push)
+        # 契约改造后 maintenance 调 create_task（kwargs 签名），而非旧 push_event_center
+        async def _push_kw(**_kwargs):
+            return await _push(_kwargs)
+
+        monkeypatch.setattr(maintenance, "create_task", _push_kw)
         n = await maintenance.push_pending_takeover_timeouts()
         assert n == 1
-        assert pushed[0]["type"] == "pending_takeover_timeout"
-        assert pushed[0]["conversation_id"] == cid
+        # 新契约 payload 字段：event_id / context / priority / entities，不再是旧的 type/conversation_id
+        assert pushed[0]["event_id"].startswith(f"timeout-{cid}-")
+        assert pushed[0]["priority"] == 4  # SLA 升级走最高优先级
+        assert pushed[0]["entities"][0]["id"] == "U1"
+        assert pushed[0]["source_ref"] == f"conversation:{cid}"
         # 去重行写入
         row = await fetch_one(
             "SELECT conversation_id, threshold_seconds FROM pending_timeout_pushes "
@@ -126,7 +137,11 @@ class TestPushPendingTakeoverTimeouts:
             push_count += 1
             return True
 
-        monkeypatch.setattr(maintenance, "push_event_center", _push)
+        # 契约改造后 maintenance 调 create_task（kwargs 签名），而非旧 push_event_center
+        async def _push_kw(**_kwargs):
+            return await _push(_kwargs)
+
+        monkeypatch.setattr(maintenance, "create_task", _push_kw)
         await maintenance.push_pending_takeover_timeouts()
         await maintenance.push_pending_takeover_timeouts()
         assert push_count == 1  # 第二次因去重表跳过
@@ -141,7 +156,11 @@ class TestPushPendingTakeoverTimeouts:
         async def _push(_p):
             return False
 
-        monkeypatch.setattr(maintenance, "push_event_center", _push)
+        # 契约改造后 maintenance 调 create_task（kwargs 签名），而非旧 push_event_center
+        async def _push_kw(**_kwargs):
+            return await _push(_kwargs)
+
+        monkeypatch.setattr(maintenance, "create_task", _push_kw)
         n = await maintenance.push_pending_takeover_timeouts()
         assert n == 0
         # 未写入去重

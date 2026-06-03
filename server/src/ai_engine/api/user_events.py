@@ -8,7 +8,6 @@ from ai_engine.agent.tools.create_ticket import run as create_ticket_run
 from ai_engine.api.staff_conversations import _publish
 from ai_engine.auth.bu_session import USER_TYPE_GUEST, resolve_identity
 from ai_engine.i18n import t as _t
-from ai_engine.integrations.event_center_client import push_event_center
 from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
 from ai_engine.persistence import db
@@ -89,13 +88,13 @@ async def user_events(external_id: str, body: UserEventIn, request: Request) -> 
     if payload_subject != subject_id:
         raise HTTPException(403, "not your ticket")
 
+    # 事项中心契约：cs-engine 不再外推 closed/reopen 事件——事项中心是工单状态真源，
+    # 用户在 cs-engine 内的"已解决/未解决"回执只落本地（admin 后台可见 + 本地 metric），
+    # 不主动反馈给事项中心。后续真要双向回执需对事项中心团队加新事件类型。
     if body.event == "user_confirmed_resolved":
         metrics.user_resolved_total.labels(event=body.event).inc()
         await ticket_dao.append_ticket_event(
             external_id, "closed", "user", "用户确认已解决", raw={"source": "user"}
-        )
-        await push_event_center(
-            {"external_ticket_id": external_id, "event": "closed", "actor": "user"}
         )
         return {"ok": True}
 
@@ -107,14 +106,6 @@ async def user_events(external_id: str, body: UserEventIn, request: Request) -> 
             "user",
             body.reason or "用户表示未解决",
             raw={"source": "user", "reason": body.reason},
-        )
-        await push_event_center(
-            {
-                "external_ticket_id": external_id,
-                "event": "reopen",
-                "actor": "user",
-                "reason": body.reason,
-            }
         )
         return {"ok": True}
 

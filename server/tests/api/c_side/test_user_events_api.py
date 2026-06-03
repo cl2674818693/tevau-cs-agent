@@ -29,7 +29,8 @@ from .conftest import TOKEN_B, USER_CODE_A, auth_headers
 
 @pytest.fixture
 def _no_external(monkeypatch) -> None:
-    """create_ticket.run + push_event_center 替成 stub。"""
+    """create_ticket.run 替成 stub。事项中心契约改造后 user_events 不再外推
+    closed/reopen 事件（仅落本地 + metric），所以不再需要 mock push_event_center。"""
 
     async def _fake_create_ticket(**kw: Any) -> dict[str, Any]:
         return {"external_ticket_id": "AI-FAKE-001"}
@@ -37,11 +38,6 @@ def _no_external(monkeypatch) -> None:
     monkeypatch.setattr(
         "ai_engine.api.user_events.create_ticket_run", _fake_create_ticket
     )
-
-    async def _fake_push(_payload: dict[str, Any]) -> None:
-        return None
-
-    monkeypatch.setattr("ai_engine.api.user_events.push_event_center", _fake_push)
 
 
 # ────────── request-human ──────────
@@ -92,22 +88,15 @@ class TestRequestHuman:
         """
         import ai_engine.agent.tools.create_ticket as _ct_mod
 
-        # 拦截事项中心 HTTP（避免真打外网）
-        async def _fake_post(url: str, json: dict[str, Any], headers: dict[str, str]):
-            class _Resp:
-                status_code = 200
-            return _Resp()
+        # 拦截事项中心推送（避免真打外网）：契约改造后走 create_task 共享 client
+        async def _fake_create_task(**_kwargs: Any) -> bool:
+            return True
 
         async def _fake_lark(_payload: dict[str, Any]) -> None:
             return None
 
-        monkeypatch.setattr(_ct_mod, "_post", _fake_post)
+        monkeypatch.setattr(_ct_mod, "create_task", _fake_create_task)
         monkeypatch.setattr(_ct_mod, "_notify_lark", _fake_lark)
-
-        async def _fake_push(_payload: dict[str, Any]) -> None:
-            return None
-
-        monkeypatch.setattr("ai_engine.api.user_events.push_event_center", _fake_push)
 
         # spy create_ticket_run（包真实实现，统计调用次数）
         real_create_ticket_run = _ct_mod.run

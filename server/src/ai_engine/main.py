@@ -16,6 +16,7 @@ from ai_engine.api.auth_bu import router as auth_bu_router
 from ai_engine.api.chat import router as chat_router
 from ai_engine.api.conversation_stream import router as conversation_stream_router
 from ai_engine.api.conversations import router as conversations_router
+from ai_engine.api.event_center_callback import router as event_center_callback_router
 from ai_engine.api.feedback import router as feedback_router
 from ai_engine.api.health import router as health_router
 from ai_engine.api.insights import router as insights_router
@@ -54,6 +55,7 @@ app.include_router(conversation_stream_router)
 app.include_router(chat_router)
 app.include_router(tickets_router)
 app.include_router(ticket_sse_router)
+app.include_router(event_center_callback_router)
 app.include_router(staff_auth_router)
 app.include_router(staff_conv_router)
 app.include_router(staff_presence_router)

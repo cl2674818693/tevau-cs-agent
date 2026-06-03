@@ -1,14 +1,19 @@
-import hashlib
-import hmac
-import json
+"""create_ticket：AI 无法当场解决时建工单 + 推事项中心。
+
+事项中心契约（事项中心团队提供，see docs/event-center-onboarding.md）：
+- POST {event_center_url}/api/tasks
+- Authorization: Bearer {event_center_token}
+- body 字段：event_id / action_type / source_module=ticket / event_type=new_ticket /
+  context / priority(1-4) / entities[] / source_ref / callback_url
+- 响应 2xx 表示接收，body 含 task_id / assignee 等（cs-engine 仅记录，不依赖）。
+"""
+
 import secrets
 from datetime import UTC, datetime
 from typing import Any
 
-import httpx
-
 from ai_engine.agent.tools.base import Tool, register
-from ai_engine.config import settings
+from ai_engine.integrations.event_center_client import create_task
 from ai_engine.integrations.lark_webhook import send as _notify_lark
 from ai_engine.observability import metrics
 from ai_engine.persistence.tickets import append_ticket_event as _append_event
@@ -18,19 +23,65 @@ from ai_engine.persistence.tickets import find_open_ticket_for_subject as _find_
 VALID_CATEGORIES = {"bug", "事务", "CQ", "无信息", "人工介入"}
 VALID_SEVERITIES = {"p0", "p1", "p2", "p3"}
 
+# category → 事项中心 action_type 映射。
+# task=需要人处理；notify=仅记录无需操作。"无信息"=AI 收集到信息不够无需推动客服，
+# 其他四类都需要人跟进。
+_CATEGORY_TO_ACTION_TYPE: dict[str, str] = {
+    "bug": "task",
+    "事务": "task",
+    "人工介入": "task",
+    "CQ": "task",
+    "无信息": "notify",
+}
+
+# severity p0/p1/p2/p3 → 事项中心 priority 1-4。
+# cs-engine：p0 最高；事项中心：4 最高 → 反向数字映射。
+_SEVERITY_TO_PRIORITY: dict[str, int] = {
+    "p0": 4,   # 紧急
+    "p1": 3,   # 高
+    "p2": 2,   # 普通（事项中心默认值）
+    "p3": 1,   # 低
+}
+
 
 def _new_external_id() -> str:
     ts = datetime.now(UTC).strftime("%Y-%m-%d")
     return f"AI-{ts}-{secrets.token_hex(3)}"
 
 
-def _sign(body: bytes) -> str:
-    return hmac.new(settings.event_center_secret_current.encode(), body, hashlib.sha256).hexdigest()
+def _extract_entities(
+    user_type: str, subject_id: str, evidence: dict[str, Any]
+) -> list[dict[str, str]]:
+    """把 evidence dict 抽成事项中心要求的 entities 数组 [{type, id, name?}]。
 
+    约定提取规则（按事项中心 entity type 命名）：
+    - subject_id 永远作为第一条：C 端 type=customer / B 端 type=partner
+    - evidence 里常见字段名（card_id / cardId / cardNumber → card；
+      transaction_id / orderId / tradeNo → transaction；
+      user_id / userCode → 跳过避免与 subject 重复）
 
-async def _post(url: str, json: dict[str, Any], headers: dict[str, str]) -> httpx.Response:
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        return await client.post(url, json=json, headers=headers)
+    未知字段忽略而非抛错——evidence 是 AI 任意写的，提取容错。
+    """
+    entities: list[dict[str, str]] = []
+    # 1) 永远带的主体身份
+    if subject_id:
+        entities.append({
+            "type": "customer" if user_type == "c" else "partner",
+            "id": str(subject_id),
+        })
+    # 2) 卡片
+    for key in ("card_id", "cardId", "card_number", "cardNumber"):
+        val = evidence.get(key)
+        if val:
+            entities.append({"type": "card", "id": str(val)})
+            break  # 同一 ticket 只挂一张卡，多卡场景在 evidence 文本里描述
+    # 3) 交易/订单
+    for key in ("transaction_id", "txn_id", "order_id", "orderId", "trade_no", "tradeNo"):
+        val = evidence.get(key)
+        if val:
+            entities.append({"type": "transaction", "id": str(val)})
+            break
+    return entities
 
 
 async def run(
@@ -70,13 +121,13 @@ async def run(
         return ret_existing
 
     ext_id = _new_external_id()
-    # spec §7.1：C 端工单填 user_id，B 端填 bu_id。身份由 tool_router 注入（subject_id）。
-    subject_key = "user_id" if user_type == "c" else "bu_id"
-    payload: dict[str, object] = {
+    # 本地审计 payload 仍保留 cs-engine 内部 schema（external_ticket_id/category/severity/evidence），
+    # 给 admin 后台展示用；推事项中心的是另一份按对方契约重塑的 payload。
+    local_payload: dict[str, object] = {
         "source": "ai_engine",
         "external_ticket_id": ext_id,
         "user_type": user_type,
-        subject_key: subject_id,
+        ("user_id" if user_type == "c" else "bu_id"): subject_id,
         "category": category,
         "summary": summary,
         "severity": severity,
@@ -84,19 +135,19 @@ async def run(
         "created_at": datetime.now(UTC).isoformat(),
     }
 
-    # 1. 本地落库（兜底，确保引擎自有记录）
-    await _save_local(external_id=ext_id, conversation_id=conversation_id, payload=payload)
+    # 1. 本地落库（兜底，确保引擎自有记录；事项中心推失败也能在 admin 看到）
+    await _save_local(external_id=ext_id, conversation_id=conversation_id, payload=local_payload)
     metrics.tickets_created.labels(category=category, severity=severity, user_type=user_type).inc()
 
-    # 2. 推事项中心（带 HMAC 签名）
-    body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    headers = {"X-Signature": _sign(body_bytes), "Content-Type": "application/json"}
-    pushed = False
-    try:
-        resp = await _post(settings.event_center_url, json=payload, headers=headers)
-        pushed = 200 <= getattr(resp, "status_code", 500) < 300
-    except Exception:
-        pushed = False
+    # 2. 按事项中心契约推送（共享 client：event_center_client.create_task）
+    pushed = await create_task(
+        event_id=ext_id,
+        context=summary,
+        priority=_SEVERITY_TO_PRIORITY.get(severity, 2),
+        action_type=_CATEGORY_TO_ACTION_TYPE.get(category, "task"),
+        entities=_extract_entities(user_type, subject_id, evidence),
+        source_ref=ext_id,
+    )
 
     # 3. 如失败，触发 Lark 兜底
     if not pushed:
