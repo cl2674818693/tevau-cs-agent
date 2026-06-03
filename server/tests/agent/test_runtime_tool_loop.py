@@ -203,13 +203,14 @@ class TestToolResultLargePayloadTruncated:
             toolbase.REGISTRY.pop("big_tool", None)
 
 
-class TestIntermediateTextStreamedOnce:
-    """工具轮中模型同时发了文本 + tool_use：文本只发一次（不在 _agent_loop + _emit_tool_round 两边重复）。"""
+class TestIntermediateTextDroppedToAvoidDup:
+    """spec §8.3：工具轮的"中间文本"一律丢弃。LLM 在工具调用前给的"完整诊断/过渡话"会在
+    下一轮（含 self-check 修订轮）被重新整合后 live 流出，旧版同步 yield 会导致用户看到
+    "诊断 + 诊断"重复内容。修复：工具轮 text 不再流出，最终回复以 self-check 修订版为准。"""
 
-    async def test_text_in_tool_round_not_duplicated(
+    async def test_tool_round_text_not_yielded(
         self, monkeypatch, seeded_db, fake_stream, make_resp, _register_echo
     ) -> None:
-        # 第一轮：text=正在查询 + tool_use；live=False（首轮）故不实时流
         responses = [
             make_resp(
                 text="正在查询",
@@ -232,7 +233,9 @@ class TestIntermediateTextStreamedOnce:
         ]
         text_events = [e for e in events if e.get("type") == "text"]
         joined = "".join(e["text"] for e in text_events)
-        assert joined.count("正在查询") == 1
+        # 工具轮文本被丢弃；只看到 self-check 后最终轮的 "done"
+        assert "正在查询" not in joined
+        assert "done" in joined
 
 
 class TestAssistantPersistencePerRound:

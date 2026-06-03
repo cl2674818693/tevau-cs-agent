@@ -573,13 +573,14 @@ async def _emit_tool_round(
     messages: list[dict[str, Any]],
     texts_streamed: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
-    """工具轮：中间文本即时流出 + 工具调用事件，执行工具并把结果回灌 messages。
+    """工具轮：仅流出工具调用事件，执行工具并把结果回灌 messages。
 
-    texts_streamed=True 时本轮文本已在 _agent_loop 实时流过，避免重复发出。
+    历史注释提到"中间文本即时流出"——已废弃：工具轮的文本会在下一轮（含 self-check 修订轮）
+    被 LLM 重新整合后再次流出，导致用户看到"完整诊断 + 完整诊断"重复内容（spec §8.3 self-check
+    设计本意是修订后的内容覆盖草稿）。因此工具轮所有文本一律丢弃，等最终修订轮 live 流出一份。
+    texts_streamed=True 时仅作签名兼容，不再影响行为。
     """
-    if not texts_streamed:
-        for t in texts:
-            yield {"type": "text", "text": scan_and_redact_text(t)}
+    _ = texts, texts_streamed  # 旧入参保留，文本已不再 yield，留作 spec §8.3 重复修复的契约说明
     for tc in tool_calls:
         yield {"type": "tool_call", "id": tc["id"], "name": tc["name"], "input": tc["input"]}
     result_blocks, events = await _run_tools(
