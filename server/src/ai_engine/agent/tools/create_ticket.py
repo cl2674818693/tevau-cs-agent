@@ -98,23 +98,36 @@ async def run(
     # 4. 人工介入类工单：同步切 mode=human_pending，与 /request-human 端点行为对齐。
     #    否则会话仍是 mode='ai'，admin "会话" 列表筛 mode!=ai 看不到这个待接管会话。
     #    已经在 human_takeover/human_pending 的不重切（避免 mode_change 抖动 + 重复 SSE）。
+    #    返回 off_hours 信息让 AI 据此调整措辞（"已为您接通"  vs  "客服班外，已留工单"）。
+    ret: dict[str, Any] = {"external_ticket_id": ext_id, "pushed_to_event_center": pushed}
     if category == "人工介入" and conversation_id:
-        await _ensure_human_pending(conversation_id)
+        off_hours_info = await _ensure_human_pending(conversation_id)
+        ret.update(off_hours_info)
 
-    return {"external_ticket_id": ext_id, "pushed_to_event_center": pushed}
+    return ret
 
 
-async def _ensure_human_pending(conversation_id: int) -> None:
+async def _ensure_human_pending(conversation_id: int) -> dict[str, Any]:
     """当前 mode=ai 时切到 human_pending 并广播 mode_change。失败不阻断工单创建。
+    返回 {off_hours: bool, next_shift_start: str | None} 让上层 AI 据此措辞。
     import 内置在函数体内避免与 staff_conversations._publish 形成循环依赖。"""
+    info: dict[str, Any] = {"off_hours": False, "next_shift_start": None}
     try:
         from ai_engine.api.staff_conversations import publish_conversation_event
         from ai_engine.persistence import conversations as conv_dao
+        from ai_engine.persistence import shifts_query
         from ai_engine.persistence.staff_metrics import refresh_human_pending
+
+        # 排班判断独立于 mode 切换：即使会话已是 human_pending（不重切），
+        # 仍要把当前班内/班外信息回灌给 AI，措辞才对得上。
+        on_shift = await shifts_query.any_on_shift()
+        info["off_hours"] = not on_shift
+        if not on_shift:
+            info["next_shift_start"] = await shifts_query.next_shift_start()
 
         mode, _ = await conv_dao.get_mode(conversation_id)
         if mode != "ai":
-            return
+            return info
         await conv_dao.set_mode(conversation_id, "human_pending")
         await refresh_human_pending()
         publish_conversation_event(
@@ -123,6 +136,7 @@ async def _ensure_human_pending(conversation_id: int) -> None:
     except Exception:
         # 切 mode 失败不阻断工单创建——工单已经入库，事项中心已推送
         pass
+    return info
 
 
 register(

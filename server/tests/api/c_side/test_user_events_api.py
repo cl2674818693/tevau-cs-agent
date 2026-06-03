@@ -190,6 +190,79 @@ class TestRequestHuman:
         assert r.status_code == 200
 
 
+class TestRequestHumanShifts:
+    """班外/班内转人工返回 off_hours + next_shift_start，前端 + AI 据此调整措辞，
+    避免班外仍说"已为您接通"导致用户原地等。"""
+
+    async def test_off_hours_no_future_shift(
+        self, c_client: AsyncClient, conv_id: int, _no_external
+    ) -> None:
+        # 空排班 = 班外 + 无下一班
+        r = await c_client.post(
+            f"/api/v1/conversations/{conv_id}/request-human", json={"reason": "x"}
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["off_hours"] is True
+        assert body.get("next_shift_start") is None
+
+    async def test_off_hours_with_future_shift(
+        self, c_client: AsyncClient, conv_id: int, _no_external
+    ) -> None:
+        # 排定一个未来 shift（明天 09:00 起），当前在班外
+        from ai_engine.persistence import admin_shifts
+        from datetime import UTC, datetime, timedelta
+        future_start = (datetime.now(UTC) + timedelta(days=1)).replace(
+            hour=9, minute=0, second=0, microsecond=0
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        future_end = (datetime.now(UTC) + timedelta(days=1)).replace(
+            hour=18, minute=0, second=0, microsecond=0
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        await admin_shifts.create_shift("s1", future_start, future_end)
+
+        r = await c_client.post(
+            f"/api/v1/conversations/{conv_id}/request-human", json={}
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["off_hours"] is True
+        assert body["next_shift_start"] == future_start
+
+    async def test_on_shift_off_hours_false(
+        self, c_client: AsyncClient, conv_id: int, _no_external
+    ) -> None:
+        # 把当前时间圈进某个 shift = 班内
+        from ai_engine.persistence import admin_shifts
+        from datetime import UTC, datetime, timedelta
+        now = datetime.now(UTC)
+        await admin_shifts.create_shift(
+            "s1",
+            (now - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
+            (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        r = await c_client.post(
+            f"/api/v1/conversations/{conv_id}/request-human", json={}
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["off_hours"] is False
+        # 班内不返回 next_shift_start（少一个不必要字段）
+        assert body.get("next_shift_start") is None
+
+    async def test_already_pending_idempotent_still_returns_shifts(
+        self, c_client: AsyncClient, conv_id: int, _no_external
+    ) -> None:
+        # mode=pending 的幂等路径也要回 off_hours/next_shift_start，前端措辞需要
+        await conv_dao.set_mode(conv_id, "human_pending")
+        r = await c_client.post(
+            f"/api/v1/conversations/{conv_id}/request-human", json={}
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "already_pending"
+        assert "off_hours" in body  # 字段必须出现，值由当时排班决定
+
+
 # ────────── user-events（对工单的回执） ──────────
 
 
