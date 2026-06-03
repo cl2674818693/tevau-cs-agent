@@ -60,7 +60,7 @@ class TestDefaults:
         s = Settings(_env_file=None)  # type: ignore[call-arg]
         assert s.daily_token_limit == 500_000
         assert s.chat_rate_limit_per_min == 30
-        assert s.max_tool_depth == 12
+        assert s.max_tool_depth == 16
         assert s.max_tool_result_bytes == 262_144
 
     def test_default_anthropic_settings(self, monkeypatch) -> None:

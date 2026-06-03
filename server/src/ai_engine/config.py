@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     attachment_max_per_message: int = 4
     attachment_url_ttl_seconds: int = 300  # 预签名 URL 时效
     topic_classifier_enabled: bool = False  # spec §6.4 第二层 haiku 前置分类（MVP-2 起，按需开启）
-    max_tool_depth: int = 12
+    max_tool_depth: int = 16
     max_tool_result_bytes: int = 262_144
     # 回合处理中(status=processing)超过此时长视为僵尸（服务崩溃/卡死），后台标 failed
     stale_turn_timeout_seconds: int = 120
