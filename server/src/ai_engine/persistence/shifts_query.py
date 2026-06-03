@@ -3,10 +3,32 @@
 业务场景：用户班外转人工时，仍创建 human_pending（客服上班看得到），但 AI 要明告
 "现在不在服务时间，下次上班是 X 时；已留工单，到时客服会主动联系您"。这一组函数支撑
 该判断与措辞。
+
+时间约定：DB 列存的是 UTC，但格式可能是 "YYYY-MM-DD HH:MM:SS"（now_str 写入的）或
+"YYYY-MM-DDTHH:MM:SS"（admin POST 提交时透传）。next_shift_start 对外统一输出
+ISO 8601 with Z 后缀（如 "2026-06-04T09:00:00Z"），让 AI 看到 Z 立刻知道是 UTC，
+避免跨时区用户（葡语/印尼语/日语等）把裸字符串当本地时间误等。
 """
+
+from datetime import datetime
 
 from ai_engine.persistence import db
 from ai_engine.persistence.schema import now_str
+
+
+def _to_iso_utc(raw: str) -> str:
+    """把 DB 字符串规范化成 ISO 8601 with Z。兼容：
+      - "2026-06-04 09:00:00"（now_str 格式）
+      - "2026-06-04T09:00:00"（已 ISO 但缺 Z）
+      - "2026-06-04T09:00:00Z" / "+00:00"（已规范化）
+    无法解析时回退原值（防御性，不让此函数报错把转人工流程也打断）。"""
+    try:
+        # Python 3.11+ fromisoformat 支持 'Z' 与空格分隔（容错较宽）
+        s = raw.replace("Z", "+00:00") if raw.endswith("Z") else raw
+        dt = datetime.fromisoformat(s.replace(" ", "T") if "T" not in s else s)
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (TypeError, ValueError):
+        return raw
 
 
 async def is_on_shift(staff_id: str, when: str | None = None) -> bool:
@@ -43,4 +65,4 @@ async def next_shift_start(when: str | None = None) -> str | None:
     )
     if row is None or row.get("next_start") is None:
         return None
-    return str(row["next_start"])
+    return _to_iso_utc(str(row["next_start"]))

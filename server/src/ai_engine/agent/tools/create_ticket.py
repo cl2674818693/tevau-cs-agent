@@ -59,7 +59,15 @@ async def run(
             comment=summary,
             raw={"category": category, "severity": severity, "evidence": evidence},
         )
-        return {"external_ticket_id": existing, "appended_to_existing": True}
+        ret_existing: dict[str, Any] = {
+            "external_ticket_id": existing, "appended_to_existing": True
+        }
+        # 复用路径也要补 off_hours/next_shift_start，否则 AI 走"追加现有工单"分支时
+        # 看不到班外信息，会回到默认"客服会尽快联系"话术，多语言用户得不到正确说明。
+        if category == "人工介入" and conversation_id:
+            off_hours_info = await _ensure_human_pending(conversation_id)
+            ret_existing.update(off_hours_info)
+        return ret_existing
 
     ext_id = _new_external_id()
     # spec §7.1：C 端工单填 user_id，B 端填 bu_id。身份由 tool_router 注入（subject_id）。

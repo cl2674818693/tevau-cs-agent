@@ -98,12 +98,13 @@ class TestNextShiftStart:
     async def test_no_future_shift_returns_none(self, db_ready) -> None:
         assert await shifts_query.next_shift_start() is None
 
-    async def test_returns_earliest_future_shift(self, db_ready) -> None:
-        # 两个未来班次，应返回最早的
+    async def test_returns_earliest_future_shift_iso_with_z(self, db_ready) -> None:
+        # 两个未来班次，应返回最早的；输出必须是 ISO 8601 with Z（防跨时区用户误判）
         await admin_shifts.create_shift("s1", "2026-06-04 09:00:00", "2026-06-04 18:00:00")
         await admin_shifts.create_shift("s2", "2026-06-03 21:00:00", "2026-06-04 03:00:00")
         nxt = await shifts_query.next_shift_start(when="2026-06-03 12:00:00")
-        assert nxt is not None and "2026-06-03 21:00:00" in nxt
+        # 关键：返回 ISO 8601 with Z 而非裸的 "2026-06-03 21:00:00"
+        assert nxt == "2026-06-03T21:00:00Z"
 
     async def test_past_shifts_ignored(self, db_ready) -> None:
         # 排班全在过去 → None
@@ -116,10 +117,32 @@ class TestNextShiftStart:
         await admin_shifts.create_shift("s1", "2026-06-03 09:00:00", "2026-06-03 18:00:00")
         await admin_shifts.create_shift("s2", "2026-06-03 21:00:00", "2026-06-04 03:00:00")
         nxt = await shifts_query.next_shift_start(when="2026-06-03 12:00:00")
-        assert nxt is not None and "2026-06-03 21:00:00" in nxt
+        assert nxt == "2026-06-03T21:00:00Z"
 
     async def test_overnight_shift(self, db_ready) -> None:
         # 跨日班次（晚班 21:00 → 次日 03:00）：在 19:00 查应返回 21:00
         await admin_shifts.create_shift("s1", "2026-06-03 21:00:00", "2026-06-04 03:00:00")
         nxt = await shifts_query.next_shift_start(when="2026-06-03 19:00:00")
-        assert nxt is not None and "2026-06-03 21:00:00" in nxt
+        assert nxt == "2026-06-03T21:00:00Z"
+
+
+class TestToIsoUtc:
+    """_to_iso_utc 规范化：DB 里的旧字符串格式 → ISO 8601 with Z。"""
+
+    def test_space_separator_format(self) -> None:
+        assert shifts_query._to_iso_utc("2026-06-04 09:00:00") == "2026-06-04T09:00:00Z"
+
+    def test_already_iso_no_z(self) -> None:
+        assert shifts_query._to_iso_utc("2026-06-04T09:00:00") == "2026-06-04T09:00:00Z"
+
+    def test_already_iso_with_z(self) -> None:
+        # 已经规范化的输入应原样返回（或等价：仍是 Z 结尾）
+        assert shifts_query._to_iso_utc("2026-06-04T09:00:00Z") == "2026-06-04T09:00:00Z"
+
+    def test_iso_with_offset(self) -> None:
+        # +00:00 等价于 Z，应转成 Z 形式
+        assert shifts_query._to_iso_utc("2026-06-04T09:00:00+00:00") == "2026-06-04T09:00:00Z"
+
+    def test_invalid_falls_back(self) -> None:
+        # 解析不了时回退原值（防御性，不让此函数把转人工流程打断）
+        assert shifts_query._to_iso_utc("not a date") == "not a date"

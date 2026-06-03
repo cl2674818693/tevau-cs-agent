@@ -226,7 +226,9 @@ class TestRequestHumanShifts:
         assert r.status_code == 200
         body = r.json()
         assert body["off_hours"] is True
-        assert body["next_shift_start"] == future_start
+        # next_shift_start 规范化成 ISO 8601 with Z（跨时区用户防误判）
+        expected = future_start.replace(" ", "T") + "Z"
+        assert body["next_shift_start"] == expected
 
     async def test_on_shift_off_hours_false(
         self, c_client: AsyncClient, conv_id: int, _no_external
