@@ -211,6 +211,8 @@ class TestMaskVendorNames:
         # CamelCase 类名：品牌前缀换通用驼峰，后缀保留，AI 仍能据此定位
         assert r.mask_vendor_names("ReapAuthNotificationReceivedLogic") == "UpstreamAuthNotificationReceivedLogic"
         assert r.mask_vendor_names("ReapCallbackParam") == "UpstreamCallbackParam"
+        assert r.mask_vendor_names("SXCardAccount") == "UpstreamCardAccount"
+        assert r.mask_vendor_names("SXWebhookDTO") == "UpstreamWebhookDTO"
         assert r.mask_vendor_names("SumsubConfig") == "KycVendorConfig"
         assert r.mask_vendor_names("JumioWorkflowReq") == "KycVendorWorkflowReq"
         assert r.mask_vendor_names("AntomPayConfig") == "PayChannelPayConfig"
@@ -219,11 +221,14 @@ class TestMaskVendorNames:
         # snake_case / package 路径：保 .foo.bar 结构
         assert r.mask_vendor_names("com.tevau.nexus.card.server.reap.ReapCardApi") == \
             "com.tevau.nexus.card.server.upstream.UpstreamCardApi"
+        assert r.mask_vendor_names("com.yy.tevaupay.model.sx.SXCardAccount") == \
+            "com.yy.tevaupay.model.upstream.UpstreamCardAccount"
         assert r.mask_vendor_names("reap_callback_param") == "upstream_callback_param"
 
     def test_standalone_word_replaced_with_label(self) -> None:
         assert r.mask_vendor_names("Reap 上游推过来的") == "[上游通道] 上游推过来的"
         assert r.mask_vendor_names("REAP 通道") == "[上游通道] 通道"
+        assert r.mask_vendor_names("SX 上报值可能是 Apple Pay") == "[上游通道] 上报值可能是 Apple Pay"
         assert r.mask_vendor_names("Sumsub SDK") == "[KYC服务商] SDK"
         assert r.mask_vendor_names("Antom Dashboard") == "[支付通道] Dashboard"
 
@@ -231,6 +236,14 @@ class TestMaskVendorNames:
         # 'reaper' / 'reaps' / 'reaping' 不是品牌；word boundary 应保护它们
         assert r.mask_vendor_names("reaper bot") == "reaper bot"
         assert r.mask_vendor_names("the Reaper appeared") == "the Reaper appeared"
+
+    def test_sx_lowercase_standalone_not_matched(self) -> None:
+        # 小写独立 sx 不脱（避免误伤 tx/rx/sx 通讯简写或其他普通用法）
+        assert r.mask_vendor_names("tx/rx/sx counters") == "tx/rx/sx counters"
+        assert r.mask_vendor_names("see sx for details") == "see sx for details"
+        # 但包/snake 上下文里的 sx 仍要脱（sx_xxx 或 .sx.）
+        assert r.mask_vendor_names("sx.api.com") == "upstream.api.com"
+        assert r.mask_vendor_names("sx_billing_history") == "upstream_billing_history"
 
     def test_alipay_not_masked(self) -> None:
         # Alipay 是面向 C 端用户的支付品牌名，不在脱敏范围

@@ -68,6 +68,8 @@ _RULE_NAME_RE = re.compile(r"\bR-\d{2,4}\b")
 _BRAND_TO_CAMEL = {
     "Reap": "Upstream",
     "reap": "upstream",
+    "SX": "Upstream",
+    "sx": "upstream",
     "Sumsub": "KycVendor",
     "sumsub": "kycvendor",
     "Jumio": "KycVendor",
@@ -77,17 +79,18 @@ _BRAND_TO_CAMEL = {
 }
 _BRAND_TO_LABEL = {
     "Reap": "[上游通道]", "reap": "[上游通道]", "REAP": "[上游通道]",
+    "SX": "[上游通道]",  # 注意：小写独立词 sx 不脱（易与 tx/rx/sx 通讯简写冲突），只脱大写 SX
     "Sumsub": "[KYC服务商]", "sumsub": "[KYC服务商]", "SUMSUB": "[KYC服务商]",
     "Jumio": "[KYC服务商]", "jumio": "[KYC服务商]", "JUMIO": "[KYC服务商]",
     "Antom": "[支付通道]", "antom": "[支付通道]", "ANTOM": "[支付通道]",
 }
 # CamelCase 前缀：品牌 + 大写字母开头的类名后缀 → 换品牌部分保留后缀
-_VENDOR_CAMEL_RE = re.compile(r"\b(Reap|Sumsub|Jumio|Antom)(?=[A-Z])")
+_VENDOR_CAMEL_RE = re.compile(r"\b(Reap|SX|Sumsub|Jumio|Antom)(?=[A-Z])")
 # snake_case / package 路径：品牌 + 下划线/点 → 换品牌部分保留后缀
-_VENDOR_LOWER_RE = re.compile(r"\b(reap|sumsub|jumio|antom)(?=[_.])")
-# 独立单词（所有 case 变体）→ 中文占位
+_VENDOR_LOWER_RE = re.compile(r"\b(reap|sx|sumsub|jumio|antom)(?=[_.])")
+# 独立单词（所有 case 变体）→ 中文占位。SX 仅大写形式参与匹配，规避 tx/rx/sx 等通讯简写误伤
 _VENDOR_WORD_RE = re.compile(
-    r"\b(Reap|reap|REAP|Sumsub|sumsub|SUMSUB|Jumio|jumio|JUMIO|Antom|antom|ANTOM)\b"
+    r"\b(Reap|reap|REAP|SX|Sumsub|sumsub|SUMSUB|Jumio|jumio|JUMIO|Antom|antom|ANTOM)\b"
 )
 
 
