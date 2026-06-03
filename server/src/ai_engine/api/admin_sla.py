@@ -43,7 +43,8 @@ class PolicyPatchIn(BaseModel):
 async def patch_policy(
     policy_id: int, body: PolicyPatchIn, staff: dict[str, Any] = Depends(_sup)
 ) -> dict[str, Any]:
-    await admin_sla.set_policy_active(policy_id, body.active)
+    if await admin_sla.set_policy_active(policy_id, body.active) == 0:
+        raise HTTPException(404, "policy not found")
     return {"ok": True}
 
 

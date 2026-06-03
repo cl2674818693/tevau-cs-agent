@@ -12,6 +12,13 @@ router = APIRouter()
 _sup = require_roles("supervisor", "admin")
 
 
+def _normalize_dt_bound(s: str | None, end_of_day: bool) -> str | None:
+    # YYYY-MM-DD 自动补全为同日 00:00:00 / 23:59:59，便于前端日期选择器直接过滤。
+    if s is None or len(s) != 10 or "T" in s:
+        return s
+    return s + ("T23:59:59" if end_of_day else "T00:00:00")
+
+
 @router.get("/admin/api/v1/shifts")
 async def list_shifts(
     staff_id: str | None = Query(default=None),
@@ -22,7 +29,10 @@ async def list_shifts(
 ) -> dict[str, Any]:
     return {
         "shifts": await admin_shifts.list_shifts(
-            staff_id=staff_id, date_from=date_from, date_to=date_to, limit=limit,
+            staff_id=staff_id,
+            date_from=_normalize_dt_bound(date_from, end_of_day=False),
+            date_to=_normalize_dt_bound(date_to, end_of_day=True),
+            limit=limit,
         )
     }
 
@@ -35,7 +45,10 @@ class ShiftIn(BaseModel):
 
 @router.post("/admin/api/v1/shifts")
 async def create_shift(body: ShiftIn, staff: dict[str, Any] = Depends(_sup)) -> dict[str, Any]:
-    sid = await admin_shifts.create_shift(body.staff_id, body.start_at, body.end_at)
+    try:
+        sid = await admin_shifts.create_shift(body.staff_id, body.start_at, body.end_at)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     return {"ok": True, "id": sid}
 
 

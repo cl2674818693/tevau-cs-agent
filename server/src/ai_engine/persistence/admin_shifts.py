@@ -1,12 +1,24 @@
 """排班 CRUD + 按客服/时间范围查询。"""
 
+from datetime import datetime
 from typing import Any
 
 from ai_engine.persistence import db
 from ai_engine.persistence.schema import now_str
 
 
+def _parse_iso(s: str, field: str) -> datetime:
+    try:
+        return datetime.fromisoformat(s)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"invalid {field} (ISO 8601 required): {s!r}") from e
+
+
 async def create_shift(staff_id: str, start_at: str, end_at: str) -> int:
+    sa = _parse_iso(start_at, "start_at")
+    ea = _parse_iso(end_at, "end_at")
+    if sa >= ea:
+        raise ValueError("start_at must be earlier than end_at")
     return await db.insert_returning_id(
         "INSERT INTO staff_shifts(staff_id, start_at, end_at, created_at) "
         "VALUES (:sid, :sa, :ea, :now) RETURNING id",
@@ -36,6 +48,21 @@ async def patch_shift(shift_id: int, fields: dict) -> dict | None:
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         raise ValueError("no updatable fields")
+    if "start_at" in updates:
+        _parse_iso(updates["start_at"], "start_at")
+    if "end_at" in updates:
+        _parse_iso(updates["end_at"], "end_at")
+    # 合并旧值校验 start < end（patch 可能只改一边）
+    current = await db.fetch_one(
+        "SELECT staff_id, start_at, end_at FROM staff_shifts WHERE id = :id",
+        {"id": int(shift_id)},
+    )
+    if current is None:
+        return None
+    final_sa = updates.get("start_at", current["start_at"])
+    final_ea = updates.get("end_at", current["end_at"])
+    if _parse_iso(final_sa, "start_at") >= _parse_iso(final_ea, "end_at"):
+        raise ValueError("start_at must be earlier than end_at")
     set_clause = ", ".join(f"{k} = :{k}" for k in updates)
     updates["id"] = int(shift_id)
     await db.execute(
