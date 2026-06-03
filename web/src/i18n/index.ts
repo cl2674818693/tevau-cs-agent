@@ -143,16 +143,51 @@ const resources = {
   },
 };
 
+// 12 语言对齐 APP（Flutter lib/l10n/）：ar/en/es/id/ja/ko/pt/ru/th/tr/vi/zh。
+// 大部分文案靠 en fallback——这里只对最高频的"首屏"和"转人工提示"加各语言关键翻译。
+// 文案完整覆盖在后端 i18n（server/src/ai_engine/i18n/messages.py），跨端策略：
+//   - 后端 SSE 系统消息/greeting/refusal 用后端 i18n
+//   - 前端 UI label/button text 用此处 i18n
+// 若 i18next 找不到某 key，会自动 fallback 到 fallbackLng=en，符合 B 端默认 en 约定。
+const _criticalKeys = (zhValues: Record<string, string>, lang: string) => ({
+  translation: {
+    chat: {
+      emptyTitle: zhValues.emptyTitle ?? "Hi, I'm the Tevau assistant",
+      handoff: zhValues.handoff ?? "Not resolved? Talk to a human →",
+      thinking: zhValues.thinking ?? "Thinking…",
+      send: zhValues.send ?? "Send",
+    },
+  },
+});
+
+// 关键文案的 10 种语言翻译（高频用户面字符串；其它低频文案缺译 → 走 fallback en）
+const extra = {
+  ar: { emptyTitle: "مرحباً، أنا مساعد Tevau", handoff: "لم يُحل؟ تواصل مع موظف →", thinking: "جاري التفكير...", send: "إرسال" },
+  es: { emptyTitle: "Hola, soy el asistente de Tevau", handoff: "¿No resuelto? Habla con un agente →", thinking: "Pensando…", send: "Enviar" },
+  id: { emptyTitle: "Halo, saya asisten Tevau", handoff: "Belum selesai? Bicara dengan agen →", thinking: "Berpikir…", send: "Kirim" },
+  ja: { emptyTitle: "こんにちは、Tevau アシスタントです", handoff: "解決しない場合は担当者へ →", thinking: "考え中…", send: "送信" },
+  ko: { emptyTitle: "안녕하세요, Tevau 어시스턴트입니다", handoff: "해결되지 않았나요? 상담원과 대화하기 →", thinking: "생각 중…", send: "보내기" },
+  pt: { emptyTitle: "Olá, sou o assistente do Tevau", handoff: "Não resolvido? Fale com um atendente →", thinking: "Pensando…", send: "Enviar" },
+  ru: { emptyTitle: "Привет, я ассистент Tevau", handoff: "Не решено? Связаться с оператором →", thinking: "Думаю…", send: "Отправить" },
+  th: { emptyTitle: "สวัสดี ฉันคือผู้ช่วย Tevau", handoff: "ยังไม่ได้รับการแก้ไข? คุยกับเจ้าหน้าที่ →", thinking: "กำลังคิด...", send: "ส่ง" },
+  tr: { emptyTitle: "Merhaba, ben Tevau asistanıyım", handoff: "Çözülmedi mi? Bir temsilciyle konuş →", thinking: "Düşünüyorum…", send: "Gönder" },
+  vi: { emptyTitle: "Xin chào, tôi là trợ lý Tevau", handoff: "Chưa được giải quyết? Trò chuyện với nhân viên →", thinking: "Đang suy nghĩ…", send: "Gửi" },
+};
+for (const [lng, vals] of Object.entries(extra)) {
+  resources[lng as keyof typeof resources] = _criticalKeys(vals, lng) as never;
+}
+
 void i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     resources,
-    fallbackLng: "zh",
-    supportedLngs: ["zh", "en"],
+    // B 端用户默认 en（用户约定）；C 端 webview 走 bridge 同步永远不会落到 fallback
+    fallbackLng: "en",
+    supportedLngs: ["ar", "en", "es", "id", "ja", "ko", "pt", "ru", "th", "tr", "vi", "zh"],
     interpolation: { escapeValue: false },
     // 外壳语言不再跟随浏览器/设备（navigator）：C 端 webview 由 APP 经 bridge 决定
-    // （syncLanguageFromBridge），B 端浏览器无 bridge/无 ?lng/无缓存时回退 fallbackLng=zh。
+    // （syncLanguageFromBridge），B 端浏览器无 bridge/无 ?lng/无缓存时回退 fallbackLng=en。
     detection: { order: ["querystring", "localStorage"], caches: ["localStorage"] },
   });
 
@@ -163,17 +198,25 @@ function syncHtmlLang(lng: string): void {
 syncHtmlLang(i18n.language || "zh");
 i18n.on("languageChanged", syncHtmlLang);
 
+// APP 12 种语言 → i18n key 归一化映射。APP _toLanguageTag 把 zh 特化为 "zh-Hant"（兼容旧契约），
+// 其他直接是 ISO 639-1 二字母（"en"/"ja"/"pt"/...）。Region 后缀（pt-BR/zh-CN）一律取首段。
+const SUPPORTED = ["ar", "en", "es", "id", "ja", "ko", "pt", "ru", "th", "tr", "vi", "zh"] as const;
+function _normalizeBridgeLanguage(raw: string): string {
+  const primary = raw.trim().toLowerCase().split("-")[0].split("_")[0];
+  return (SUPPORTED as readonly string[]).includes(primary) ? primary : "en";
+}
+
 /**
- * C 端 webview：外壳语言跟随 APP 当前语言（bridge.getEnv().language，APP 取值 'en'/'zh-Hant'）。
- * 归一到 i18n 支持的 zh/en。URL 显式 ?lng 优先，不被 APP 覆盖（便于调试/指定）。
- * B 端浏览器无 bridge → getEnv 取不到 language → 不改，沿用 ?lng/localStorage/fallbackLng(zh)。
+ * C 端 webview：外壳语言跟随 APP 当前语言（bridge.getEnv().language，12 种之一）。
+ * 归一到 i18n 12 种 supportedLngs。URL 显式 ?lng 优先，不被 APP 覆盖（便于调试/指定）。
+ * B 端浏览器无 bridge → getEnv 取不到 language → 不改，沿用 ?lng/localStorage/fallbackLng=en。
  */
 export async function syncLanguageFromBridge(): Promise<void> {
   if (typeof location !== "undefined" && new URLSearchParams(location.search).get("lng")) return;
   const { bridge } = await import("../hooks/useAppBridge");
   const raw = (await bridge.getEnv()).language;
   if (!raw) return;
-  const lng = raw.toLowerCase().startsWith("zh") ? "zh" : "en";
+  const lng = _normalizeBridgeLanguage(raw);
   if (i18n.language !== lng) await i18n.changeLanguage(lng);
 }
 

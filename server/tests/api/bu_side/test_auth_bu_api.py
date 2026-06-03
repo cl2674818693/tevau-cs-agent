@@ -100,7 +100,8 @@ class TestBuLoginRejected:
         _mock_get_db(monkeypatch, row=None)  # SELECT 无行
         resp = await client.post("/api/v1/auth/bu/login", json={"bu_id": "NOPE0000"})
         assert resp.status_code == 401
-        assert "主账户" in resp.json()["detail"] or "不存在" in resp.json()["detail"]
+        # i18n 后 B 端默认 en（不传 Accept-Language）
+        assert "Main account not found" in resp.json()["detail"]
 
     async def test_login_disabled_tenant_status_2_returns_401(self, client, monkeypatch) -> None:
         _mock_get_db(monkeypatch, row={"tenant_id": "X", "status": 2})

@@ -15,12 +15,15 @@ async function authedFetch(input: string, init: RequestInit = {}): Promise<Respo
 /**
  * 会话初始化（spec §6.2）。首屏调一次，拿 user_type / display_name / greeting / mode / limits。
  * resume 传入会话 id：后端属主+未归档校验通过则续接(返回同一 id)，否则新建(返回新 id)。
+ * ui_locale：当前外壳语言（C 端=APP 同步过来的，B 端=浏览器/fallback en），让后端按此选 greeting 语种。
  */
 export async function initConversation(resume?: number): Promise<ConversationInit> {
+  const body: Record<string, unknown> = { ui_locale: i18n.language };
+  if (resume != null) body.resume = resume;
   const resp = await authedFetch("/api/v1/conversations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(resume != null ? { resume } : {}),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) throw new Error(`init http ${resp.status}`);
   return resp.json();
@@ -156,12 +159,13 @@ export async function cancelStream(conversationId: number): Promise<void> {
 
 /**
  * 转人工（MVP-2 §13.7：调 /request-human 端点，置 human_pending + 建工单）。
+ * ui_locale 让后端 403/班外措辞按当前外壳语言走（C 端走 APP，B 端 fallback en）。
  */
 export async function requestHuman(conversationId: number, reason?: string): Promise<void> {
   await authedFetch(`/api/v1/conversations/${conversationId}/request-human`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reason: reason ?? "用户请求人工" }),
+    body: JSON.stringify({ reason: reason ?? "用户请求人工", ui_locale: i18n.language }),
   });
 }
 

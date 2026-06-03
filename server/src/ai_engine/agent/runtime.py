@@ -50,10 +50,14 @@ from ai_engine.prompts.loader import build_system_blocks, read_prompt
 from ai_engine.prompts.registry import model_for, pick_version
 from ai_engine.storage.object_store import get_object_store
 
+from ai_engine.i18n import t as _t
+
 logger = logging.getLogger(__name__)
 
-# 回合内 LLM/工具失败时对用户的兜底文案（不外泄内部错误细节）。
-_FAILSOFT_TEXT = "抱歉，我这边暂时出了点问题，请重发一次，或点'转人工'。"
+
+def _failsoft_text(ui_locale: str | None) -> str:
+    """回合内 LLM/工具失败时对用户的兜底文案（不外泄内部错误细节），按 ui_locale 选语言。"""
+    return _t("error.failsoft", ui_locale)
 
 
 def _block_to_dict(b: object) -> dict[str, Any]:
@@ -99,24 +103,23 @@ async def _budget_gate(
     subject_id: str,
     warned: bool,
     model: str | None = None,
+    ui_locale: str | None = None,
 ) -> tuple[bool, dict[str, Any] | None, bool]:
     """记账并裁决。返回 (是否终止本轮, 给前端的 system 事件 or None, 更新后的 warned)。
 
     M2: model 可选，落到 daily_token_usage.model 列（成本大盘按模型聚合）。
+    ui_locale 用于本地化"额度用完"/"80%"提示文案。
     """
     in_tok, out_tok = _usage(resp)
     allowed, info = await check_and_record(user_type, subject_id, in_tok, out_tok, model=model)
     if not allowed:
         return (
             True,
-            {
-                "type": "system",
-                "text": "您今日的 AI 服务额度已用完，请明日再试，或点'转人工'。",
-            },
+            {"type": "system", "text": _t("warning.budget_exhausted", ui_locale)},
             warned,
         )
     if info.get("warn") and not warned:
-        return False, {"type": "system", "text": "您今日 AI 服务额度已用 80%。"}, True
+        return False, {"type": "system", "text": _t("warning.budget_80", ui_locale)}, True
     return False, None, warned
 
 
@@ -137,11 +140,13 @@ def _collect_blocks(resp: object) -> tuple[list[dict[str, Any]], list[dict[str, 
 
 async def _maybe_compact(
     conversation_id: int,
+    ui_locale: str | None = None,
 ) -> tuple[int, dict[str, Any] | None, list[dict[str, Any]]]:
     """超限则总结老会话、开新会话。返回 (会话id, 给前端的 system 事件 or None, 预置 messages)。
 
     fail-soft：should_compact/compact_conversation 抛错时记 warning 并退化为"不压缩"，
     让主流程照常用现有会话继续，避免上游统计/总结服务故障拖垮整轮对话。
+    ui_locale 决定"会话过长，已为您开启新对话"文案语言。
     """
     try:
         if not await should_compact(conversation_id):
@@ -150,7 +155,7 @@ async def _maybe_compact(
         summary = next(
             (str(m["content"]) for m in await list_messages(new_id) if m["role"] == "system"), ""
         )
-        event = {"type": "system", "text": f"会话过长，已为您开启新对话，conversation_id={new_id}"}
+        event = {"type": "system", "text": _t("system.conversation_compacted", ui_locale, id=new_id)}
         seed = [{"role": "user", "content": f"[上文摘要]\n{summary}"}] if summary else []
         return new_id, event, seed
     except Exception:
@@ -299,7 +304,7 @@ async def run_turn(
     tools = base.all_definitions()
 
     # spec §8 会话治理：超轮次/token 上限 → 总结老会话、开新会话继承结论
-    conversation_id, compact_event, messages = await _maybe_compact(conversation_id)
+    conversation_id, compact_event, messages = await _maybe_compact(conversation_id, ui_locale)
     if compact_event:
         yield compact_event  # 压缩后用摘要 seed 作上下文
     else:
@@ -336,7 +341,7 @@ async def run_turn(
         await set_turn_verdict(turn_id, verdict)
         metrics.topic_verdict_total.labels(verdict=verdict).inc()
         if verdict == "no":
-            refusal = topic_classifier.refusal_text(user_type)
+            refusal = topic_classifier.refusal_text(user_type, ui_locale)
             await append_message(
                 conversation_id,
                 role="assistant",
@@ -359,7 +364,7 @@ async def run_turn(
     try:
         with metrics.active_conversations.track_inprogress():
             async for ev in _agent_loop(
-                system_blocks, tools, model, messages, guard, user_type, subject_id, conversation_id
+                system_blocks, tools, model, messages, guard, user_type, subject_id, conversation_id, ui_locale
             ):
                 yield ev
         await finalize_turn(turn_id, "done")
@@ -368,7 +373,7 @@ async def run_turn(
         logger.exception("agent turn failed (conversation_id=%s)", conversation_id)
         metrics.llm_turn_failures_total.inc()
         await finalize_turn(turn_id, "failed", "INTERNAL_ERROR")
-        yield {"type": "error", "code": "INTERNAL_ERROR", "text": _FAILSOFT_TEXT}
+        yield {"type": "error", "code": "INTERNAL_ERROR", "text": _failsoft_text(ui_locale)}
 
 
 class _StreamRedactor:
@@ -441,6 +446,7 @@ async def _agent_loop(
     user_type: str,
     subject_id: str,
     conversation_id: int,
+    ui_locale: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     prompt_version = pick_version(subject_id)
     self_check_done = False
@@ -472,7 +478,7 @@ async def _agent_loop(
         _record_llm(resp, model)
         # spec §8 成本治理：每轮 LLM 返回后记账；超额拒服、80% 提醒
         stop, budget_event, warned_budget = await _budget_gate(
-            resp, user_type, subject_id, warned_budget, model=model
+            resp, user_type, subject_id, warned_budget, model=model, ui_locale=ui_locale
         )
         if budget_event:
             yield budget_event

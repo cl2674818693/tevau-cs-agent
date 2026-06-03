@@ -43,14 +43,17 @@ describe("chat API", () => {
   afterEach(() => vi.restoreAllMocks());
 
   describe("initConversation", () => {
-    it("不传 resume 时 body={}", async () => {
+    it("不传 resume 时 body 仅含 ui_locale", async () => {
+      // ui_locale 现在永远带（后端按此选 greeting 语种，符合 APP 12 语言策略）
       fetchMock.mockResolvedValue(new Response('{"conversation_id":1}', { status: 200 }));
       const r = await initConversation();
       expect(r.conversation_id).toBe(1);
       const args = fetchMock.mock.calls[0];
       expect(args[0]).toBe("/api/v1/conversations");
       expect(args[1].method).toBe("POST");
-      expect(args[1].body).toBe("{}");
+      const body = JSON.parse(args[1].body as string);
+      expect(body.ui_locale).toBeTruthy(); // 当前 i18n.language 是什么都行，只要非空
+      expect(body.resume).toBeUndefined();
     });
 
     it("传 resume 时 body 包含 resume id", async () => {

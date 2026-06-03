@@ -69,26 +69,30 @@ class TestClassifyVerdict:
 
 
 class TestRefusalText:
-    """C 端中文 / B 端英文，未知 user_type 回落 C 端。"""
+    """拒答文案改 i18n 后：C/B 端共享 refusal.c key，按 ui_locale 选语言。
+    B 端默认 en，C 端跟随 APP；user_type 不再决定语种，只看 ui_locale。"""
 
-    def test_c_user_chinese(self) -> None:
-        msg = tc.refusal_text("c")
+    def test_c_user_chinese_when_zh_locale(self) -> None:
+        msg = tc.refusal_text("c", "zh-Hant")
         assert "Tevau" in msg
         assert "账户" in msg or "卡片" in msg
 
-    def test_b_user_english(self) -> None:
+    def test_b_user_english_default(self) -> None:
+        # B 端不传 ui_locale → 默认 en
         msg = tc.refusal_text("b")
         assert msg.startswith("I'm Tevau's support assistant")
         assert "Open API" in msg
 
     @pytest.mark.parametrize("ut", ["g", "unknown", "", "ADMIN"])
-    def test_unknown_user_type_falls_back_to_c(self, ut: str) -> None:
-        assert tc.refusal_text(ut) == tc.REFUSAL["c"]
+    def test_unknown_user_type_still_resolves(self, ut: str) -> None:
+        # user_type 不再决定文案，refusal_text 必须返回非空字符串
+        msg = tc.refusal_text(ut)
+        assert msg and "Tevau" in msg
 
-    def test_refusal_constants_present(self) -> None:
-        # 防回归：REFUSAL 必须同时含 c/b 两键
-        assert "c" in tc.REFUSAL
-        assert "b" in tc.REFUSAL
+    def test_ja_locale_returns_japanese(self) -> None:
+        msg = tc.refusal_text("c", "ja")
+        assert "Tevau" in msg
+        assert "アシスタント" in msg or "ご質問" in msg
 
 
 class TestUncertainHintConstant:

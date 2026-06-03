@@ -63,16 +63,22 @@ class TestClassifyVerdictParsing:
 
 
 class TestRefusalText:
-    def test_refusal_c_chinese(self) -> None:
-        assert "Tevau" in topic_classifier.refusal_text("c")
-        assert "助手" in topic_classifier.refusal_text("c")
+    """i18n 化后：C/B 端共享同一 key，语言由 ui_locale 决定（B 端默认 en，C 端跟随 APP）。"""
 
-    def test_refusal_b_english(self) -> None:
-        assert "Tevau" in topic_classifier.refusal_text("b")
-        assert "Open API" in topic_classifier.refusal_text("b")
+    def test_refusal_c_chinese_when_zh_locale(self) -> None:
+        msg = topic_classifier.refusal_text("c", "zh-Hant")
+        assert "Tevau" in msg
+        assert "助手" in msg
 
-    def test_unknown_user_type_falls_to_c(self) -> None:
-        assert topic_classifier.refusal_text("x") == topic_classifier.refusal_text("c")
+    def test_refusal_b_english_default(self) -> None:
+        msg = topic_classifier.refusal_text("b")
+        assert "Tevau" in msg
+        assert "Open API" in msg
+
+    def test_unknown_user_type_resolves(self) -> None:
+        # user_type 不再决定文案，refusal_text 一律返回非空
+        msg = topic_classifier.refusal_text("x")
+        assert msg and "Tevau" in msg
 
 
 class TestRuntimeClassifierGate:

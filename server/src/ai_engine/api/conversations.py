@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ai_engine.auth.bu_session import resolve_identity
+from ai_engine.i18n import t as _t
 from ai_engine.persistence.attachments import list_for_conversation
 from ai_engine.persistence.conversations import (
     create_conversation,
@@ -22,6 +23,7 @@ _HISTORY_MAX_MESSAGES = 200
 
 class ConversationsInitIn(BaseModel):
     resume: int | None = None  # 可选：传入会话 id，属主+未归档校验通过则续接历史，否则新建
+    ui_locale: str | None = None  # APP 当前语言（bridge.getEnv().language），决定 greeting 语种
 
 
 class ConversationsInitOut(BaseModel):
@@ -51,13 +53,14 @@ class ConversationHistoryOut(BaseModel):
 
 
 # 标题（前端 EmptyState 写死「你好，我是 Tevau 助手」）已报过名，
-# 这里只写「按端区分」的纯介绍句，避免重复报名。
-_GREETING = {
-    "c": "账户、卡片、交易记录，或使用中遇到的问题，都可以直接问我。",
-    "b": "可以帮你解答 Open API 接入、卡片业务、对接联调等问题。",
-    "g": "未登录也能解答 API、APP 使用等通用问题；"
-    "查询账户、卡片或交易记录需先登录。",
-}
+# 这里只写「按端区分」的纯介绍句，避免重复报名。greeting 文案已 i18n 化（i18n/messages.py），
+# 按 ui_locale 返回对应语言；找不到 user_type 时回退到 b 端文案（B 端默认 en）。
+_GREETING_KEY = {"c": "greeting.c", "b": "greeting.b", "g": "greeting.g"}
+
+
+def _greeting(user_type: str, ui_locale: str | None) -> str:
+    key = _GREETING_KEY.get(user_type, "greeting.b")
+    return _t(key, ui_locale)
 
 
 @router.post("/api/v1/conversations")
@@ -85,7 +88,7 @@ async def init_conversation(body: ConversationsInitIn, request: Request) -> Conv
         conversation_id=conv_id,
         user_type=user_type,
         display_name=subject_id,  # display_name 后续接 query_user/bu 补脱敏名
-        greeting=_GREETING.get(user_type, _GREETING["b"]),
+        greeting=_greeting(user_type, body.ui_locale),
         mode=mode,
         staff_name=staff_name,
         history_url=f"/api/v1/conversations/{conv_id}/messages",

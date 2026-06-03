@@ -55,11 +55,11 @@ class TestLlmStreamException:
                 user_message="hi",
             )
         ]
-        # 最后一个事件是 error，文案=固定 _FAILSOFT_TEXT
+        # 最后一个事件是 error，文案 i18n 后默认 en（未传 ui_locale）
         assert events[-1] == {
             "type": "error",
             "code": "INTERNAL_ERROR",
-            "text": rt._FAILSOFT_TEXT,
+            "text": rt._failsoft_text(None),
         }
         # user 行落库 + status 应被 finalize_turn 标 failed
         msgs = await list_messages(conv)

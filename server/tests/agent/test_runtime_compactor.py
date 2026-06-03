@@ -181,6 +181,7 @@ class TestRuntimeIntegrationCompactionEmitsEvent:
                 user_type="c",
                 subject_id="U001",
                 user_message="hello",
+                ui_locale="zh-Hant",  # 显式 zh，触发"会话过长，已为您开启新对话"中文文案
             )
         ]
         first = events[0]

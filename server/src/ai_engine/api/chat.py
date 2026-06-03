@@ -17,6 +17,7 @@ from ai_engine.api.staff_conversations import (
 from ai_engine.auth.bu_session import USER_TYPE_GUEST, resolve_identity
 from ai_engine.config import settings
 from ai_engine.governance import rate_limit, token_budget
+from ai_engine.i18n import t as _t
 from ai_engine.persistence import attachments as att_dao
 from ai_engine.persistence import conversations as conv_dao
 
@@ -110,6 +111,7 @@ async def _early_block(
     subject_id: str,
     conversation_id: int,
     message: str,
+    ui_locale: str | None,
 ) -> tuple[dict[str, str], str] | None:
     """入口护栏：rate_limit。返回 (error_frame, stop_reason) 或 None。"""
     rl_key = (
@@ -120,7 +122,7 @@ async def _early_block(
     allowed, retry_after_ms = await rate_limit.check(rl_key)
     if not allowed:
         err = se.error_event(
-            "RATE_LIMITED", "消息过于频繁，请稍后再试。", retry_after_ms=retry_after_ms
+            "RATE_LIMITED", _t("error.rate_limited", ui_locale), retry_after_ms=retry_after_ms
         )
         return err, "rate_limited"
     return None
@@ -195,7 +197,7 @@ async def chat(
             )
             # 入口护栏：rate_limit
             blocked = await _early_block(
-                request, user_type, subject_id, conversation_id, message
+                request, user_type, subject_id, conversation_id, message, ui_locale
             )
             if blocked is not None:
                 err_frame, stop_reason = blocked
@@ -226,7 +228,7 @@ async def chat(
             if await token_budget.is_exhausted(user_type, subject_id):
                 yield se.sse_payload(
                     se.EVENT_WARNING,
-                    {"text": "您今日的 AI 服务额度已用完，请明日再试，或点'转人工'。"},
+                    {"text": _t("warning.budget_exhausted", ui_locale)},
                 )
                 yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "budget_exceeded"})
                 return
@@ -241,7 +243,7 @@ async def chat(
                 )
                 await conv_dao.save_ai_draft(conversation_id, draft)
                 publish_ai_draft(conversation_id, draft)
-                yield se.sse_payload(se.EVENT_WARNING, {"text": "客服正在 review 您的回答…"})
+                yield se.sse_payload(se.EVENT_WARNING, {"text": _t("warning.draft_review", ui_locale)})
                 yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "ai_draft_pending"})
                 return
 
@@ -258,7 +260,7 @@ async def chat(
                 yield frame
         except Exception:  # 顶层兜底：记日志，对外只回固定文案，不外泄内部错误细节
             logger.exception("chat stream failed (conversation_id=%s)", conversation_id)
-            yield se.error_event("INTERNAL_ERROR", "服务暂时不可用，请稍后再试。")
+            yield se.error_event("INTERNAL_ERROR", _t("error.internal", ui_locale))
         finally:
             _cancel_signals.pop(conversation_id, None)
 

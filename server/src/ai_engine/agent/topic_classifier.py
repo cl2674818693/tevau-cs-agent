@@ -7,20 +7,15 @@
 import logging
 from typing import Literal
 
+from ai_engine.i18n import t as _t
 from ai_engine.integrations import anthropic_client as _ac
 
 logger = logging.getLogger(__name__)
 
 Verdict = Literal["yes", "no", "uncertain"]
 
-# spec §6.4 固定 refusal 模板：C 端中文、B 端英文（与 topic_scope.md 一致）。
-REFUSAL: dict[str, str] = {
-    "c": "我是 Tevau 助手，只能帮您处理账户、卡片或 Open API 相关问题。请问您需要咨询哪方面？",
-    "b": (
-        "I'm Tevau's support assistant. I only handle questions about your Tevau "
-        "account, cards, or our Open API. What can I help you with?"
-    ),
-}
+# spec §6.4 固定 refusal 模板已 i18n 化（i18n/messages.py:refusal.c）。
+# C/B 端共用同一文案（B 端 ui_locale 走 en，C 端跟随 APP 当前语言）。
 
 UNCERTAIN_HINT = (
     "用户消息可能不是 Tevau 相关，请优先判断话题是否在范围内，超范围按固定 refusal 拒答。"
@@ -41,5 +36,7 @@ async def classify(message: str) -> Verdict:
     return "uncertain"
 
 
-def refusal_text(user_type: str) -> str:
-    return REFUSAL.get(user_type, REFUSAL["c"])
+def refusal_text(user_type: str, ui_locale: str | None = None) -> str:
+    """超范围话题拒答文案。C/B 端共享同一 i18n key（refusal.c），ui_locale 决定具体语言。
+    B 端不传 ui_locale 时回退 en；C 端 webview 必带 APP 当前 language。"""
+    return _t("refusal.c", ui_locale)

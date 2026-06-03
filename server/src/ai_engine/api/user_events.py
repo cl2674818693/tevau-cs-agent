@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from ai_engine.agent.tools.create_ticket import run as create_ticket_run
 from ai_engine.api.staff_conversations import _publish
 from ai_engine.auth.bu_session import USER_TYPE_GUEST, resolve_identity
+from ai_engine.i18n import t as _t
 from ai_engine.integrations.event_center_client import push_event_center
 from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
@@ -20,13 +21,14 @@ router = APIRouter()
 
 class RequestHumanIn(BaseModel):
     reason: str | None = None
+    ui_locale: str | None = None  # APP 当前语言（bridge.getEnv().language），决定 403 文案语种
 
 
 @router.post("/api/v1/conversations/{conv_id}/request-human")
 async def request_human(conv_id: int, body: RequestHumanIn, request: Request) -> dict[str, Any]:
     user_type, subject_id = await resolve_identity(request)
     if user_type == USER_TYPE_GUEST:
-        raise HTTPException(403, "请先在 APP 内登录后再转接人工客服")
+        raise HTTPException(403, _t("handoff.guest_blocked", body.ui_locale))
     conv = await conv_dao.get_conversation(conv_id)
     if conv is None or conv["subject_id"] != subject_id or conv["user_type"] != user_type:
         raise HTTPException(403, "not your conversation")
