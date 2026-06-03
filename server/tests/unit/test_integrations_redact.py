@@ -202,3 +202,56 @@ class TestScanAndRedactText:
         out = r.scan_and_redact_text("证件 11010119900101123X 提交")
         # 不应该被卡号兜底（卡号规则 \d{13,19} 不含 X）
         assert "11" in out and "3X" in out
+
+
+class TestMaskVendorNames:
+    """内部上游供应商品牌名脱敏：Reap/Sumsub/Jumio/Antom；Alipay 不脱（用户级品牌）。"""
+
+    def test_camelcase_class_keeps_suffix(self) -> None:
+        # CamelCase 类名：品牌前缀换通用驼峰，后缀保留，AI 仍能据此定位
+        assert r.mask_vendor_names("ReapAuthNotificationReceivedLogic") == "UpstreamAuthNotificationReceivedLogic"
+        assert r.mask_vendor_names("ReapCallbackParam") == "UpstreamCallbackParam"
+        assert r.mask_vendor_names("SumsubConfig") == "KycVendorConfig"
+        assert r.mask_vendor_names("JumioWorkflowReq") == "KycVendorWorkflowReq"
+        assert r.mask_vendor_names("AntomPayConfig") == "PayChannelPayConfig"
+
+    def test_package_path_keeps_segments(self) -> None:
+        # snake_case / package 路径：保 .foo.bar 结构
+        assert r.mask_vendor_names("com.tevau.nexus.card.server.reap.ReapCardApi") == \
+            "com.tevau.nexus.card.server.upstream.UpstreamCardApi"
+        assert r.mask_vendor_names("reap_callback_param") == "upstream_callback_param"
+
+    def test_standalone_word_replaced_with_label(self) -> None:
+        assert r.mask_vendor_names("Reap 上游推过来的") == "[上游通道] 上游推过来的"
+        assert r.mask_vendor_names("REAP 通道") == "[上游通道] 通道"
+        assert r.mask_vendor_names("Sumsub SDK") == "[KYC服务商] SDK"
+        assert r.mask_vendor_names("Antom Dashboard") == "[支付通道] Dashboard"
+
+    def test_reaper_not_falsely_matched(self) -> None:
+        # 'reaper' / 'reaps' / 'reaping' 不是品牌；word boundary 应保护它们
+        assert r.mask_vendor_names("reaper bot") == "reaper bot"
+        assert r.mask_vendor_names("the Reaper appeared") == "the Reaper appeared"
+
+    def test_alipay_not_masked(self) -> None:
+        # Alipay 是面向 C 端用户的支付品牌名，不在脱敏范围
+        assert r.mask_vendor_names("用户用 Alipay 充值") == "用户用 Alipay 充值"
+        assert r.mask_vendor_names("alipay.api.com") == "alipay.api.com"
+
+    def test_empty_or_none_safe(self) -> None:
+        assert r.mask_vendor_names("") == ""
+        assert r.mask_vendor_names(None) is None  # type: ignore[arg-type]
+
+    def test_mixed_in_one_text(self) -> None:
+        text = "根因在 ReapAuthNotificationReceivedLogic.java:125，Reap 上游 transaction 为 null"
+        out = r.mask_vendor_names(text)
+        assert "Reap" not in out
+        assert "UpstreamAuthNotificationReceivedLogic" in out
+        assert "[上游通道]" in out
+
+    def test_scan_and_redact_includes_vendor(self) -> None:
+        # 兜底：scan_and_redact_text 也调用 mask_vendor_names
+        out = r.scan_and_redact_text("Reap 处理失败，Sumsub 也异常")
+        assert "Reap" not in out
+        assert "Sumsub" not in out
+        assert "[上游通道]" in out
+        assert "[KYC服务商]" in out

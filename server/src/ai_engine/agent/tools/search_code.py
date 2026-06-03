@@ -4,6 +4,7 @@ from typing import Any
 
 from ai_engine.agent.tools.base import ALLOWED_REPOS, Tool, register
 from ai_engine.config import settings
+from ai_engine.integrations.redact import mask_vendor_names
 
 MAX_QUERY_LEN = 200
 MAX_HITS_DEFAULT = 50
@@ -85,11 +86,13 @@ def _parse_grep(out: bytes, base: str, max_hits: int) -> list[dict[str, Any]]:
         if len(parts) < 3:
             continue
         path, lineno, content = parts
+        rel_path = path[len(prefix) :] if path.startswith(prefix) else path
         hits.append(
             {
-                "path": path[len(prefix) :] if path.startswith(prefix) else path,
+                # path 与 preview 都做品牌脱敏：路径里 reap/sumsub/jumio/antom 包名也算泄漏点
+                "path": mask_vendor_names(rel_path),
                 "line": int(lineno) if lineno.isdigit() else 0,
-                "preview": content.strip()[:300],
+                "preview": mask_vendor_names(content.strip()[:300]),
             }
         )
         if len(hits) >= max_hits:

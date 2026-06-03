@@ -4,6 +4,7 @@ from typing import Any
 
 from ai_engine.agent.tools.base import ALLOWED_REPOS, Tool, register
 from ai_engine.config import settings
+from ai_engine.integrations.redact import mask_vendor_names
 
 MAX_BYTES = 256 * 1024
 
@@ -36,6 +37,8 @@ def _read_sync(
         s = (start_line - 1) if start_line else 0
         e = end_line if end_line else len(lines)
         text = "".join(lines[s:e])
+    # 防上游供应商品牌名泄漏：AI 看到的源码内容已脱敏，类名结构保留（ReapXxx→UpstreamXxx）
+    text = mask_vendor_names(text)
     return {"content": text, "truncated": truncated}
 
 
