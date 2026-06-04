@@ -85,6 +85,28 @@ async def test_dispatch_excludes_stale_heartbeat(db_ready):
 
 
 @pytest.mark.asyncio
+async def test_dispatch_pending_assignments_count_as_load(db_ready):
+    """已派给 A 但未接管的会话也算 A 的 load，否则连续派单都派给同一人。"""
+    await _seed_staff("A")
+    await _seed_staff("B")
+    # A 已派 1 个未接管（human_pending + assigned_staff_id），B 啥也没
+    pending_to_a = await conv_dao.create_conversation(user_type="c", subject_id="x")
+    await db.execute(
+        "UPDATE conversations SET mode='human_pending', "
+        "assigned_staff_id='A', assigned_at=:t WHERE id=:c",
+        {"t": now_str(), "c": pending_to_a},
+    )
+
+    # 新会话派单应该选 B（A.load=1, B.load=0）
+    new_cid = await conv_dao.create_conversation(user_type="c", subject_id="user-y")
+    await conv_dao.set_mode(new_cid, "human_pending")
+    result = await dispatch.dispatch_to_human_pending(new_cid)
+
+    assert result["dispatched"] is True
+    assert result["staff_id"] == "B"
+
+
+@pytest.mark.asyncio
 async def test_dispatch_idempotent_when_already_assigned(db_ready):
     """已经派给某人后再次调 dispatch，不应覆盖。"""
     await _seed_staff("A")

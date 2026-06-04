@@ -40,7 +40,8 @@ async def _pick_least_loaded(roles: list[str]) -> str | None:
         f"""
         SELECT p.staff_id,
                (SELECT COUNT(*) FROM conversations c
-                WHERE c.mode='human_takeover' AND c.assigned_staff_id=p.staff_id) AS load
+                WHERE c.assigned_staff_id=p.staff_id
+                  AND c.mode IN ('human_takeover','human_pending')) AS load
           FROM staff_presence p
           JOIN staff s ON s.staff_id = p.staff_id
          WHERE p.status='online'
