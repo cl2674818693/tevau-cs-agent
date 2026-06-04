@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 _sup = require_roles("supervisor", "admin")
 
-_VALID_STATUS = {"online", "away", "offline"}
+_VALID_STATUS = {"online", "offline"}
 
 
 class HeartbeatIn(BaseModel):
@@ -34,7 +34,14 @@ async def heartbeat(
     if not staff_id:
         return {"ok": False}
     await staff_presence.heartbeat(staff_id, status)
-    return {"ok": True}
+    released_count = 0
+    if status == "offline":
+        from ai_engine.api.staff_conversations import publish_conversation_event
+        released_ids = await staff_presence.release_pending_assignments(staff_id)
+        for cid in released_ids:
+            publish_conversation_event(cid, {"type": "conversation_assignment_cleared"})
+        released_count = len(released_ids)
+    return {"ok": True, "released_count": released_count}
 
 
 @router.get("/admin/api/v1/presence")

@@ -11,6 +11,9 @@
 4. /admin/presence 普通 agent → 403
 5. /admin/presence supervisor / admin → 200，返回 all + active
 6. /admin/presence manager → 403（require_roles 仅含 supervisor/admin）
+7. offline 心跳 → 释放 human_pending 派单 + 返回 released_count
+8. online 心跳 → 不释放派单 + 返回 released_count=0
+9. away status → 收敛为 online（_VALID_STATUS 已不含 away）
 """
 
 from collections.abc import AsyncIterator
@@ -21,6 +24,7 @@ from httpx import ASGITransport, AsyncClient
 
 from ai_engine.api.staff_presence import router as staff_presence_router
 from ai_engine.persistence import db as db_mod
+from ai_engine.persistence.schema import now_str
 
 
 @pytest.fixture
@@ -50,7 +54,9 @@ class TestHeartbeatHappyPath:
             "/staff/api/v1/presence", json={"status": "online"}, headers=agent_headers
         )
         assert resp.status_code == 200
-        assert resp.json() == {"ok": True}
+        body = resp.json()
+        assert body["ok"] is True
+        assert body["released_count"] == 0
         # DB 写一行
         row = await db_mod.fetch_one(
             "SELECT status FROM staff_presence WHERE staff_id=:s", {"s": "agent-1"}
@@ -65,12 +71,12 @@ class TestHeartbeatHappyPath:
             "/staff/api/v1/presence", json={"status": "online"}, headers=agent_headers
         )
         await client.post(
-            "/staff/api/v1/presence", json={"status": "away"}, headers=agent_headers
+            "/staff/api/v1/presence", json={"status": "offline"}, headers=agent_headers
         )
         row = await db_mod.fetch_one(
             "SELECT status FROM staff_presence WHERE staff_id=:s", {"s": "agent-1"}
         )
-        assert row["status"] == "away"
+        assert row["status"] == "offline"
 
     async def test_heartbeat_invalid_status_falls_back_to_online(
         self, init_self_db, client, agent_headers
@@ -85,7 +91,7 @@ class TestHeartbeatHappyPath:
         )
         assert row["status"] == "online"
 
-    @pytest.mark.parametrize("status", ["online", "away", "offline"])
+    @pytest.mark.parametrize("status", ["online", "offline"])
     async def test_heartbeat_valid_statuses(
         self, init_self_db, client, agent_headers, status: str
     ) -> None:
@@ -176,3 +182,72 @@ class TestAdminPresenceListHappyPath:
         active_ids = {r["staff_id"] for r in body["active"]}
         assert "agent-1" in all_ids
         assert "agent-1" not in active_ids
+
+
+class TestOfflineSideEffects:
+    """offline 心跳副作用：释放 human_pending 派单，返回 released_count。"""
+
+    async def test_offline_releases_pending_returns_count(
+        self, init_self_db, client, auth_headers
+    ) -> None:
+        sid = "agent-1"
+        cid = await db_mod.insert_returning_id(
+            "INSERT INTO conversations(user_type, subject_id, mode, assigned_staff_id, assigned_at, archived, created_at) "
+            "VALUES ('c', 'u1', 'human_pending', :s, :t, 0, :now) RETURNING id",
+            {"s": sid, "t": now_str(), "now": now_str()},
+        )
+
+        r = await client.post(
+            "/staff/api/v1/presence",
+            json={"status": "offline"},
+            headers=auth_headers("agent", sub=sid),
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is True
+        assert body["released_count"] == 1
+
+        row = await db_mod.fetch_one(
+            "SELECT assigned_staff_id FROM conversations WHERE id=:c", {"c": cid}
+        )
+        assert row["assigned_staff_id"] is None
+
+    async def test_online_does_not_release(
+        self, init_self_db, client, auth_headers
+    ) -> None:
+        sid = "agent-2"
+        cid = await db_mod.insert_returning_id(
+            "INSERT INTO conversations(user_type, subject_id, mode, assigned_staff_id, assigned_at, archived, created_at) "
+            "VALUES ('c', 'u1', 'human_pending', :s, :t, 0, :now) RETURNING id",
+            {"s": sid, "t": now_str(), "now": now_str()},
+        )
+
+        r = await client.post(
+            "/staff/api/v1/presence",
+            json={"status": "online"},
+            headers=auth_headers("agent", sub=sid),
+        )
+        assert r.status_code == 200
+        assert r.json()["released_count"] == 0
+
+        row = await db_mod.fetch_one(
+            "SELECT assigned_staff_id FROM conversations WHERE id=:c", {"c": cid}
+        )
+        assert row["assigned_staff_id"] == sid
+
+    async def test_away_collapsed_to_online(
+        self, init_self_db, client, auth_headers
+    ) -> None:
+        """away 不在 _VALID_STATUS 中，应静默回退为 online。"""
+        r = await client.post(
+            "/staff/api/v1/presence",
+            json={"status": "away"},
+            headers=auth_headers("agent", sub="agent-3"),
+        )
+        assert r.status_code == 200
+        assert r.json()["released_count"] == 0
+
+        row = await db_mod.fetch_one(
+            "SELECT status FROM staff_presence WHERE staff_id='agent-3'"
+        )
+        assert row["status"] == "online"
