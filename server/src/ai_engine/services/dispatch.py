@@ -8,6 +8,7 @@
 清空 assigned_staff_id → 推 conversation_assignment_cleared 让所有 online 客服可抢。
 """
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -81,3 +82,55 @@ async def dispatch_to_human_pending(conv_id: int) -> dict:
     publish_conversation_event(conv_id, {"type": "conversation_assigned", "staff_id": picked})
 
     return {"dispatched": True, "staff_id": picked, "no_one_online": False}
+
+
+_TIMEOUT_SECONDS = 60
+_WATCHER_INTERVAL_SECONDS = 10
+
+
+async def _scan_and_clear_timeouts() -> list[int]:
+    """扫一遍超时的 human_pending 派单，清回开放池。返回被清空的 conv_id 列表。"""
+    cutoff = (datetime.now(UTC) - timedelta(seconds=_TIMEOUT_SECONDS)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    rows = await db.fetch_all(
+        "SELECT id FROM conversations "
+        "WHERE mode='human_pending' "
+        "  AND assigned_staff_id IS NOT NULL "
+        "  AND assigned_at < :cutoff",
+        {"cutoff": cutoff},
+    )
+    ids = [int(r["id"]) for r in rows]
+    if not ids:
+        return []
+    placeholders = ",".join(f":id{i}" for i in range(len(ids)))
+    params: dict[str, object] = {"cutoff": cutoff}
+    for i, v in enumerate(ids):
+        params[f"id{i}"] = v
+    await db.execute(
+        f"UPDATE conversations SET assigned_staff_id=NULL, assigned_at=NULL "
+        f"WHERE id IN ({placeholders}) "
+        f"  AND mode='human_pending' "
+        f"  AND assigned_at < :cutoff",
+        params,
+    )
+    return ids
+
+
+async def _watcher_loop() -> None:
+    """常驻协程：每 10 秒扫一遍，超时派单回开放池 + SSE 推所有相关订阅者。"""
+    from ai_engine.api.staff_conversations import publish_conversation_event
+
+    while True:
+        try:
+            cleared = await _scan_and_clear_timeouts()
+            for cid in cleared:
+                publish_conversation_event(cid, {"type": "conversation_assignment_cleared"})
+        except Exception:
+            logger.exception("dispatch watcher iteration failed")
+        await asyncio.sleep(_WATCHER_INTERVAL_SECONDS)
+
+
+def start_watcher() -> asyncio.Task:
+    """在 FastAPI lifespan startup 中调一次。返回 Task 便于关闭时 cancel。"""
+    return asyncio.create_task(_watcher_loop(), name="dispatch_watcher")

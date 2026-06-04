@@ -34,6 +34,7 @@ from ai_engine.integrations.event_center_mock import router as mock_ec_router
 from ai_engine.persistence.business_db import init_business_dbs
 from ai_engine.persistence.db import init_db
 from ai_engine.persistence.maintenance import sweep_loop
+from ai_engine.services.dispatch import start_watcher
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,8 @@ async def _startup() -> None:
     global _sweep_task
     if settings.stale_sweep_interval_seconds > 0:
         _sweep_task = asyncio.create_task(sweep_loop())
+    # 后台派单超时回退 watcher（60s 超时清空 assigned_staff_id）
+    app.state.dispatch_task = start_watcher()
 
 
 @app.on_event("shutdown")
@@ -106,3 +109,10 @@ async def _shutdown() -> None:
     if _sweep_task:
         _sweep_task.cancel()
         _sweep_task = None
+    task = getattr(app.state, "dispatch_task", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
