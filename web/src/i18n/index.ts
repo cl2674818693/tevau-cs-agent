@@ -38,6 +38,11 @@ const resources = {
         feedbackThanks: "感謝您的回饋",
         suggestions: ["我的卡為什麼被鎖了？", "如何串接 Open API？", "查一下我最近的訂單"],
         emptyTitle: "您好，我是 Tevau 助理",
+        emptyHint: {
+          c: "帳戶、卡片、交易紀錄，或使用中遇到的問題，都可以直接問我。",
+          b: "可以協助您解答 Open API 接入、卡片業務、對接聯調等問題。",
+          g: "未登入也能解答 API、APP 使用等通用問題；查詢帳戶、卡片或交易紀錄需先登入。",
+        },
         guestBarText: "查詢帳戶、卡片或交易需登入：APP 使用者請在 APP 內登入；合作夥伴可",
         guestBarLink: "主帳戶登入",
         toolChip: {
@@ -120,6 +125,11 @@ const resources = {
           "Show my recent orders",
         ],
         emptyTitle: "Hi, I'm the Tevau assistant",
+        emptyHint: {
+          c: "Ask me anything about your account, cards, transactions, or any issue you're facing.",
+          b: "I can help with Open API integration, card operations, and troubleshooting.",
+          g: "Even without signing in, I can answer general API and app questions; for account, card, or transaction queries, please sign in first.",
+        },
         guestBarText:
           "Sign in to view accounts, cards or transactions: app users please sign in inside the app; partners can",
         guestBarLink: "sign in with main account",
@@ -181,8 +191,10 @@ type BuLoginEntries = {
   submit: string;
   notFound: string;
 };
+type EmptyHints = { c: string; b: string; g: string };
 type LangExtras = {
   emptyTitle?: string;
+  emptyHint?: EmptyHints;
   handoff?: string;
   thinking?: string;
   send?: string;
@@ -192,6 +204,11 @@ const _criticalKeys = (vals: LangExtras) => ({
   translation: {
     chat: {
       emptyTitle: vals.emptyTitle ?? "Hi, I'm the Tevau assistant",
+      emptyHint: vals.emptyHint ?? {
+        c: "Ask me anything about your account, cards, transactions, or any issue you're facing.",
+        b: "I can help with Open API integration, card operations, and troubleshooting.",
+        g: "Even without signing in, I can answer general API and app questions; for account, card, or transaction queries, please sign in first.",
+      },
       handoff: vals.handoff ?? "Not resolved? Talk to a human →",
       thinking: vals.thinking ?? "Thinking…",
       send: vals.send ?? "Send",
@@ -203,6 +220,11 @@ const _criticalKeys = (vals: LangExtras) => ({
 const extra: Record<string, LangExtras> = {
   ar: {
     emptyTitle: "مرحباً، أنا مساعد Tevau",
+    emptyHint: {
+      c: "أسألني عن حسابك، بطاقاتك، سجل المعاملات، أو أي مشكلة تواجهها.",
+      b: "يمكنني مساعدتك في تكامل Open API، أعمال البطاقات، استكشاف الأخطاء.",
+      g: "حتى بدون تسجيل الدخول يمكنني الإجابة على أسئلة API واستخدام التطبيق؛ لاستعلام الحساب أو البطاقات أو المعاملات يلزم تسجيل الدخول أولاً.",
+    },
     handoff: "لم يُحل؟ تواصل مع موظف →",
     thinking: "جاري التفكير...",
     send: "إرسال",
@@ -218,6 +240,11 @@ const extra: Record<string, LangExtras> = {
   },
   es: {
     emptyTitle: "Hola, soy el asistente de Tevau",
+    emptyHint: {
+      c: "Pregúntame sobre tu cuenta, tarjetas, transacciones o cualquier problema que tengas.",
+      b: "Puedo ayudarte con la integración de Open API, operaciones con tarjetas y resolución de problemas.",
+      g: "Sin iniciar sesión puedo responder preguntas generales de API y de la app; para consultas de cuenta, tarjetas o transacciones, primero inicia sesión.",
+    },
     handoff: "¿No resuelto? Habla con un agente →",
     thinking: "Pensando…",
     send: "Enviar",
@@ -233,6 +260,11 @@ const extra: Record<string, LangExtras> = {
   },
   id: {
     emptyTitle: "Halo, saya asisten Tevau",
+    emptyHint: {
+      c: "Tanyakan tentang akun, kartu, transaksi, atau masalah apa pun yang Anda hadapi.",
+      b: "Saya bisa bantu integrasi Open API, operasi kartu, dan pemecahan masalah.",
+      g: "Tanpa login pun, saya bisa menjawab pertanyaan umum tentang API dan aplikasi; untuk akun, kartu, atau transaksi, harap login dulu.",
+    },
     handoff: "Belum selesai? Bicara dengan agen →",
     thinking: "Berpikir…",
     send: "Kirim",
@@ -248,6 +280,11 @@ const extra: Record<string, LangExtras> = {
   },
   ja: {
     emptyTitle: "こんにちは、Tevau アシスタントです",
+    emptyHint: {
+      c: "アカウント、カード、取引履歴、その他お困りのことを何でもお気軽にお尋ねください。",
+      b: "Open API の接続、カード業務、トラブルシューティングなどをサポートします。",
+      g: "ログインしていなくても API やアプリの一般的な質問にはお答えできます。アカウント・カード・取引のご照会は事前にログインが必要です。",
+    },
     handoff: "解決しない場合は担当者へ →",
     thinking: "考え中…",
     send: "送信",
@@ -263,6 +300,11 @@ const extra: Record<string, LangExtras> = {
   },
   ko: {
     emptyTitle: "안녕하세요, Tevau 어시스턴트입니다",
+    emptyHint: {
+      c: "계정, 카드, 거래 내역 또는 사용 중 문제 등 무엇이든 물어보세요.",
+      b: "Open API 연동, 카드 운영, 문제 해결 등을 도와드릴 수 있습니다.",
+      g: "로그인하지 않아도 API와 앱의 일반적인 질문에 답할 수 있습니다. 계정, 카드, 거래 조회는 먼저 로그인이 필요합니다.",
+    },
     handoff: "해결되지 않았나요? 상담원과 대화하기 →",
     thinking: "생각 중…",
     send: "보내기",
@@ -278,6 +320,11 @@ const extra: Record<string, LangExtras> = {
   },
   pt: {
     emptyTitle: "Olá, sou o assistente do Tevau",
+    emptyHint: {
+      c: "Pergunte sobre sua conta, cartões, transações ou qualquer problema que enfrente.",
+      b: "Posso ajudar com integração do Open API, operações de cartões e resolução de problemas.",
+      g: "Mesmo sem login, posso responder perguntas gerais de API e do app; para consultas de conta, cartão ou transações, faça login primeiro.",
+    },
     handoff: "Não resolvido? Fale com um atendente →",
     thinking: "Pensando…",
     send: "Enviar",
@@ -293,6 +340,11 @@ const extra: Record<string, LangExtras> = {
   },
   ru: {
     emptyTitle: "Привет, я ассистент Tevau",
+    emptyHint: {
+      c: "Спрашивайте о вашем аккаунте, картах, транзакциях или любых проблемах.",
+      b: "Помогу с интеграцией Open API, операциями с картами и устранением неполадок.",
+      g: "Даже без входа могу ответить на общие вопросы об API и приложении; для запросов по аккаунту, картам или транзакциям сначала войдите.",
+    },
     handoff: "Не решено? Связаться с оператором →",
     thinking: "Думаю…",
     send: "Отправить",
@@ -308,6 +360,11 @@ const extra: Record<string, LangExtras> = {
   },
   th: {
     emptyTitle: "สวัสดี ฉันคือผู้ช่วย Tevau",
+    emptyHint: {
+      c: "ถามได้เลยเกี่ยวกับบัญชี บัตร รายการธุรกรรม หรือปัญหาการใช้งานต่างๆ",
+      b: "ช่วยเหลือเรื่องการเชื่อมต่อ Open API การดำเนินงานบัตร และการแก้ไขปัญหาได้",
+      g: "แม้ไม่ได้เข้าสู่ระบบ ก็ตอบคำถามทั่วไปเกี่ยวกับ API และแอปได้ การสอบถามบัญชี บัตร หรือธุรกรรม กรุณาเข้าสู่ระบบก่อน",
+    },
     handoff: "ยังไม่ได้รับการแก้ไข? คุยกับเจ้าหน้าที่ →",
     thinking: "กำลังคิด...",
     send: "ส่ง",
@@ -323,6 +380,11 @@ const extra: Record<string, LangExtras> = {
   },
   tr: {
     emptyTitle: "Merhaba, ben Tevau asistanıyım",
+    emptyHint: {
+      c: "Hesabınız, kartlarınız, işlemleriniz veya yaşadığınız herhangi bir sorun hakkında sorabilirsiniz.",
+      b: "Open API entegrasyonu, kart işlemleri ve sorun giderme konularında yardımcı olabilirim.",
+      g: "Giriş yapmasanız da API ve uygulamayla ilgili genel sorulara yanıt verebilirim; hesap, kart veya işlem sorguları için önce giriş yapmanız gerekir.",
+    },
     handoff: "Çözülmedi mi? Bir temsilciyle konuş →",
     thinking: "Düşünüyorum…",
     send: "Gönder",
@@ -338,6 +400,11 @@ const extra: Record<string, LangExtras> = {
   },
   vi: {
     emptyTitle: "Xin chào, tôi là trợ lý Tevau",
+    emptyHint: {
+      c: "Hãy hỏi tôi về tài khoản, thẻ, giao dịch hoặc bất kỳ vấn đề nào bạn gặp phải.",
+      b: "Tôi có thể hỗ trợ tích hợp Open API, các thao tác với thẻ và xử lý sự cố.",
+      g: "Ngay cả khi chưa đăng nhập, tôi có thể trả lời các câu hỏi chung về API và ứng dụng; để tra cứu tài khoản, thẻ hoặc giao dịch, vui lòng đăng nhập trước.",
+    },
     handoff: "Chưa được giải quyết? Trò chuyện với nhân viên →",
     thinking: "Đang suy nghĩ…",
     send: "Gửi",

@@ -33,6 +33,16 @@ describe("i18n", () => {
     }
   });
 
+  it("12 语言 chat.emptyHint.c/b/g 全有翻译（避免切语言后留英文兜底）", () => {
+    const langs = ["ar", "en", "es", "id", "ja", "ko", "pt", "ru", "th", "tr", "vi", "zh"];
+    for (const lng of langs) {
+      const t = i18n.getFixedT(lng);
+      for (const ut of ["c", "b", "g"]) {
+        expect(t(`chat.emptyHint.${ut}`), `${lng}/${ut} missing`).toBeTruthy();
+      }
+    }
+  });
+
   it("中文：插值变量回填", () => {
     expect(i18n.getFixedT("zh")("chat.quota", { pct: 90 })).toContain("90");
   });

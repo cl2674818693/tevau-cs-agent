@@ -78,7 +78,7 @@ export function GuestLoginBar() {
   );
 }
 
-export function EmptyState({ greeting }: { greeting: string }) {
+export function EmptyState({ userType }: { userType: "c" | "b" | "g" }) {
   const { t } = useTranslation();
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-3">
@@ -86,7 +86,9 @@ export function EmptyState({ greeting }: { greeting: string }) {
         <span className="text-brand font-bold text-h2">T</span>
       </div>
       <div className="text-sh1 font-bold text-ink-primary">{t("chat.emptyTitle")}</div>
-      <p className="text-body2 text-ink-secondary leading-relaxed max-w-[320px]">{greeting}</p>
+      <p className="text-body2 text-ink-secondary leading-relaxed max-w-[320px]">
+        {t(`chat.emptyHint.${userType}`)}
+      </p>
     </div>
   );
 }

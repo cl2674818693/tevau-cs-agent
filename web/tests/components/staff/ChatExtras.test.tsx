@@ -54,10 +54,18 @@ describe("ChatHeader", () => {
 });
 
 describe("EmptyState", () => {
-  it("显示标题 + greeting", () => {
-    render(<EmptyState greeting="欢迎语" />);
+  it("C 端：标题 + emptyHint.c", () => {
+    render(<EmptyState userType="c" />);
     expect(screen.getByText(/Tevau 助理/)).toBeInTheDocument();
-    expect(screen.getByText("欢迎语")).toBeInTheDocument();
+    expect(screen.getByText(/帳戶、卡片、交易紀錄/)).toBeInTheDocument();
+  });
+  it("B 端：标题 + emptyHint.b", () => {
+    render(<EmptyState userType="b" />);
+    expect(screen.getByText(/Open API 接入/)).toBeInTheDocument();
+  });
+  it("Guest：标题 + emptyHint.g", () => {
+    render(<EmptyState userType="g" />);
+    expect(screen.getByText(/未登入也能解答/)).toBeInTheDocument();
   });
 });
 

@@ -8,7 +8,9 @@ vi.mock("@/hooks/useChat", () => ({
   useChat: () => useChatMock(),
 }));
 
-const useTicketStreamMock = vi.fn(() => []);
+const useTicketStreamMock = vi.fn<
+  () => Array<{ event: string; external_id?: string; comment?: string; actor?: string }>
+>(() => []);
 vi.mock("@/hooks/useTicketStream", () => ({
   useTicketStream: () => useTicketStreamMock(),
 }));
@@ -45,12 +47,20 @@ vi.mock("@/api/userAgentRating", () => ({
 
 import { ChatWindow } from "@/components/ChatWindow";
 
-const INIT = {
+const INIT: {
+  conversation_id: number;
+  user_type: "c" | "b" | "g";
+  display_name: string;
+  greeting: string;
+  mode: "ai";
+  history_url: null;
+  limits: { daily_token_used_pct: number; max_turns: number };
+} = {
   conversation_id: 1,
-  user_type: "c" as const,
+  user_type: "c",
   display_name: "U",
   greeting: "你好",
-  mode: "ai" as const,
+  mode: "ai",
   history_url: null,
   limits: { daily_token_used_pct: 0, max_turns: 30 },
 };
@@ -60,7 +70,8 @@ function baseChat(over: Partial<ReturnType<typeof base>> = {}) {
 }
 function base() {
   return {
-    messages: [{ role: "system", content: "你好" }] as Array<{ role: string; content: string }>,
+    // greeting 不再塞 messages；EmptyState 由 messages.length === 0 触发
+    messages: [] as Array<{ role: string; content: string }>,
     sending: false,
     mode: "ai",
     staffName: undefined as string | undefined,
@@ -100,11 +111,13 @@ describe("ChatWindow", () => {
     await waitFor(() => expect(ch.retryInit).toHaveBeenCalled());
   });
 
-  it("ready + 只有 greeting + mode=ai → EmptyState（不渲染 MessageList）", () => {
+  it("ready + 空 messages + mode=ai → EmptyState（不渲染 MessageList）", () => {
     useChatMock.mockReturnValue(baseChat());
     render(<ChatWindow />);
     // emptyTitle 出现
     expect(screen.getByText(/Tevau 助理/)).toBeInTheDocument();
+    // C 端 emptyHint
+    expect(screen.getByText(/帳戶、卡片、交易紀錄/)).toBeInTheDocument();
     expect(screen.queryByRole("log")).toBeNull();
   });
 
@@ -112,7 +125,6 @@ describe("ChatWindow", () => {
     useChatMock.mockReturnValue(
       baseChat({
         messages: [
-          { role: "system", content: "你好" },
           { role: "user", content: "我有问题" },
           { role: "assistant", content: "请讲" },
         ],
@@ -170,6 +182,21 @@ describe("ChatWindow", () => {
       expect(screen.getByPlaceholderText(/繼續補充|補充資訊/)).toBeInTheDocument();
       unmount();
     }
+  });
+
+  it("切语言后 inputPlaceholder/EmptyState 跟随更新（不再卡住英文兜底）", async () => {
+    const { default: i18n } = await import("@/i18n");
+    useChatMock.mockReturnValue(baseChat());
+    render(<ChatWindow />);
+    // 默认 zh：placeholder = 描述您的問題…；emptyHint = 帳戶/卡片
+    expect(screen.getByPlaceholderText(/描述您的問題/)).toBeInTheDocument();
+    expect(screen.getByText(/帳戶、卡片、交易紀錄/)).toBeInTheDocument();
+    // 切到 en
+    await i18n.changeLanguage("en");
+    expect(screen.getByPlaceholderText(/Describe your issue/)).toBeInTheDocument();
+    expect(screen.getByText(/Ask me anything about your account/)).toBeInTheDocument();
+    // 复位
+    await i18n.changeLanguage("zh");
   });
 
   it("ticket 事件：banner 渲染 + resolved ticket 显示确认卡片", () => {

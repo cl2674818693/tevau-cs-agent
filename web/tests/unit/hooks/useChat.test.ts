@@ -174,10 +174,10 @@ describe("useChat", () => {
     vi.useRealTimers();
   });
 
-  it("init 成功后 status=ready + messages 含 greeting", async () => {
+  it("init 成功后 status=ready + messages 不含 greeting（greeting 由 EmptyState 走前端 i18n）", async () => {
     const { result } = renderHook(() => useChat());
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    expect(result.current.messages[0]).toMatchObject({ role: "system", content: "你好" });
+    expect(result.current.messages).toEqual([]);
     expect(result.current.init?.conversation_id).toBe(100);
   });
 
@@ -197,8 +197,9 @@ describe("useChat", () => {
     fetchHistory.mockResolvedValue([{ role: "user", content: "上次说的" }]);
     const { result } = renderHook(() => useChat());
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    expect(result.current.messages).toHaveLength(2);
-    expect(result.current.messages[1]).toMatchObject({ role: "user", content: "上次说的" });
+    // greeting 不再塞 messages：续接只回灌 history 本身
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0]).toMatchObject({ role: "user", content: "上次说的" });
   });
 
   it("新会话（resume != init.conversation_id）时不回灌 history", async () => {
@@ -206,7 +207,8 @@ describe("useChat", () => {
     const { result } = renderHook(() => useChat());
     await waitFor(() => expect(result.current.status).toBe("ready"));
     expect(fetchHistory).not.toHaveBeenCalled();
-    expect(result.current.messages).toHaveLength(1);
+    // greeting 不再塞 messages：新会话起始为空
+    expect(result.current.messages).toHaveLength(0);
   });
 
   describe("send", () => {

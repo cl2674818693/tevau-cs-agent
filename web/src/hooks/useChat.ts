@@ -113,10 +113,11 @@ function useChatInit(
       setLimitPct(info.limits?.daily_token_used_pct ?? 0);
       setMode(info.mode ?? "ai");
       setStaffName(info.staff_name ?? undefined); // 续接人工会话恢复客服署名
-      // 续接成功（后端返回的是同一个会话）才回灌历史；新建则只有 greeting。
+      // 续接成功（后端返回的是同一个会话）才回灌历史；首屏欢迎语由前端 EmptyState 走 i18n 渲染，
+      // 不再把 greeting 塞进 messages（避免：切语言后 greeting 留在英文 + 用户发首条后 system 胶囊残留）。
       const resumed = resume != null && info.conversation_id === resume;
       const history = resumed && info.history_url ? await fetchHistory(info.history_url) : [];
-      setMessages(() => [{ role: "system", content: info.greeting }, ...history]);
+      setMessages(() => history);
       persistConversation(sessionId, info.conversation_id);
       setStatus("ready");
       // 上报客户端环境给 admin 详情页"会话信息"卡用（platform/版本/UA）。

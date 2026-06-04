@@ -1,8 +1,9 @@
+import { useTranslation } from "react-i18next";
+
 import { attachmentUrl, uploadAttachment } from "../api/attachments";
 import { sendFeedback, sendTicketUserEvent } from "../api/chat";
 import { userType } from "../api/identity";
 import type { ConversationInit } from "../types";
-import i18n from "../i18n";
 import { useChat } from "../hooks/useChat";
 import { useTicketStream } from "../hooks/useTicketStream";
 import { useKeyboardInset } from "../hooks/useVisualViewport";
@@ -24,36 +25,40 @@ import type { Message } from "../types";
 
 type TicketStatus = "pending" | "assigned" | "in_progress" | "resolved" | "closed";
 
-function inputPlaceholder(rateLimited: boolean, mode: string): string {
-  if (rateLimited) return i18n.t("chat.inputRateLimited");
+type TFn = (key: string) => string;
+
+function inputPlaceholder(t: TFn, rateLimited: boolean, mode: string): string {
+  if (rateLimited) return t("chat.inputRateLimited");
   // human_pending：用户已转人工等候，输入框语义化成"留言区"，让用户知道写下去是补充给客服、
   // 不要期待 AI 立即响应（spec §13 这种 mode 下后端不调 AI）。human_takeover 同理。
-  if (mode === "human_takeover" || mode === "human_pending") return i18n.t("chat.inputHumanMode");
-  return i18n.t("chat.inputPlaceholder");
+  if (mode === "human_takeover" || mode === "human_pending") return t("chat.inputHumanMode");
+  return t("chat.inputPlaceholder");
 }
 
 /** AI 模式、对话已开始、未在生成时才给转人工入口（纯前端呈现规则，无后端建议信号）。 */
 function shouldShowHandoff(mode: string, msgCount: number, sending: boolean): boolean {
-  return mode === "ai" && msgCount > 1 && !sending;
+  // greeting 不再塞 messages，msgCount > 0 = 用户至少发过一条
+  return mode === "ai" && msgCount > 0 && !sending;
 }
 
-/** 空状态（仅欢迎语 + AI 模式）→ 居中欢迎；否则消息流。 */
+/** 空状态（AI 模式且未开始聊天）→ 居中欢迎；否则消息流。 */
 function ChatBody({
   messages,
   mode,
   userType,
+  initUserType,
   onFeedback,
   urlFor,
 }: {
   messages: Message[];
   mode: string;
   userType: "c" | "b";
+  initUserType: "c" | "b" | "g";
   onFeedback?: (i: number, rating: "up" | "down") => void;
   urlFor?: (attachmentId: number) => string;
 }) {
-  if (messages.length <= 1 && mode === "ai") {
-    const greeting = messages[0]?.role === "system" ? messages[0].content : "";
-    return <EmptyState greeting={greeting} />;
+  if (messages.length === 0 && mode === "ai") {
+    return <EmptyState userType={initUserType} />;
   }
   return (
     <MessageList
@@ -87,6 +92,7 @@ function TicketCardSlot({
   ticket?: { external_id?: string; event: string; comment?: string };
   mode: string;
 }) {
+  const { t } = useTranslation();
   if (!ticket?.external_id || ticket.event === "closed" || mode !== "ai") return null;
   const send = (resolved: boolean) =>
     void sendTicketUserEvent(
@@ -97,7 +103,7 @@ function TicketCardSlot({
     <div className="px-page pb-2">
       <TicketCard
         externalId={ticket.external_id}
-        summary={ticket.comment ?? i18n.t("ticket.cardSummaryFallback")}
+        summary={ticket.comment ?? t("ticket.cardSummaryFallback")}
         status={ticket.event as TicketStatus}
         onConfirm={() => send(true)}
         onReject={() => send(false)}
@@ -113,6 +119,7 @@ function feedbackHandler(init: ConversationInit | null) {
 }
 
 export function ChatWindow() {
+  const { t } = useTranslation();
   const chat = useChat();
   const { messages, sending, mode, send, init } = chat;
   const ticketEvents = useTicketStream(init?.conversation_id ?? null);
@@ -149,6 +156,7 @@ export function ChatWindow() {
         messages={messages}
         mode={mode}
         userType={isC ? "c" : "b"}
+        initUserType={init?.user_type ?? (isC ? "c" : "b")}
         onFeedback={feedbackHandler(init)}
         urlFor={init ? (id) => attachmentUrl(init.conversation_id, id) : undefined}
       />
@@ -162,7 +170,7 @@ export function ChatWindow() {
       <InputBox
         onSend={send}
         disabled={sending || chat.rateLimited}
-        placeholder={inputPlaceholder(chat.rateLimited, mode)}
+        placeholder={inputPlaceholder(t, chat.rateLimited, mode)}
         upload={init ? (f) => uploadAttachment(init.conversation_id, f) : undefined}
       />
     </div>
