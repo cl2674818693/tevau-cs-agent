@@ -253,33 +253,27 @@ async def run(
 
 
 async def _ensure_human_pending(conversation_id: int) -> dict[str, Any]:
-    """当前 mode=ai 时切到 human_pending 并广播 mode_change。失败不阻断工单创建。
-    返回 {off_hours: bool, next_shift_start: str | None} 让上层 AI 据此措辞。
-    import 内置在函数体内避免与 staff_conversations._publish 形成循环依赖。"""
-    info: dict[str, Any] = {"off_hours": False, "next_shift_start": None}
+    """当前 mode=ai 时切到 human_pending 并广播 mode_change，然后触发派单。
+    返回 {no_one_online: bool} 让上层 AI 据此措辞（True 则提示"客服当前不在线"）。"""
+    info: dict[str, Any] = {"no_one_online": False}
     try:
         from ai_engine.api.staff_conversations import publish_conversation_event
         from ai_engine.persistence import conversations as conv_dao
-        from ai_engine.persistence import shifts_query
         from ai_engine.persistence.staff_metrics import refresh_human_pending
-
-        # 排班判断独立于 mode 切换：即使会话已是 human_pending（不重切），
-        # 仍要把当前班内/班外信息回灌给 AI，措辞才对得上。
-        on_shift = await shifts_query.any_on_shift()
-        info["off_hours"] = not on_shift
-        if not on_shift:
-            info["next_shift_start"] = await shifts_query.next_shift_start()
+        from ai_engine.services.dispatch import dispatch_to_human_pending
 
         mode, _ = await conv_dao.get_mode(conversation_id)
-        if mode != "ai":
-            return info
-        await conv_dao.set_mode(conversation_id, "human_pending")
-        await refresh_human_pending()
-        publish_conversation_event(
-            conversation_id, {"type": "mode_change", "to": "human_pending"}
-        )
+        if mode == "ai":
+            await conv_dao.set_mode(conversation_id, "human_pending")
+            await refresh_human_pending()
+            publish_conversation_event(
+                conversation_id, {"type": "mode_change", "to": "human_pending"}
+            )
+
+        result = await dispatch_to_human_pending(conversation_id)
+        info["no_one_online"] = bool(result.get("no_one_online"))
     except Exception:
-        # 切 mode 失败不阻断工单创建——工单已经入库，事项中心已推送
+        # 派单失败不阻断工单创建——工单已经入库，事项中心已推送
         pass
     return info
 
