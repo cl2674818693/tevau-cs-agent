@@ -1,6 +1,6 @@
 """Persistence: client_info.py — 会话客户端信息 upsert（H5 上报 → admin 详情卡读）。
 
-覆盖：upsert_client_info（INSERT 走 DELETE + INSERT, 覆盖语义）, get_client_info,
+覆盖：upsert_client_info（原子 ON CONFLICT 覆盖语义、并发不撞主键）, get_client_info,
 NULL 字段透传。
 """
 
@@ -68,6 +68,19 @@ class TestUpsert:
         r2 = await client_info.get_client_info(c2)
         assert r1 is not None and r1["platform"] == "ios"
         assert r2 is not None and r2["platform"] == "android"
+
+    async def test_concurrent_upsert_no_pk_conflict(self, db_ready, conv_id) -> None:
+        """React StrictMode 双 mount / 重连重发会让 reportClientInfo 几乎同时进两次。
+        历史实现走 DELETE+INSERT 非原子，第二条 INSERT 会撞主键 500。
+        ON CONFLICT 原子 upsert 必须吃下并发：两个 future 都成功返回，行只剩一条。"""
+        await asyncio.gather(
+            client_info.upsert_client_info(conv_id, "ios", "1.0.0", "ua-A"),
+            client_info.upsert_client_info(conv_id, "ios", "1.0.0", "ua-B"),
+        )
+        row = await client_info.get_client_info(conv_id)
+        assert row is not None
+        # 最终落到的 user_agent 是 A/B 之一即可（具体哪一条赢由调度决定，不断言）
+        assert row["user_agent"] in {"ua-A", "ua-B"}
 
 
 class TestGetClientInfo:

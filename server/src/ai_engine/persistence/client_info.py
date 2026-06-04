@@ -8,6 +8,19 @@ from typing import Any
 from ai_engine.persistence import db
 from ai_engine.persistence.schema import now_str
 
+# 单条原子 upsert：避免 DELETE+INSERT 在并发（React StrictMode 双 mount / 重连重发）下
+# 撞主键报 500。PG ≥ 9.5 / SQLite ≥ 3.24 都支持同一份 ON CONFLICT 语法，无需方言分发。
+_UPSERT_SQL = (
+    "INSERT INTO conversation_client_info"
+    "(conversation_id, platform, app_version, user_agent, updated_at) "
+    "VALUES (:id, :p, :v, :ua, :at) "
+    "ON CONFLICT (conversation_id) DO UPDATE SET "
+    "platform = excluded.platform, "
+    "app_version = excluded.app_version, "
+    "user_agent = excluded.user_agent, "
+    "updated_at = excluded.updated_at"
+)
+
 
 async def upsert_client_info(
     conversation_id: int,
@@ -15,16 +28,8 @@ async def upsert_client_info(
     app_version: str | None,
     user_agent: str | None,
 ) -> None:
-    """写入或覆盖一条客户端信息。SQLite/Postgres 通用：先 DELETE 再 INSERT，
-    避免方言差异（PG 用 ON CONFLICT，SQLite 用 INSERT OR REPLACE）。"""
     await db.execute(
-        "DELETE FROM conversation_client_info WHERE conversation_id=:id",
-        {"id": conversation_id},
-    )
-    await db.execute(
-        "INSERT INTO conversation_client_info"
-        "(conversation_id, platform, app_version, user_agent, updated_at) "
-        "VALUES (:id, :p, :v, :ua, :at)",
+        _UPSERT_SQL,
         {
             "id": conversation_id,
             "p": platform,
