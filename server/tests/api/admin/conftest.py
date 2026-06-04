@@ -59,7 +59,6 @@ def admin_app():
     """默认挂全部 admin + insights + metrics 路由；测试用例直接复用即可。"""
     from ai_engine.api.admin_dashboard import router as admin_dashboard_router
     from ai_engine.api.admin_rbac import router as admin_rbac_router
-    from ai_engine.api.admin_shifts import router as admin_shifts_router
     from ai_engine.api.admin_sla import router as admin_sla_router
     from ai_engine.api.admin_staff import router as admin_staff_router
     from ai_engine.api.insights import router as insights_router
@@ -69,7 +68,6 @@ def admin_app():
         [
             admin_dashboard_router,
             admin_rbac_router,
-            admin_shifts_router,
             admin_sla_router,
             admin_staff_router,
             insights_router,

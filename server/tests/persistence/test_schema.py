@@ -58,7 +58,6 @@ class TestMetadataTables:
             "sla_policies",
             "agent_ratings",
             "staff_presence",
-            "staff_shifts",
             "role_permissions",
             "conversation_client_info",
             "pending_timeout_pushes",

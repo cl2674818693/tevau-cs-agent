@@ -1,6 +1,6 @@
-"""Persistence: staff_presence.py — 心跳 upsert + 在线列表 + on_shift 过滤。
+"""Persistence: staff_presence.py — 心跳 upsert + 在线列表。
 
-覆盖：heartbeat(upsert) / set_offline / list_all / list_active(window/on_shift_only)。
+覆盖：heartbeat(upsert) / set_offline / list_all / list_active(window)。
 SQLite 的 ON CONFLICT 与 Postgres 通用。
 """
 
@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from ai_engine.persistence import admin_shifts, staff_presence
+from ai_engine.persistence import staff_presence
 from ai_engine.persistence.db import execute, init_db
 
 
@@ -83,14 +83,3 @@ class TestListActive:
         ids = {r["staff_id"] for r in rows}
         assert "fresh" in ids and "old" not in ids
 
-    async def test_on_shift_only(self, db_ready) -> None:
-        """on_shift_only=True 时仅在班客服返回。"""
-        await staff_presence.heartbeat("on_shift", "online")
-        await staff_presence.heartbeat("off_shift", "online")
-        # 给 on_shift 加一段当前覆盖的班次
-        start = (datetime.now(UTC) - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
-        end = (datetime.now(UTC) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
-        await admin_shifts.create_shift("on_shift", start, end)
-        rows = await staff_presence.list_active(on_shift_only=True)
-        ids = {r["staff_id"] for r in rows}
-        assert "on_shift" in ids and "off_shift" not in ids

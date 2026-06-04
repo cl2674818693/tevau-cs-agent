@@ -212,18 +212,6 @@ staff_presence = Table(
     Column("last_seen_at", String(32), nullable=False),
 )
 
-# 排班（M3a §5.1.c）
-staff_shifts = Table(
-    "staff_shifts",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("staff_id", String(64), nullable=False),
-    Column("start_at", String(32), nullable=False),
-    Column("end_at", String(32), nullable=False),
-    Column("created_at", String(32), nullable=False),
-)
-Index("idx_shifts_staff_time", staff_shifts.c.staff_id, staff_shifts.c.start_at)
-
 
 # 动态 RBAC（M3c §5.6.b 阶段二）
 role_permissions = Table(

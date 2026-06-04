@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ai_engine.api.admin_dashboard import router as admin_dashboard_router
 from ai_engine.api.admin_rbac import router as admin_rbac_router
-from ai_engine.api.admin_shifts import router as admin_shifts_router
 from ai_engine.api.admin_sla import router as admin_sla_router
 from ai_engine.api.admin_staff import router as admin_staff_router
 from ai_engine.api.agent_ratings import router as agent_ratings_router
@@ -64,7 +63,6 @@ app.include_router(staff_logs_router)
 app.include_router(staff_subject_info_router)
 app.include_router(admin_dashboard_router)
 app.include_router(admin_rbac_router)
-app.include_router(admin_shifts_router)
 app.include_router(admin_sla_router)
 app.include_router(admin_staff_router)
 app.include_router(agent_ratings_router)
