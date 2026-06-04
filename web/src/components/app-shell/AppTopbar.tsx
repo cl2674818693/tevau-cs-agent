@@ -2,6 +2,8 @@ import { SearchOutlined } from "@ant-design/icons";
 import { Button, Flex } from "antd";
 import { useEffect, useState } from "react";
 
+import { PresenceToggle } from "@/components/PresenceToggle";
+import { useStaffSession } from "@/hooks/useStaffSession";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { CommandPalette } from "./CommandPalette";
 import { MobileSidebar } from "./MobileSidebar";
@@ -12,6 +14,8 @@ export function AppTopbar() {
   useEffect(() => {
     if (!navigator.userAgent.includes("Mac")) setHint("Ctrl+K");
   }, []);
+  const { token, role } = useStaffSession();
+  const canDispatch = !!token && ["agent", "senior", "supervisor", "admin"].includes(role ?? "");
   return (
     <Flex
       align="center"
@@ -43,6 +47,7 @@ export function AppTopbar() {
           {hint}
         </kbd>
       </Button>
+      {canDispatch && token && <PresenceToggle token={token} />}
       <UserMenu />
       <CommandPalette />
     </Flex>
