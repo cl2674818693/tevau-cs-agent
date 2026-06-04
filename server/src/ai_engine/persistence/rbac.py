@@ -13,14 +13,15 @@ PERMISSION_KEYS: list[str] = [
     "admin.sla",
     "admin.rbac",
     "admin.presence",
-    "admin.shifts",
+    "chat.dispatch",
 ]
 
 _DEFAULT_MATRIX: dict[str, set[str]] = {
-    "agent": set(),
-    "senior": set(),
+    "agent": {"chat.dispatch"},
+    "senior": {"chat.dispatch"},
     "supervisor": {
-        "admin.dashboard", "admin.sla", "admin.presence", "admin.shifts",
+        "admin.dashboard", "admin.sla", "admin.presence",
+        "chat.dispatch",
     },
     "engineer": set(),
     "manager": {"admin.dashboard"},
