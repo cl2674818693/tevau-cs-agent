@@ -24,8 +24,11 @@ class TestDefaults:
         for perm in rbac.PERMISSION_KEYS:
             assert await rbac.is_permitted("admin", perm) is True
 
-    async def test_agent_has_no_perms(self, db_ready) -> None:
-        for perm in rbac.PERMISSION_KEYS:
+    async def test_agent_has_chat_dispatch_only(self, db_ready) -> None:
+        # agent 默认只有 chat.dispatch，无任何 admin.* 权限
+        assert await rbac.is_permitted("agent", "chat.dispatch") is True
+        admin_perms = [k for k in rbac.PERMISSION_KEYS if k.startswith("admin.")]
+        for perm in admin_perms:
             assert await rbac.is_permitted("agent", perm) is False
 
     async def test_supervisor_dashboard_allowed(self, db_ready) -> None:
@@ -79,7 +82,7 @@ class TestUpsertMany:
         assert n == 2
 
     async def test_cache_invalidated_after_upsert(self, db_ready) -> None:
-        # 先读一次走 default（agent 全关），缓存进入
+        # 先读一次走 default（agent admin.dashboard 默认关），缓存进入
         assert await rbac.is_permitted("agent", "admin.dashboard") is False
         # upsert 应让下次读取看到新值
         await rbac.upsert_many(
@@ -99,7 +102,9 @@ class TestListMatrix:
         m = await rbac.list_matrix()
         for perm in rbac.PERMISSION_KEYS:
             assert m["admin"][perm] is True
-        for perm in rbac.PERMISSION_KEYS:
+        # agent 默认：chat.dispatch=True，admin.* 全 False
+        assert m["agent"]["chat.dispatch"] is True
+        for perm in [k for k in rbac.PERMISSION_KEYS if k.startswith("admin.")]:
             assert m["agent"][perm] is False
 
     async def test_matrix_reflects_db_overrides(self, db_ready) -> None:

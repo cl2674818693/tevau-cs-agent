@@ -14,7 +14,6 @@ async def db_ready(temp_db_url):
 
 @pytest.mark.asyncio
 async def test_chat_dispatch_default_matrix(db_ready):
-    rbac.invalidate_cache()
     assert await rbac.is_permitted("agent", "chat.dispatch") is True
     assert await rbac.is_permitted("senior", "chat.dispatch") is True
     assert await rbac.is_permitted("supervisor", "chat.dispatch") is True
