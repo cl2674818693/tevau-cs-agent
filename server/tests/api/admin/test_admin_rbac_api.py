@@ -61,10 +61,13 @@ class TestRbacMatrixShape:
         admin_row = r.json()["matrix"]["admin"]
         assert all(admin_row.values())  # admin 默认全权
 
-    async def test_default_agent_has_no_perms(self, client, admin_headers) -> None:
+    async def test_default_agent_has_chat_dispatch_only(self, client, admin_headers) -> None:
         r = await client.get("/admin/api/v1/rbac/matrix", headers=admin_headers)
         agent_row = r.json()["matrix"]["agent"]
-        assert not any(agent_row.values())  # agent 默认零权
+        assert agent_row["chat.dispatch"] is True
+        for k, v in agent_row.items():
+            if k.startswith("admin."):
+                assert v is False, f"agent should not have {k}"
 
 
 @pytest.mark.usefixtures("init_self_db")
