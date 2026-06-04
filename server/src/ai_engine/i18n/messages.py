@@ -108,6 +108,22 @@ MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Bạn đã sử dụng 80% hạn mức AI hôm nay.",
         "zh": "您今日 AI 服务额度已用 80%。",
     },
+    "warning.handoff_message_recorded": {
+        # human_pending 状态下用户发的每条消息的 per-message ack：
+        # 让用户立刻看到"已记录"，避免消息石沉大海 → 怀疑卡住 → 重复狂发。
+        "ar": "تم تسجيل رسالتك في التذكرة، وسيراجعها الموظف فور اتصاله.",
+        "en": "Saved to your ticket — the agent will see this when they come online.",
+        "es": "Guardado en tu ticket: el agente lo verá cuando se conecte.",
+        "id": "Tersimpan ke tiket Anda — agen akan melihatnya saat online.",
+        "ja": "メッセージをチケットに記録しました。担当者がオンラインになり次第確認します。",
+        "ko": "티켓에 기록되었습니다. 상담원이 접속하면 확인합니다.",
+        "pt": "Salvo no seu ticket — o atendente verá assim que estiver online.",
+        "ru": "Сохранено в вашей заявке — оператор увидит сообщение, когда подключится.",
+        "th": "บันทึกลงในตั๋วของคุณแล้ว เจ้าหน้าที่จะดูเมื่อออนไลน์",
+        "tr": "Talebinize kaydedildi — temsilci çevrimiçi olduğunda görecek.",
+        "vi": "Đã lưu vào phiếu của bạn — nhân viên sẽ xem khi trực tuyến.",
+        "zh": "已记录到工单，客服上线后会一并查看。",
+    },
     "warning.draft_review": {
         "ar": "موظف خدمة العملاء يراجع الإجابة...",
         "en": "An agent is reviewing the reply…",

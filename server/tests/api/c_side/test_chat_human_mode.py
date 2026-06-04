@@ -82,6 +82,43 @@ class TestChatHumanTakeover:
         assert last["stop_reason"] == "handed_to_human"
         assert called["n"] == 0
 
+    async def test_human_pending_yields_per_message_ack_warning(
+        self, c_client: AsyncClient, conv_id: int
+    ) -> None:
+        """human_pending 下用户每发一条消息都拿到一帧 warning ack，
+        避免"发出去后无回应"体感导致用户反复重发（参考截图 conv=612 实例）。
+        human_takeover 不在此处覆盖（客服会回真实消息，无需冗余 ack）。"""
+        await conv_dao.set_mode(conv_id, "human_pending")
+        r = await c_client.get(
+            "/api/v1/chat",
+            params={
+                "conversation_id": conv_id,
+                "message": "客服在线时间是什么时候",
+                "ui_locale": "zh",
+            },
+        )
+        frames = await parse_sse(r)
+        # warning ack 必须出现，且在 message_stop 之前
+        warning_frames = [f for f in frames if f["event"] == "warning"]
+        assert len(warning_frames) == 1, frames
+        text = json.loads(warning_frames[0]["data"])["text"]
+        assert text == "已记录到工单，客服上线后会一并查看。"
+        # 顺序：warning 在 message_stop 之前
+        names = [f["event"] for f in frames]
+        assert names.index("warning") < names.index("message_stop")
+
+    async def test_human_takeover_does_not_yield_ack_warning(
+        self, c_client: AsyncClient, conv_id: int
+    ) -> None:
+        """human_takeover 下客服在线会回真实消息，per-message ack 是冗余噪音，不应出现。"""
+        await conv_dao.set_mode(conv_id, "human_takeover", assigned_staff_id="S001")
+        r = await c_client.get(
+            "/api/v1/chat",
+            params={"conversation_id": conv_id, "message": "客服在吗"},
+        )
+        frames = await parse_sse(r)
+        assert not any(f["event"] == "warning" for f in frames)
+
 
 class TestChatAiDraftMode:
     async def test_collects_draft_and_does_not_stream_to_user(

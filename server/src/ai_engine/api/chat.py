@@ -128,6 +128,33 @@ async def _early_block(
     return None
 
 
+async def _human_mode_turn(
+    conversation_id: int,
+    subject_id: str,
+    mode: str,
+    message: str,
+    attachment_ids: list[int],
+    ui_locale: str | None,
+) -> AsyncIterator[dict[str, str]]:
+    """spec §13：human_takeover / human_pending 时端点不调 AI，用户消息只入库 + 推客服侧。
+    human_pending 额外 yield 一帧 warning ack：客服未上线时若不给即时回执，
+    用户消息石沉大海会触发反复重发（见截图 conv=612 实例）。
+    human_takeover 客服在线会回真消息，再加 ack 反而是噪音。"""
+    mid = await conv_dao.append_message(conversation_id, role="user", content=message)
+    bound = (
+        await att_dao.bind_attachments(mid, conversation_id, subject_id, attachment_ids)
+        if attachment_ids
+        else []
+    )
+    publish_user_message(conversation_id, message, bound)
+    if mode == "human_pending":
+        yield se.sse_payload(
+            se.EVENT_WARNING,
+            {"text": _t("warning.handoff_message_recorded", ui_locale)},
+        )
+    yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "handed_to_human"})
+
+
 async def _stream_ai_turn(
     conversation_id: int,
     user_type: str,
@@ -170,7 +197,7 @@ async def _stream_ai_turn(
 
 
 @router.get("/api/v1/chat")
-async def chat(
+async def chat(  # noqa: C901 — 入口 dispatcher 本质，按 mode 分派到多条旁路（人工/草稿/AI）
     request: Request,
     conversation_id: int = Query(...),
     message: str = Query(...),
@@ -217,14 +244,10 @@ async def chat(
             # 这里再推一帧会让前端把这帧当成"新一次转人工"反复 push 系统提示，体感"任何消息都被转人工"。
             mode, _ = await conv_dao.get_mode(conversation_id)
             if mode in ("human_takeover", "human_pending"):
-                mid = await conv_dao.append_message(conversation_id, role="user", content=message)
-                bound = (
-                    await att_dao.bind_attachments(mid, conversation_id, subject_id, att_ids)
-                    if att_ids
-                    else []
-                )
-                publish_user_message(conversation_id, message, bound)
-                yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "handed_to_human"})
+                async for frame in _human_mode_turn(
+                    conversation_id, subject_id, mode, message, att_ids, ui_locale
+                ):
+                    yield frame
                 return
 
             # spec §8 成本治理入口硬闸：当日额度已用尽则不进 agent loop（省一次昂贵 LLM 调用）
