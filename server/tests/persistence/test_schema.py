@@ -57,7 +57,6 @@ class TestMetadataTables:
             "message_feedback",
             "sla_policies",
             "agent_ratings",
-            "staff_groups",
             "staff_presence",
             "staff_shifts",
             "role_permissions",
@@ -120,16 +119,6 @@ class TestIndexesInDB:
             )
             idx = {row[0] for row in res.fetchall()}
         assert "idx_msg_client" in idx
-
-    async def test_staff_groups_unique_name_index(self, temp_db_url: str) -> None:
-        await init_db()
-        async with get_conn() as conn:
-            res = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='staff_groups'")
-            )
-            idx = {row[0] for row in res.fetchall()}
-        assert "ux_staff_group_name" in idx
-
 
 class TestSchemaModuleExports:
     def test_metadata_exported(self) -> None:

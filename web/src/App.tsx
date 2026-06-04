@@ -9,7 +9,6 @@ import { ShiftsRoute } from "./routes/admin/ShiftsRoute";
 import { RbacRoute } from "./routes/admin/RbacRoute";
 import { SlaRoute } from "./routes/admin/SlaRoute";
 import { StaffAccountsRoute } from "./routes/admin/StaffAccountsRoute";
-import { StaffGroupsRoute } from "./routes/admin/StaffGroupsRoute";
 import { BuLoginRoute } from "./routes/BuLoginRoute";
 import { ChatRoute } from "./routes/ChatRoute";
 import { AuditsRoute } from "./routes/staff/AuditsRoute";
@@ -47,7 +46,6 @@ export default function App() {
             <Route path="/admin/sla" element={<SlaRoute />} />
             <Route path="/admin/dashboard" element={<DashboardRoute />} />
             <Route path="/admin/rbac" element={<RbacRoute />} />
-            <Route path="/admin/staff-groups" element={<StaffGroupsRoute />} />
             <Route path="/admin/presence" element={<PresenceRoute />} />
             <Route path="/admin/shifts" element={<ShiftsRoute />} />
             <Route path="/403" element={<ForbiddenRoute />} />

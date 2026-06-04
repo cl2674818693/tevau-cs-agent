@@ -29,7 +29,6 @@ import {
   STAFF_ROLES,
   type StaffRow,
 } from "../../api/adminStaff";
-import { listGroups, type StaffGroup } from "../../api/adminStaffGroups";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
 const { Title } = Typography;
@@ -42,18 +41,6 @@ const ROLE_LABEL: Record<string, string> = {
   manager: "经理",
   admin: "管理员",
 };
-
-function parseSkills(raw: string | null): string[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed))
-      return parsed.filter((s) => typeof s === "string");
-    return [];
-  } catch {
-    return [];
-  }
-}
 
 function formatDate(val: string) {
   try {
@@ -169,8 +156,6 @@ function CreateDrawer({
 type EditValues = {
   display_name: string;
   role: (typeof STAFF_ROLES)[number];
-  group_id: string; // "__none__" | stringified number
-  skills: string; // comma-separated
   active: boolean;
 };
 
@@ -178,14 +163,12 @@ function EditDrawer({
   open,
   onOpenChange,
   staff,
-  groups,
   token,
   onSuccess,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   staff: StaffRow | null;
-  groups: StaffGroup[];
   token: string;
   onSuccess: () => void;
 }) {
@@ -197,8 +180,6 @@ function EditDrawer({
       form.setFieldsValue({
         display_name: staff.display_name,
         role: staff.role as EditValues["role"],
-        group_id: staff.group_id != null ? String(staff.group_id) : "__none__",
-        skills: parseSkills(staff.skills).join(", "),
         active: staff.active === 1,
       });
     }
@@ -207,18 +188,9 @@ function EditDrawer({
   async function onSubmit(values: EditValues) {
     if (!staff) return;
     try {
-      const skillsArr = values.skills
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const groupId =
-        values.group_id === "__none__" ? null : Number(values.group_id);
-
       await patchStaff(token, staff.staff_id, {
         display_name: values.display_name,
         role: values.role,
-        group_id: groupId,
-        skills: skillsArr,
         active: values.active ? 1 : 0,
       });
       message.success("已保存");
@@ -251,17 +223,6 @@ function EditDrawer({
               label: ROLE_LABEL[r] ?? r,
             }))}
           />
-        </Form.Item>
-        <Form.Item name="group_id" label="分组">
-          <Select
-            options={[
-              { value: "__none__", label: "无" },
-              ...groups.map((g) => ({ value: String(g.id), label: g.name })),
-            ]}
-          />
-        </Form.Item>
-        <Form.Item name="skills" label="技能（逗号分隔）">
-          <Input placeholder="如: 英语, 理财" />
         </Form.Item>
         <Form.Item name="active" label="启用" valuePropName="checked">
           <Switch />
@@ -339,7 +300,6 @@ export function StaffAccountsRoute() {
   const { token } = useStaffSession();
   const { message } = App.useApp();
   const [rows, setRows] = useState<StaffRow[]>([]);
-  const [groups, setGroups] = useState<StaffGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -353,11 +313,8 @@ export function StaffAccountsRoute() {
   function reload() {
     if (!token) return;
     setLoading(true);
-    Promise.all([listStaff(token), listGroups(token)])
-      .then(([rs, gs]) => {
-        setRows(rs);
-        setGroups(gs);
-      })
+    listStaff(token)
+      .then(setRows)
       .catch((e: unknown) =>
         setLoadError(e instanceof Error ? e.message : "加载失败"),
       )
@@ -391,11 +348,6 @@ export function StaffAccountsRoute() {
     }
   }
 
-  const groupMap = useMemo(
-    () => new Map(groups.map((g) => [g.id, g.name])),
-    [groups],
-  );
-
   const columns: ColumnsType<StaffRow> = useMemo(
     () => [
       {
@@ -418,37 +370,6 @@ export function StaffAccountsRoute() {
         dataIndex: "role",
         width: 100,
         render: (v: string) => <Tag>{ROLE_LABEL[v] ?? v}</Tag>,
-      },
-      {
-        title: "分组",
-        dataIndex: "group_id",
-        render: (gid: number | null) => {
-          if (gid == null)
-            return <span style={{ color: "rgba(0,0,0,0.45)" }}>-</span>;
-          return (
-            groupMap.get(gid) ?? (
-              <span style={{ color: "rgba(0,0,0,0.45)" }}>-</span>
-            )
-          );
-        },
-      },
-      {
-        title: "技能",
-        dataIndex: "skills",
-        render: (v: string | null) => {
-          const skills = parseSkills(v);
-          if (!skills.length)
-            return <span style={{ color: "rgba(0,0,0,0.45)" }}>-</span>;
-          return (
-            <Flex wrap="wrap" gap={4}>
-              {skills.map((sk) => (
-                <Tag key={sk} style={{ marginRight: 0 }}>
-                  {sk}
-                </Tag>
-              ))}
-            </Flex>
-          );
-        },
       },
       {
         title: "状态",
@@ -494,7 +415,7 @@ export function StaffAccountsRoute() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [token, groupMap],
+    [token],
   );
 
   const filteredRows = useMemo(() => {
@@ -555,7 +476,6 @@ export function StaffAccountsRoute() {
             open={editOpen}
             onOpenChange={setEditOpen}
             staff={editTarget}
-            groups={groups}
             token={token}
             onSuccess={reload}
           />

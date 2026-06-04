@@ -6,7 +6,7 @@
 - 创建 + 列表
 - role 白名单 400
 - 重复 staff_id：UNIQUE 被端点捕获 → 409（修复 source bug #2）
-- patch 各字段 / group_id=0 清空语义 / skills 列表序列化 / role 非法 400
+- patch 各字段 / role 非法 400
 - patch / reset-password 对不存在 staff_id → 404（修复 source bug #4）
 - 启用/禁用 active；reset-password 端点；非法 active 类型 422
 """
@@ -194,49 +194,6 @@ class TestStaffPatch:
         )
         assert r.status_code in (200, 409)
 
-    async def test_patch_group_id_set(self, client, admin_headers) -> None:
-        await self._seed(client, admin_headers)
-        r = await client.patch(
-            "/admin/api/v1/staff/p1", json={"group_id": 7}, headers=admin_headers,
-        )
-        assert r.status_code == 200
-        rows = (await client.get("/admin/api/v1/staff", headers=admin_headers)).json()["staff"]
-        assert int(rows[0]["group_id"]) == 7
-
-    async def test_patch_group_id_zero_clears(self, client, admin_headers) -> None:
-        """group_id=0 → 清空（DAO 显式约定，前端用 0 表示 "—"）。"""
-        await self._seed(client, admin_headers)
-        await client.patch(
-            "/admin/api/v1/staff/p1", json={"group_id": 9}, headers=admin_headers,
-        )
-        r = await client.patch(
-            "/admin/api/v1/staff/p1", json={"group_id": 0}, headers=admin_headers,
-        )
-        assert r.status_code == 200
-        rows = (await client.get("/admin/api/v1/staff", headers=admin_headers)).json()["staff"]
-        assert rows[0]["group_id"] is None
-
-    async def test_patch_skills_stored_as_json(self, client, admin_headers) -> None:
-        await self._seed(client, admin_headers)
-        r = await client.patch(
-            "/admin/api/v1/staff/p1",
-            json={"skills": ["c", "b", "stock"]},
-            headers=admin_headers,
-        )
-        assert r.status_code == 200
-        rows = (await client.get("/admin/api/v1/staff", headers=admin_headers)).json()["staff"]
-        # skills 列存储为 JSON 字符串（DAO 用 json.dumps），消费方解 JSON
-        import json
-
-        assert json.loads(rows[0]["skills"]) == ["c", "b", "stock"]
-
-    async def test_patch_skills_empty_list(self, client, admin_headers) -> None:
-        await self._seed(client, admin_headers)
-        r = await client.patch(
-            "/admin/api/v1/staff/p1", json={"skills": []}, headers=admin_headers,
-        )
-        assert r.status_code == 200
-
     async def test_patch_combined(self, client, admin_headers) -> None:
         await self._seed(client, admin_headers)
         r = await client.patch(
@@ -245,8 +202,6 @@ class TestStaffPatch:
                 "display_name": "Combo",
                 "role": "manager",
                 "active": 0,
-                "group_id": 3,
-                "skills": ["q"],
             },
             headers=admin_headers,
         )

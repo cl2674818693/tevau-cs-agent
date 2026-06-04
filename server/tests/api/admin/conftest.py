@@ -62,7 +62,6 @@ def admin_app():
     from ai_engine.api.admin_shifts import router as admin_shifts_router
     from ai_engine.api.admin_sla import router as admin_sla_router
     from ai_engine.api.admin_staff import router as admin_staff_router
-    from ai_engine.api.admin_staff_groups import router as admin_staff_groups_router
     from ai_engine.api.insights import router as insights_router
     from ai_engine.api.metrics import router as metrics_router
 
@@ -73,7 +72,6 @@ def admin_app():
             admin_shifts_router,
             admin_sla_router,
             admin_staff_router,
-            admin_staff_groups_router,
             insights_router,
             metrics_router,
         ]

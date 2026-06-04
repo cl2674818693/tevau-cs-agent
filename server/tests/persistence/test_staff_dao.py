@@ -1,13 +1,11 @@
-"""Persistence: staff.py — 账号 CRUD + 密码 hash/verify + 组/技能。
+"""Persistence: staff.py — 账号 CRUD + 密码 hash/verify。
 
 覆盖：hash_password (PBKDF2/legacy sha256) / verify_password 兼容,
 create_staff (role 校验), authenticate (active=0 拒绝 / 错密码),
-get_staff / list_staff / update_staff / set_staff_active / reset_staff_password,
-set_staff_group (0 视为清空) / set_staff_skills (json 序列化)。
+get_staff / list_staff / update_staff / set_staff_active / reset_staff_password。
 """
 
 import hashlib
-import json
 
 import pytest
 
@@ -168,36 +166,3 @@ class TestSetActiveAndResetPassword:
         assert await staff.authenticate("s1", "new-pw") is not None
 
 
-class TestStaffGroupAndSkills:
-    async def test_set_group(self, db_ready) -> None:
-        await staff.create_staff("s1", "Name", "agent", "pw")
-        await staff.set_staff_group("s1", 42)
-        row = await staff.get_staff("s1")
-        assert row is not None and row["group_id"] == 42
-
-    async def test_set_group_zero_clears(self, db_ready) -> None:
-        await staff.create_staff("s1", "Name", "agent", "pw")
-        await staff.set_staff_group("s1", 42)
-        await staff.set_staff_group("s1", 0)  # 视为清空
-        row = await staff.get_staff("s1")
-        assert row is not None and row["group_id"] is None
-
-    async def test_set_group_none_clears(self, db_ready) -> None:
-        await staff.create_staff("s1", "Name", "agent", "pw")
-        await staff.set_staff_group("s1", 42)
-        await staff.set_staff_group("s1", None)
-        row = await staff.get_staff("s1")
-        assert row is not None and row["group_id"] is None
-
-    async def test_set_skills_json_serialized(self, db_ready) -> None:
-        await staff.create_staff("s1", "Name", "agent", "pw")
-        await staff.set_staff_skills("s1", ["c", "b", "stock"])
-        row = await staff.get_staff("s1")
-        assert row is not None
-        assert json.loads(row["skills"]) == ["c", "b", "stock"]
-
-    async def test_set_skills_empty_list(self, db_ready) -> None:
-        await staff.create_staff("s1", "Name", "agent", "pw")
-        await staff.set_staff_skills("s1", [])
-        row = await staff.get_staff("s1")
-        assert row is not None and json.loads(row["skills"]) == []

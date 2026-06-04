@@ -75,8 +75,6 @@ staff = Table(
     Column("role", String(32), nullable=False),
     Column("password_hash", String(256), nullable=False),
     Column("active", Integer, nullable=False, server_default="1"),
-    Column("group_id", Integer),  # M3a 可选：所属客服组
-    Column("skills", Text),  # M3a 可选：技能标签 JSON 数组字符串 ["c","b","stock"]
     Column("created_at", String(32), nullable=False),
     CheckConstraint(
         "role IN ('agent','senior','engineer','admin','supervisor','manager')",
@@ -204,18 +202,6 @@ agent_ratings = Table(
 )
 Index("idx_agent_ratings_staff", agent_ratings.c.staff_id, agent_ratings.c.created_at)
 Index("idx_agent_ratings_conv", agent_ratings.c.conversation_id)
-
-# 客服分组（M3a §5.1.b）
-staff_groups = Table(
-    "staff_groups",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("name", String(128), nullable=False),
-    Column("description", Text),
-    Column("active", Integer, nullable=False, server_default="1"),
-    Column("created_at", String(32), nullable=False),
-)
-Index("ux_staff_group_name", staff_groups.c.name, unique=True)
 
 # 客服在线状态（M3a §5.1.c）— 心跳更新 last_seen_at；后台按 5 分钟内有心跳算 online。
 staff_presence = Table(

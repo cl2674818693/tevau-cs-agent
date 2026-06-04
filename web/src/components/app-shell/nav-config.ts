@@ -3,7 +3,7 @@ import {
   Headphones, Inbox,
   LayoutDashboard, Lightbulb, type LucideIcon,
   Shield, ShieldCheck, Ticket,
-  Timer, Users, Users2,
+  Timer, Users,
 } from "lucide-react";
 
 export type NavItem = {
@@ -45,7 +45,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "坐席与权限",
     items: [
       { to: "/admin/staff", label: "客服账号", icon: Users, roles: ["admin"] },
-      { to: "/admin/staff-groups", label: "客服分组", icon: Users2, roles: ["supervisor", "admin"] },
       { to: "/admin/presence", label: "在线状态", icon: Activity, roles: ["supervisor", "admin"] },
       { to: "/admin/shifts", label: "排班", icon: CalendarClock, roles: ["supervisor", "admin"] },
       { to: "/admin/rbac", label: "角色权限", icon: Shield, roles: ["admin"] },

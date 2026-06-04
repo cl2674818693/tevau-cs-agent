@@ -1,6 +1,5 @@
 import hashlib
 import hmac
-import json
 import secrets
 from typing import Any
 
@@ -64,17 +63,15 @@ async def authenticate(staff_id: str, password: str) -> dict[str, Any] | None:
 
 async def get_staff(staff_id: str) -> dict[str, Any] | None:
     return await db.fetch_one(
-        "SELECT staff_id, display_name, role, active, group_id, skills "
-        "FROM staff WHERE staff_id=:sid",
+        "SELECT staff_id, display_name, role, active FROM staff WHERE staff_id=:sid",
         {"sid": staff_id},
     )
 
 
 async def list_staff() -> list[dict[str, Any]]:
-    """账号列表（不含 password_hash）。M3a 加 group_id/skills 字段。"""
+    """账号列表（不含 password_hash）。"""
     return await db.fetch_all(
-        "SELECT id, staff_id, display_name, role, active, group_id, skills, created_at "
-        "FROM staff ORDER BY id"
+        "SELECT id, staff_id, display_name, role, active, created_at FROM staff ORDER BY id"
     )
 
 
@@ -106,35 +103,4 @@ async def reset_staff_password(staff_id: str, new_password: str) -> int:
     return await db.execute_rowcount(
         "UPDATE staff SET password_hash = :pw WHERE staff_id = :sid",
         {"pw": hash_password(new_password), "sid": staff_id},
-    )
-
-
-# ─ M3a 扩展 ─────────────────────────────────────────────────────────────────
-
-
-async def set_staff_group(staff_id: str, group_id: int | None) -> int:
-    """设置/清空所属组；返回受影响行数（0 表示 staff_id 不存在）。"""
-    # M4: 接受 0 视为清空（前端用 0 表示 "—"）。
-    g: int | None = None
-    if group_id is not None and int(group_id) != 0:
-        g = int(group_id)
-    return await db.execute_rowcount(
-        "UPDATE staff SET group_id = :g WHERE staff_id = :sid",
-        {"g": g, "sid": staff_id},
-    )
-
-
-async def set_staff_skills(staff_id: str, skills: list[str]) -> int:
-    """覆盖技能集；返回受影响行数（0 表示 staff_id 不存在）。"""
-    return await db.execute_rowcount(
-        "UPDATE staff SET skills = :s WHERE staff_id = :sid",
-        {"s": json.dumps(skills, ensure_ascii=False), "sid": staff_id},
-    )
-
-
-async def clear_staff_group_refs(group_id: int) -> int:
-    """删组前级联清空引用该组的 staff.group_id（schema 无 FK，需手工解绑）。返回清理的 staff 行数。"""
-    return await db.execute_rowcount(
-        "UPDATE staff SET group_id = NULL WHERE group_id = :g",
-        {"g": int(group_id)},
     )

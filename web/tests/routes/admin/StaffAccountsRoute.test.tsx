@@ -27,8 +27,6 @@ const staffRows = [
     display_name: "Alice",
     role: "agent",
     active: 1,
-    group_id: null,
-    skills: null,
     created_at: "2026-01-01T00:00:00Z",
   },
 ];
@@ -46,7 +44,6 @@ describe("StaffAccountsRoute", () => {
 
   it("默认加载：表格行渲染", async () => {
     mockFetch("GET", "/admin/api/v1/staff", () => jsonResponse({ staff: staffRows }));
-    mockFetch("GET", "/admin/api/v1/staff-groups", () => jsonResponse({ groups: [] }));
 
     renderWithRouter(<StaffAccountsRoute />, { path: "/admin/staff" });
     expect(await screen.findByText("s_alice")).toBeInTheDocument();
@@ -56,21 +53,18 @@ describe("StaffAccountsRoute", () => {
 
   it("接口 500 → Alert 加载失败", async () => {
     mockFetch("GET", "/admin/api/v1/staff", () => new Response("", { status: 500 }));
-    mockFetch("GET", "/admin/api/v1/staff-groups", () => jsonResponse({ groups: [] }));
     renderWithRouter(<StaffAccountsRoute />, { path: "/admin/staff" });
     expect(await screen.findByText(/list failed 500/)).toBeInTheDocument();
   });
 
   it("空 → 暂无客服", async () => {
     mockFetch("GET", "/admin/api/v1/staff", () => jsonResponse({ staff: [] }));
-    mockFetch("GET", "/admin/api/v1/staff-groups", () => jsonResponse({ groups: [] }));
     renderWithRouter(<StaffAccountsRoute />, { path: "/admin/staff" });
     expect(await screen.findByText("暂无客服")).toBeInTheDocument();
   });
 
   it("点击「新建客服」→ 抽屉打开（含 staff_id 输入）", async () => {
     mockFetch("GET", "/admin/api/v1/staff", () => jsonResponse({ staff: [] }));
-    mockFetch("GET", "/admin/api/v1/staff-groups", () => jsonResponse({ groups: [] }));
     renderWithRouter(<StaffAccountsRoute />, { path: "/admin/staff" });
     await screen.findByText("暂无客服");
     fireEvent.click(screen.getByRole("button", { name: /新建客服/ }));
@@ -86,7 +80,6 @@ describe("StaffAccountsRoute", () => {
         ],
       }),
     );
-    mockFetch("GET", "/admin/api/v1/staff-groups", () => jsonResponse({ groups: [] }));
     renderWithRouter(<StaffAccountsRoute />, { path: "/admin/staff" });
     await screen.findByText("s_alice");
     fireEvent.change(screen.getByPlaceholderText(/搜索 staff_id/), {
