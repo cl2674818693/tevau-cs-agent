@@ -54,3 +54,30 @@ async def list_active(
         "ORDER BY p.staff_id",
         {"cutoff": cutoff, "now": now_ts},
     )
+
+
+async def release_pending_assignments(staff_id: str) -> list[int]:
+    """关在线开关时释放：把当前 mode=human_pending 且派给该 staff 的会话清回开放池。
+    已 human_takeover 的会话不动（允许聊完）。返回被释放的 conv_id 列表，给调用方推 SSE 用。
+
+    SQLite 不支持 UPDATE...RETURNING（3.35 之前），用 SELECT→UPDATE 两步走，跨 PG/SQLite 都稳。
+    并发安全：两步之间另一线程可能新派给该 staff，那次新派会在下一次开关切换时被收掉，
+    不需要事务包裹（worst case 是一次派单短暂悬空，可接受）。
+    """
+    rows = await db.fetch_all(
+        "SELECT id FROM conversations "
+        "WHERE assigned_staff_id=:sid AND mode='human_pending'",
+        {"sid": staff_id},
+    )
+    ids = [int(r["id"]) for r in rows]
+    if not ids:
+        return []
+    placeholders = ",".join(f":id{i}" for i in range(len(ids)))
+    params = {f"id{i}": v for i, v in enumerate(ids)}
+    params["sid"] = staff_id
+    await db.execute(
+        f"UPDATE conversations SET assigned_staff_id=NULL, assigned_at=NULL "
+        f"WHERE id IN ({placeholders}) AND assigned_staff_id=:sid AND mode='human_pending'",
+        params,
+    )
+    return ids
