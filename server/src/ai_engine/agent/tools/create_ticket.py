@@ -49,6 +49,92 @@ def _new_external_id() -> str:
     return f"AI-{ts}-{secrets.token_hex(3)}"
 
 
+# 已抽到 entities 数组的 evidence 键，不再重复塞进 context 文本
+_ENTITY_KEYS = {
+    "card_id", "cardId", "card_number", "cardNumber",
+    "transaction_id", "txn_id", "order_id", "orderId", "trade_no", "tradeNo",
+}
+
+
+def _format_code_ref(ref: Any) -> str:
+    """code_evidence 元素的开发者可读格式化。
+
+    AI 可能写成纯字符串（"Foo.java:42 — note"）也可能写成 dict
+    （{'file': 'Foo.java', 'line': 42, 'note': '...'} 或 {'file':..., 'lines': '115-123'}）。
+    统一输出 "{file}:{line} — {note}" 形式，开发者直接 IDE 跳转；非预期形态
+    fallback 到 repr，至少不丢信息。
+    """
+    if isinstance(ref, str):
+        return ref
+    if isinstance(ref, dict):
+        file = ref.get("file") or ref.get("path") or ""
+        line = ref.get("line") or ref.get("lines") or ""
+        note = ref.get("note") or ref.get("desc") or ref.get("comment") or ""
+        head = f"{file}:{line}" if file and line else (file or "")
+        if head and note:
+            return f"{head} — {note}"
+        return head or note or str(ref)
+    return str(ref)
+
+
+def _build_rich_context(summary: str, evidence: dict[str, Any]) -> str:
+    """合并 summary + evidence 富信息为完整 context，让事项中心拿到的开发人员能定位代码。
+
+    现状（修复前）：只推 summary 一句话，开发人员拿到"3DS Webhook txnCurrency 为 null"
+    后无任何定位线索（文件行号 / 复现 payload / 关键 ID 全在 evidence 里被丢弃）。
+
+    修复后 context 结构：
+      <summary>
+
+      —— 关键证据 ——
+      代码定位:
+        · Notify3dsDTO.java:29
+        · UpstreamAuthNotificationReceivedLogic.java:158
+      复现 payload: {...}
+      auth_id: xxx
+      涉及接口: 8.4 3DS Webhook
+      其他: merchant=Shopee, txnAmount=6900, ...
+
+    事项中心 AI 仍能据此生成 title（基于首段 summary），开发人员翻 context 全文能直接
+    跳到代码。entities 数组里已抽出的 card_id/transaction_id 不重复展开。
+    """
+    if not evidence:
+        return summary
+    parts: list[str] = [summary, "", "—— 关键证据 ——"]
+
+    code_refs = evidence.get("code_evidence") or evidence.get("code_refs")
+    if code_refs:
+        parts.append("代码定位:")
+        items = code_refs if isinstance(code_refs, list) else [code_refs]
+        for ref in items:
+            parts.append(f"  · {_format_code_ref(ref)}")
+
+    for key, label in [
+        ("repro_payload", "复现 payload"),
+        ("auth_id", "auth_id"),
+        ("request_id", "request_id"),
+        ("order_no", "order_no"),
+        ("api_ref", "涉及接口"),
+        ("symptom", "现象"),
+        ("error_code", "错误码"),
+        ("error_message", "错误信息"),
+    ]:
+        val = evidence.get(key)
+        if val:
+            parts.append(f"{label}: {val}")
+
+    # 兜底：其余字段（除已展开/已进 entities 的）打成 "key=value" 列表
+    consumed = _ENTITY_KEYS | {
+        "code_evidence", "code_refs", "repro_payload", "auth_id", "request_id",
+        "order_no", "api_ref", "symptom", "error_code", "error_message",
+    }
+    extras = [f"{k}={v}" for k, v in evidence.items() if k not in consumed and v is not None]
+    if extras:
+        parts.append("其他: " + ", ".join(extras))
+
+    return "\n".join(parts)
+
+
 def _extract_entities(
     user_type: str, subject_id: str, evidence: dict[str, Any]
 ) -> list[dict[str, str]]:
@@ -142,7 +228,7 @@ async def run(
     # 2. 按事项中心契约推送（共享 client：event_center_client.create_task）
     pushed = await create_task(
         event_id=ext_id,
-        context=summary,
+        context=_build_rich_context(summary, evidence),  # 合并 evidence，开发者能定位代码
         priority=_SEVERITY_TO_PRIORITY.get(severity, 2),
         action_type=_CATEGORY_TO_ACTION_TYPE.get(category, "task"),
         entities=_extract_entities(user_type, subject_id, evidence),

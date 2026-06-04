@@ -38,9 +38,9 @@ describe("ErrorBoundary", () => {
         <Boom />
       </ErrorBoundary>,
     );
-    expect(screen.getByText(/页面出错了/)).toBeInTheDocument();
+    expect(screen.getByText(/頁面發生錯誤/)).toBeInTheDocument();
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /刷新/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /重新整理/ })).toBeInTheDocument();
   });
 
   it("提供自定义 fallback 时优先", () => {
@@ -64,7 +64,7 @@ describe("ErrorBoundary", () => {
         <Boom />
       </ErrorBoundary>,
     );
-    fireEvent.click(screen.getByRole("button", { name: /刷新/ }));
+    fireEvent.click(screen.getByRole("button", { name: /重新整理/ }));
     expect(reloadSpy).toHaveBeenCalled();
   });
 });

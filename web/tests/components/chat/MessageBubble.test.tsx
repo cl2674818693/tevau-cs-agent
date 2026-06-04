@@ -55,7 +55,7 @@ describe("MessageBubble", () => {
       />,
     );
     expect(screen.getByText("您好")).toBeInTheDocument();
-    expect(screen.getByText("已认证")).toBeInTheDocument();
+    expect(screen.getByText("已認證")).toBeInTheDocument();
     // 客服花名/真名不应出现在 UI
     expect(screen.queryByText("小王")).toBeNull();
   });
@@ -74,14 +74,14 @@ describe("MessageBubble", () => {
       />,
     );
     expect(screen.getByText("答案是 42")).toBeInTheDocument();
-    const up = screen.getByLabelText("有帮助");
-    const down = screen.getByLabelText("没帮助");
+    const up = screen.getByLabelText("有幫助");
+    const down = screen.getByLabelText("沒幫助");
     fireEvent.click(up);
     expect(onFb).toHaveBeenCalledWith("up");
     // 点过即锁定 → 显示致谢
-    expect(screen.getByText(/感谢反馈/)).toBeInTheDocument();
+    expect(screen.getByText(/感謝您的回饋/)).toBeInTheDocument();
     // 锁定后不能再点
-    expect(screen.queryByLabelText("没帮助")).toBeNull();
+    expect(screen.queryByLabelText("沒幫助")).toBeNull();
     void down; // 防 lint 未用
   });
 
@@ -93,34 +93,23 @@ describe("MessageBubble", () => {
     expect(screen.getByLabelText("Not helpful")).toBeInTheDocument();
   });
 
-  it("assistant 含 tool_calls：c 端展示语言化进度", () => {
-    render(
-      <MessageBubble
-        m={{
-          role: "assistant",
-          content: "查到了",
-          tool_calls: [{ name: "query_user", input: { id: 1 }, ok: true }],
-        }}
-        userType="c"
-      />,
-    );
-    // 工具进度文案：toolChip.query_user
-    expect(screen.getByText(/查询账户信息/)).toBeInTheDocument();
-  });
-
-  it("assistant 含 tool_calls：b 端展示工具名 + 可展开 JSON", () => {
-    render(
-      <MessageBubble
-        m={{
-          role: "assistant",
-          content: "ok",
-          tool_calls: [{ name: "query_user", input: { id: 1 }, ok: true }],
-        }}
-        userType="b"
-      />,
-    );
-    // 工具名 query_user 直接显示
-    expect(screen.getByText("query_user")).toBeInTheDocument();
+  it("assistant 含 tool_calls：C/B 聊天面完全不渲染工具调用 chip（最终回复已自述查询过程）", () => {
+    for (const userType of ["c", "b"] as const) {
+      const { unmount } = render(
+        <MessageBubble
+          m={{
+            role: "assistant",
+            content: "查到了",
+            tool_calls: [{ name: "query_user", input: { id: 1 }, ok: true }],
+          }}
+          userType={userType}
+        />,
+      );
+      expect(screen.queryByText("query_user")).toBeNull();
+      expect(screen.queryByText(/查詢帳戶資訊/)).toBeNull();
+      expect(screen.queryByText(/正在為您處理/)).toBeNull();
+      unmount();
+    }
   });
 
   it("中文 emoji + 极长文本不抛错", () => {
@@ -131,6 +120,6 @@ describe("MessageBubble", () => {
 
   it("无 onFeedback 时不渲染反馈条", () => {
     render(<MessageBubble m={{ role: "assistant", content: "ok" }} />);
-    expect(screen.queryByLabelText("有帮助")).toBeNull();
+    expect(screen.queryByLabelText("有幫助")).toBeNull();
   });
 });

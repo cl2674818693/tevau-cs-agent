@@ -85,13 +85,11 @@ async function handleErrorEvent(
 /** 处理一个主链路 SSE 事件（拆出以降低 send 复杂度）。 */
 export async function handleStreamEvent(ev: ChatEvent, a: ChatActions): Promise<void> {
   if (ev.type === "mode_change") {
+    // 仅更新 mode state。不在这里 push "已为您转接人工客服"——
+    // AI 在 create_ticket 后那条回复里已经说过这句（reply_style 硬性要求），
+    // 前端再 push 一遍会重复；且后端 chat.py 在 mode 已为 human_pending 时不再重推 mode_change，
+    // 切换由 _ensure_human_pending 经常驻流广播一次足够。
     a.setMode(ev.to as ConversationMode);
-    // 用户在 human_takeover/human_pending 状态下发消息时，后端 chat 端点会
-    // 推一次 mode_change to=当前 mode（告诉前端"消息已转给客服侧"）。旧版本
-    // 在 to !== "ai" 时无差别 push 这条 system 提示——但 human_takeover 时
-    // 客服早就在线了，再说"请稍候"是 bug。只有真正进入 human_pending 才 push。
-    if (ev.to === "human_pending")
-      pushSystem(a, "已为您转接人工客服，请稍候…");
   } else if (ev.type === "warning") {
     if (typeof ev.pct === "number") a.setLimitPct(ev.pct);
     if (ev.text) pushSystem(a, ev.text);

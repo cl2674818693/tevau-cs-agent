@@ -2,16 +2,21 @@ import { Wifi } from "lucide-react";
 /** ChatWindow 的辅助呈现块（拆出以控制单组件复杂度）。 */
 import { useTranslation } from "react-i18next";
 
+import { LanguageSwitcher } from "./LanguageSwitcher";
+
 export function ChatHeader({
   mode,
   staffName,
   sending,
   onStop,
+  userType,
 }: {
   mode: string;
   staffName?: string;
   sending: boolean;
   onStop: () => void;
+  // C 端 webview 由 APP bridge 强制同步语言，不展示切换器；B 端浏览器显示。
+  userType: "c" | "b";
 }) {
   const { t } = useTranslation();
   // human_pending：橙色点 + 等待文案，让刷新后用户仍能看到自己在排队（事件触发的临时气泡不回放）。
@@ -40,14 +45,17 @@ export function ChatHeader({
           </div>
         </div>
       </div>
-      {sending && (
-        <button
-          onClick={onStop}
-          className="px-3 py-1.5 rounded text-body3 text-ink-secondary border border-line hover:bg-surface-hover transition-colors"
-        >
-          {t("header.stop")}
-        </button>
-      )}
+      <div className="flex items-center gap-2">
+        {userType === "b" && <LanguageSwitcher size="small" />}
+        {sending && (
+          <button
+            onClick={onStop}
+            className="px-3 py-1.5 rounded text-body3 text-ink-secondary border border-line hover:bg-surface-hover transition-colors"
+          >
+            {t("header.stop")}
+          </button>
+        )}
+      </div>
     </header>
   );
 }

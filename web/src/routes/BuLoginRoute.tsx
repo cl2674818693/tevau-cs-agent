@@ -1,13 +1,16 @@
 import { Alert, Button, Card, Form, Input, Typography } from "antd";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { setIdentity } from "../api/identity";
 
 const { Title, Text } = Typography;
 
 /** B 端主账户 ID 登录页（spec §4.1）。后端 /api/v1/auth/bu/login 在 task-04 落地。 */
 export function BuLoginRoute() {
+  const { t } = useTranslation();
   const [err, setErr] = useState("");
   const nav = useNavigate();
   const [form] = Form.useForm<{ bu_id: string }>();
@@ -21,7 +24,7 @@ export function BuLoginRoute() {
       body: JSON.stringify({ bu_id: values.bu_id.trim() }),
     });
     if (!r.ok) {
-      setErr((await r.text()) || "主账户不存在或已禁用");
+      setErr((await r.text()) || t("buLogin.notFound"));
       return;
     }
     setIdentity({ kind: "b", buId: values.bu_id.trim() });
@@ -31,8 +34,11 @@ export function BuLoginRoute() {
   return (
     <div
       className="flex min-h-screen items-center justify-center p-4"
-      style={{ background: "#f5f5f5" }}
+      style={{ background: "#f5f5f5", position: "relative" }}
     >
+      <div style={{ position: "absolute", top: 16, right: 16 }}>
+        <LanguageSwitcher size="small" />
+      </div>
       <Card style={{ width: "100%", maxWidth: 360 }}>
         <div className="flex flex-col items-center gap-2" style={{ marginBottom: 24 }}>
           <div
@@ -50,17 +56,17 @@ export function BuLoginRoute() {
             </span>
           </div>
           <Title level={4} style={{ margin: 0 }}>
-            Tevau AI 客服
+            {t("buLogin.title")}
           </Title>
-          <Text type="secondary">合作伙伴技术支持</Text>
+          <Text type="secondary">{t("buLogin.subtitle")}</Text>
         </div>
         <Form form={form} layout="vertical" onFinish={onSubmit}>
           <Form.Item
             name="bu_id"
-            label="主账户 ID"
-            rules={[{ required: true, message: "请输入主账户 ID" }]}
+            label={t("buLogin.idLabel")}
+            rules={[{ required: true, message: t("buLogin.idRequired") }]}
           >
-            <Input placeholder="主账户 ID / 租户 ID（例如 1011010000068）" />
+            <Input placeholder={t("buLogin.idPlaceholder")} />
           </Form.Item>
           {err && (
             <Alert
@@ -72,7 +78,7 @@ export function BuLoginRoute() {
           )}
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" block>
-              进入对话
+              {t("buLogin.submit")}
             </Button>
           </Form.Item>
         </Form>

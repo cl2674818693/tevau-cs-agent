@@ -8,7 +8,6 @@ import remarkGfm from "remark-gfm";
 import type { Attachment, Message } from "../types";
 
 import { ImageThumb } from "./ImageThumb";
-import { ToolCallChip } from "./ToolCallChip";
 
 /** 消息附件图片网格；urlFor 缺省时不渲染（无法拼出看图 URL）。 */
 function Attachments({
@@ -155,9 +154,6 @@ export function MessageBubble({
         T
       </Avatar>
       <div className="flex-1 min-w-0 max-w-[85%] bg-surface-card border border-line shadow-sm rounded-lg rounded-tl-sm px-4 py-3 space-y-2">
-        {(m.tool_calls ?? []).map((tc, i) => (
-          <ToolCallChip key={i} tc={tc} userType={userType} />
-        ))}
         <div className="markdown-body-dark">
           {m.content ? (
             <ReactMarkdown

@@ -9,7 +9,11 @@ import { StaffImageThumb } from "./StaffImageThumb";
 
 /** 把 messages 表里的历史消息映射成事件流条目；ai_draft / 未知 role 过滤掉。
  *  不填 draft 字段，避免 useAiDraft 把历史草稿误判成新草稿弹出。
- *  详情页和日志页共用。 */
+ *  详情页和日志页共用。
+ *
+ *  纯空 assistant 行同时过滤：AI 做纯工具调用回合（无伴随文字）时，runtime 把 content
+ *  落库为 json.dumps([])，留痕接口还原后是 ""，渲染出来是只有头像+时间戳的空气泡。
+ *  与 C 端 conversations.py:119 的口径对齐（`if not content and not atts: continue`）。*/
 export function messageToStreamEvent(m: StaffMessage): StaffStreamEvent | null {
   const typeByRole: Record<string, string> = {
     user: "user_message",
@@ -18,6 +22,8 @@ export function messageToStreamEvent(m: StaffMessage): StaffStreamEvent | null {
   };
   const type = typeByRole[m.role];
   if (!type) return null;
+  const hasAttachments = !!m.attachments && m.attachments.length > 0;
+  if (!m.content && !hasAttachments) return null;
   return { type, content: m.content, attachments: m.attachments };
 }
 

@@ -87,15 +87,15 @@ describe("ChatWindow", () => {
   it("loading 状态：显示 LoadingView", () => {
     useChatMock.mockReturnValue(baseChat({ status: "loading", init: null }));
     render(<ChatWindow />);
-    expect(screen.getByText(/正在连接/)).toBeInTheDocument();
+    expect(screen.getByText(/正在連線/)).toBeInTheDocument();
   });
 
   it("error 状态：显示 ErrorView + 点重试调 retryInit", async () => {
     const ch = baseChat({ status: "error", init: null });
     useChatMock.mockReturnValue(ch);
     render(<ChatWindow />);
-    expect(screen.getByText(/连接失败/)).toBeInTheDocument();
-    const btn = screen.getByRole("button", { name: /重试/ });
+    expect(screen.getByText(/連線失敗/)).toBeInTheDocument();
+    const btn = screen.getByRole("button", { name: /重試/ });
     btn.click();
     await waitFor(() => expect(ch.retryInit).toHaveBeenCalled());
   });
@@ -104,7 +104,7 @@ describe("ChatWindow", () => {
     useChatMock.mockReturnValue(baseChat());
     render(<ChatWindow />);
     // emptyTitle 出现
-    expect(screen.getByText(/Tevau 助手/)).toBeInTheDocument();
+    expect(screen.getByText(/Tevau 助理/)).toBeInTheDocument();
     expect(screen.queryByRole("log")).toBeNull();
   });
 
@@ -120,7 +120,7 @@ describe("ChatWindow", () => {
     );
     render(<ChatWindow />);
     expect(screen.getByRole("log")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /没解决/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /尚未解決/ })).toBeInTheDocument();
   });
 
   it("sending=true 时隐藏 Handoff 入口", () => {
@@ -134,13 +134,13 @@ describe("ChatWindow", () => {
       }),
     );
     render(<ChatWindow />);
-    expect(screen.queryByRole("button", { name: /没解决/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /尚未解決/ })).toBeNull();
   });
 
   it("connection=offline：显示离线条", () => {
     useChatMock.mockReturnValue(baseChat({ connection: "offline" }));
     render(<ChatWindow />);
-    expect(screen.getByText(/网络已断开/)).toBeInTheDocument();
+    expect(screen.getByText(/網路已中斷/)).toBeInTheDocument();
   });
 
   it("limitPct >= 80 且 < 100：显示配额警告", () => {
@@ -154,21 +154,22 @@ describe("ChatWindow", () => {
       baseChat({ init: { ...INIT, user_type: "g" } }),
     );
     render(<ChatWindow />);
-    expect(screen.getByRole("link", { name: /主账户登录/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /主帳戶登入/ })).toBeInTheDocument();
   });
 
   it("rateLimited=true：输入框 placeholder 切到限流提示", () => {
     useChatMock.mockReturnValue(baseChat({ rateLimited: true }));
     render(<ChatWindow />);
-    expect(screen.getByPlaceholderText(/请求过于频繁/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/請求過於頻繁/)).toBeInTheDocument();
   });
 
-  it("mode=human_takeover：placeholder 改为留言客服", () => {
-    useChatMock.mockReturnValue(
-      baseChat({ mode: "human_takeover", staffName: "小王" }),
-    );
-    render(<ChatWindow />);
-    expect(screen.getByPlaceholderText(/客服留言/)).toBeInTheDocument();
+  it("mode=human_takeover / human_pending：placeholder 切到留言语义", () => {
+    for (const mode of ["human_takeover", "human_pending"] as const) {
+      useChatMock.mockReturnValue(baseChat({ mode, staffName: "小王" }));
+      const { unmount } = render(<ChatWindow />);
+      expect(screen.getByPlaceholderText(/繼續補充|補充資訊/)).toBeInTheDocument();
+      unmount();
+    }
   });
 
   it("ticket 事件：banner 渲染 + resolved ticket 显示确认卡片", () => {
@@ -178,7 +179,7 @@ describe("ChatWindow", () => {
     useChatMock.mockReturnValue(baseChat());
     render(<ChatWindow />);
     // TicketStatusBanner 文案
-    expect(screen.getByText(/工单已解决/)).toBeInTheDocument();
+    expect(screen.getByText(/工單已解決/)).toBeInTheDocument();
     // TicketCard summary
     expect(screen.getByText("完成")).toBeInTheDocument();
   });

@@ -210,7 +210,11 @@ async def chat(
                 async for frame in _replay_turn(conversation_id, dup_id):
                     yield frame
                 return
-            # spec §13：客服已接管 / 待接管时不调 AI，用户消息只入库 + 推给客服侧
+            # spec §13：客服已接管 / 待接管时不调 AI，用户消息只入库 + 推给客服侧。
+            # 不再 yield mode_change：当前 mode 已经稳定（不是"切换"），
+            # 真正的 AI→human_pending 切换由 create_ticket 工具里的 _ensure_human_pending
+            # 通过 publish_conversation_event 经常驻流广播一次，足够前端 setMode。
+            # 这里再推一帧会让前端把这帧当成"新一次转人工"反复 push 系统提示，体感"任何消息都被转人工"。
             mode, _ = await conv_dao.get_mode(conversation_id)
             if mode in ("human_takeover", "human_pending"):
                 mid = await conv_dao.append_message(conversation_id, role="user", content=message)
@@ -220,7 +224,6 @@ async def chat(
                     else []
                 )
                 publish_user_message(conversation_id, message, bound)
-                yield se.sse_payload(se.EVENT_MODE_CHANGE, {"to": mode})
                 yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "handed_to_human"})
                 return
 

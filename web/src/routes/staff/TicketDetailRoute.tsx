@@ -9,10 +9,12 @@ import {
   Typography,
 } from "antd";
 import { format } from "date-fns";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { getTicketDetail, type TicketDetail } from "../../api/adminTickets";
+import { getConversationMessages, type StaffMessage } from "../../api/staff";
+import { EventBubble, messageToStreamEvent } from "../../components/EventBubble";
 import { useAsyncData } from "../../hooks/useAsyncData";
 import { useStaffSession } from "../../hooks/useStaffSession";
 
@@ -82,8 +84,20 @@ function OverviewTab({
       : ([["payload", "（空）"]] as [string, ReactNode][])),
   ];
 
+  // 同 BU 24h 内复用工单时后端只 append 事件不改 payload，概览里看到的 evidence 永远是首次那次的。
+  // 顶部明确告诉客服"还有 N 次追加，去事件流看新 evidence"，避免照着旧卡号查歪。
+  const appendCount = t.events.filter((e) => e.event === "evidence_added").length;
+
   return (
     <Card size="small">
+      {appendCount > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          title={`本工单已被追加 ${appendCount} 次证据，下方 evidence 为首次创建时内容，最新追加请见「事件流」tab`}
+        />
+      )}
       <dl style={{ margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
         {rows.map(([label, value]) => (
           <div key={label} style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 12 }}>
@@ -103,6 +117,28 @@ function OverviewTab({
       </dl>
     </Card>
   );
+}
+
+// evidence_added 事件 raw_json 解出来的载荷：上层只关心这三个字段是否存在，未知字段忽略而非报错。
+function parseEventRaw(raw: string | null): {
+  category?: string;
+  severity?: string;
+  evidence?: Record<string, unknown>;
+} | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      category: typeof parsed.category === "string" ? parsed.category : undefined,
+      severity: typeof parsed.severity === "string" ? parsed.severity : undefined,
+      evidence:
+        parsed.evidence && typeof parsed.evidence === "object"
+          ? (parsed.evidence as Record<string, unknown>)
+          : undefined,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function EventsTab({
@@ -131,23 +167,45 @@ function EventsTab({
           暂无事件
         </Text>
       )}
-      {events.map((e, i) => (
-        <Card key={i} size="small">
-          <Flex justify="space-between" wrap="wrap" gap="small" style={{ fontSize: 12 }}>
-            <Text strong>{e.event}</Text>
-            <Text type="secondary" style={{ fontSize: 10 }}>
-              {e.created_at}
-            </Text>
-          </Flex>
-          {(e.actor || e.comment) && (
-            <div style={{ marginTop: 4, fontSize: 10, color: "rgba(0,0,0,0.45)" }}>
-              {e.actor && <span>执行人：{e.actor}</span>}
-              {e.actor && e.comment && <span style={{ margin: "0 4px" }}>·</span>}
-              {e.comment && <span>{e.comment}</span>}
-            </div>
-          )}
-        </Card>
-      ))}
+      {events.map((e, i) => {
+        // 追加证据事件：把 raw_json 里的 category/severity/evidence 展开渲染，
+        // 否则客服只能看到 comment 一行字、看不到这次追加的新卡号 / 新订单号。
+        const raw = e.event === "evidence_added" ? parseEventRaw(e.raw_json) : null;
+        return (
+          <Card key={i} size="small">
+            <Flex justify="space-between" wrap="wrap" gap="small" style={{ fontSize: 12 }}>
+              <Text strong>{e.event}</Text>
+              <Text type="secondary" style={{ fontSize: 10 }}>
+                {e.created_at}
+              </Text>
+            </Flex>
+            {(e.actor || e.comment) && (
+              <div style={{ marginTop: 4, fontSize: 10, color: "rgba(0,0,0,0.45)" }}>
+                {e.actor && <span>执行人：{e.actor}</span>}
+                {e.actor && e.comment && <span style={{ margin: "0 4px" }}>·</span>}
+                {e.comment && <span>{e.comment}</span>}
+              </div>
+            )}
+            {raw && (
+              <div style={{ marginTop: 8, fontSize: 11 }}>
+                {(raw.category || raw.severity) && (
+                  <div style={{ color: "rgba(0,0,0,0.55)", marginBottom: 4 }}>
+                    {raw.category && <span>分类：{raw.category}</span>}
+                    {raw.category && raw.severity && <span style={{ margin: "0 6px" }}>·</span>}
+                    {raw.severity && <span>严重度：{raw.severity}</span>}
+                  </div>
+                )}
+                {raw.evidence && Object.keys(raw.evidence).length > 0 && (
+                  <div>
+                    <div style={{ color: "rgba(0,0,0,0.45)", marginBottom: 4 }}>追加证据：</div>
+                    {formatValue(raw.evidence)}
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 }
@@ -155,31 +213,88 @@ function EventsTab({
 function ConversationsTab({
   t,
   loading,
+  token,
 }: {
   t: TicketDetail | null;
   loading: boolean;
+  token: string | null;
 }) {
-  if (loading) {
+  const convId = t?.conversation_id ?? null;
+  const [messages, setMessages] = useState<StaffMessage[]>([]);
+  const [msgLoading, setMsgLoading] = useState(false);
+  const [msgErr, setMsgErr] = useState("");
+
+  useEffect(() => {
+    if (!token || convId == null) {
+      setMessages([]);
+      return;
+    }
+    setMsgLoading(true);
+    setMsgErr("");
+    getConversationMessages(token, convId, { limit: 50 })
+      .then((p) => setMessages(p.messages))
+      .catch(() => setMsgErr("消息加载失败"))
+      .finally(() => setMsgLoading(false));
+  }, [token, convId]);
+
+  if (loading || !t) {
     return (
       <Card size="small">
-        <Skeleton active paragraph={{ rows: 1 }} />
+        <Skeleton active paragraph={{ rows: 3 }} />
       </Card>
     );
   }
-  if (!t) return null;
 
   return (
-    <Card size="small">
+    <div className="flex flex-col" style={{ gap: 12 }}>
       <Flex align="center" wrap="wrap" gap="small" style={{ fontSize: 12 }}>
         <Text type="secondary">会话 ID</Text>
+        <Text strong>#{t.conversation_id}</Text>
         <Link
           to={`/staff/conversations/${t.conversation_id}/logs`}
-          style={{ fontWeight: 500 }}
+          style={{ marginLeft: "auto" }}
         >
-          #{t.conversation_id}
+          查看完整日志
         </Link>
       </Flex>
-    </Card>
+
+      {msgErr && <Alert type="error" showIcon message={msgErr} />}
+
+      {msgLoading && (
+        <Card size="small">
+          <Skeleton active paragraph={{ rows: 4 }} />
+        </Card>
+      )}
+
+      {!msgLoading && !msgErr && messages.length === 0 && (
+        <Text type="secondary" style={{ textAlign: "center", padding: 16, fontSize: 12 }}>
+          无消息记录
+        </Text>
+      )}
+
+      {!msgLoading &&
+        messages.map((m) => {
+          const ev = messageToStreamEvent(m);
+          if (!ev) return null;
+          const isRight = ev.type !== "user_message";
+          return (
+            <div key={m.id} className="flex flex-col" style={{ gap: 2 }}>
+              <EventBubble ev={ev} convId={t.conversation_id} token={token} />
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "rgba(0,0,0,0.45)",
+                  paddingLeft: isRight ? 0 : 40,
+                  paddingRight: isRight ? 40 : 0,
+                  textAlign: isRight ? "right" : "left",
+                }}
+              >
+                {m.created_at}
+              </div>
+            </div>
+          );
+        })}
+    </div>
   );
 }
 
@@ -238,7 +353,7 @@ export function TicketDetailRoute() {
           {
             key: "conversations",
             label: "关联会话",
-            children: <ConversationsTab t={t} loading={loading} />,
+            children: <ConversationsTab t={t} loading={loading} token={token} />,
             forceRender: true,
           },
         ]}

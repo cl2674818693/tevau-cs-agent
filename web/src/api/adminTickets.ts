@@ -4,6 +4,8 @@ export type TicketEvent = {
   event: string;
   actor: string | null;
   comment: string | null;
+  /** 追加证据 / 关闭回调等事件的结构化原文（JSON 字符串）。evidence_added 里含 category/severity/evidence。 */
+  raw_json: string | null;
   created_at: string;
 };
 

@@ -170,7 +170,7 @@ async def get_ticket(external_id: str) -> dict[str, object] | None:
     if not row:
         return None
     evs = await db.fetch_all(
-        "SELECT event, actor, comment, created_at FROM ticket_events "
+        "SELECT event, actor, comment, raw_json, created_at FROM ticket_events "
         "WHERE external_id=:eid ORDER BY id",
         {"eid": external_id},
     )

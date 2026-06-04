@@ -12,7 +12,7 @@ beforeAll(async () => {
 describe("HandoffPrompt", () => {
   it("默认渲染中文按钮", () => {
     render(<HandoffPrompt onClick={() => {}} disabled={false} />);
-    expect(screen.getByRole("button", { name: /没解决/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /尚未解決/ })).toBeInTheDocument();
   });
 
   it("点击触发 onClick", () => {

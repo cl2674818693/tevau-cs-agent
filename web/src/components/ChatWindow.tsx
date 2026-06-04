@@ -26,7 +26,9 @@ type TicketStatus = "pending" | "assigned" | "in_progress" | "resolved" | "close
 
 function inputPlaceholder(rateLimited: boolean, mode: string): string {
   if (rateLimited) return i18n.t("chat.inputRateLimited");
-  if (mode === "human_takeover") return i18n.t("chat.inputHumanMode");
+  // human_pending：用户已转人工等候，输入框语义化成"留言区"，让用户知道写下去是补充给客服、
+  // 不要期待 AI 立即响应（spec §13 这种 mode 下后端不调 AI）。human_takeover 同理。
+  if (mode === "human_takeover" || mode === "human_pending") return i18n.t("chat.inputHumanMode");
   return i18n.t("chat.inputPlaceholder");
 }
 
@@ -131,7 +133,13 @@ export function ChatWindow() {
       className="mx-auto flex h-screen max-w-[720px] flex-col bg-surface-page text-ink md:my-6 md:h-[calc(100vh-3rem)] md:rounded-2xl md:border md:border-line md:bg-surface-card md:shadow-lg md:overflow-hidden"
       style={{ paddingBottom: inset }}
     >
-      <ChatHeader mode={mode} staffName={chat.staffName} sending={sending} onStop={chat.stop} />
+      <ChatHeader
+        mode={mode}
+        staffName={chat.staffName}
+        sending={sending}
+        onStop={chat.stop}
+        userType={isC ? "c" : "b"}
+      />
 
       <StatusBanners connection={chat.connection} limitPct={chat.limitPct} />
       {init?.user_type === "g" && <GuestLoginBar />}

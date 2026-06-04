@@ -24,11 +24,11 @@ describe("BuLoginRoute", () => {
   it("默认渲染：标题、副标题、表单可见", () => {
     renderWithRouter(<BuLoginRoute />, { path: "/bu/login" });
     expect(screen.getByText("Tevau AI 客服")).toBeInTheDocument();
-    expect(screen.getByText("合作伙伴技术支持")).toBeInTheDocument();
+    expect(screen.getByText("合作夥伴技術支援")).toBeInTheDocument();
     expect(
-      screen.getByPlaceholderText(/主账户 ID/),
+      screen.getByPlaceholderText(/主帳戶 ID/),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /进入对话/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /進入對話/ })).toBeInTheDocument();
   });
 
   it("happy path：提交合法 bu_id → 调登录接口并导航到 /", async () => {
@@ -44,10 +44,10 @@ describe("BuLoginRoute", () => {
       extraRoutes: [{ path: "/", element: <div data-testid="home">HOME</div> }],
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/主账户 ID/), {
+    fireEvent.change(screen.getByPlaceholderText(/主帳戶 ID/), {
       target: { value: " 1011010000068 " },
     });
-    fireEvent.click(screen.getByRole("button", { name: /进入对话/ }));
+    fireEvent.click(screen.getByRole("button", { name: /進入對話/ }));
 
     await waitFor(() => expect(calls.length).toBe(1));
     const body = JSON.parse((await calls[0].text()) || "{}");
@@ -66,10 +66,10 @@ describe("BuLoginRoute", () => {
       extraRoutes: [{ path: "/", element: <div data-testid="home">HOME</div> }],
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/主账户 ID/), {
+    fireEvent.change(screen.getByPlaceholderText(/主帳戶 ID/), {
       target: { value: "bad_id" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /进入对话/ }));
+    fireEvent.click(screen.getByRole("button", { name: /進入對話/ }));
 
     await waitFor(() =>
       expect(screen.getByText("账号不存在")).toBeInTheDocument(),
@@ -85,10 +85,10 @@ describe("BuLoginRoute", () => {
     });
     renderWithRouter(<BuLoginRoute />, { path: "/bu/login" });
 
-    fireEvent.click(screen.getByRole("button", { name: /进入对话/ }));
+    fireEvent.click(screen.getByRole("button", { name: /進入對話/ }));
     // 等一帧给 antd Form 校验运行；不应触发请求
     await new Promise((r) => setTimeout(r, 50));
     expect(calls.length).toBe(0);
-    expect(await screen.findByText("请输入主账户 ID")).toBeInTheDocument();
+    expect(await screen.findByText("請輸入主帳戶 ID")).toBeInTheDocument();
   });
 });

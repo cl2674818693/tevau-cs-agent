@@ -19,7 +19,7 @@ describe("TicketStatusBanner", () => {
         ]}
       />,
     );
-    expect(screen.getByText(/工单已解决/)).toBeInTheDocument();
+    expect(screen.getByText(/工單已解決/)).toBeInTheDocument();
     expect(screen.getByText(/T-1/)).toBeInTheDocument();
   });
 
@@ -30,7 +30,7 @@ describe("TicketStatusBanner", () => {
 
   it("缺 external_id 时不带' · '后缀", () => {
     render(<TicketStatusBanner events={[{ event: "in_progress" }]} />);
-    expect(screen.getByText(/工单处理中/)).toBeInTheDocument();
+    expect(screen.getByText(/工單處理中/)).toBeInTheDocument();
     // 不应出现 · 紧随其后（弱断言）
     expect(screen.queryByText(/·/)).toBeNull();
   });

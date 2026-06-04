@@ -13,8 +13,8 @@ afterEach(() => vi.restoreAllMocks());
 describe("InputBox", () => {
   it("默认渲染：placeholder 默认中文 + 发送按钮 disabled", () => {
     render(<InputBox onSend={vi.fn()} disabled={false} />);
-    expect(screen.getByPlaceholderText("描述你的问题…")).toBeInTheDocument();
-    expect(screen.getByLabelText("发送")).toBeDisabled();
+    expect(screen.getByPlaceholderText("描述您的問題…")).toBeInTheDocument();
+    expect(screen.getByLabelText("傳送")).toBeDisabled();
   });
 
   it("自定义 placeholder", () => {
@@ -24,18 +24,18 @@ describe("InputBox", () => {
 
   it("输入文字后发送按钮可点", () => {
     render(<InputBox onSend={vi.fn()} disabled={false} />);
-    fireEvent.change(screen.getByPlaceholderText("描述你的问题…"), {
+    fireEvent.change(screen.getByPlaceholderText("描述您的問題…"), {
       target: { value: "hi" },
     });
-    expect(screen.getByLabelText("发送")).not.toBeDisabled();
+    expect(screen.getByLabelText("傳送")).not.toBeDisabled();
   });
 
   it("点击发送：调 onSend(trim 后的文字)，清空输入", () => {
     const onSend = vi.fn();
     render(<InputBox onSend={onSend} disabled={false} />);
-    const ta = screen.getByPlaceholderText("描述你的问题…") as HTMLTextAreaElement;
+    const ta = screen.getByPlaceholderText("描述您的問題…") as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: "  hello  " } });
-    fireEvent.click(screen.getByLabelText("发送"));
+    fireEvent.click(screen.getByLabelText("傳送"));
     expect(onSend).toHaveBeenCalledWith("hello", []);
     expect(ta.value).toBe("");
   });
@@ -43,7 +43,7 @@ describe("InputBox", () => {
   it("Enter 发送", () => {
     const onSend = vi.fn();
     render(<InputBox onSend={onSend} disabled={false} />);
-    const ta = screen.getByPlaceholderText("描述你的问题…");
+    const ta = screen.getByPlaceholderText("描述您的問題…");
     fireEvent.change(ta, { target: { value: "go" } });
     fireEvent.keyDown(ta, { key: "Enter" });
     expect(onSend).toHaveBeenCalled();
@@ -52,7 +52,7 @@ describe("InputBox", () => {
   it("Shift+Enter 不发送（允许换行）", () => {
     const onSend = vi.fn();
     render(<InputBox onSend={onSend} disabled={false} />);
-    const ta = screen.getByPlaceholderText("描述你的问题…");
+    const ta = screen.getByPlaceholderText("描述您的問題…");
     fireEvent.change(ta, { target: { value: "go" } });
     fireEvent.keyDown(ta, { key: "Enter", shiftKey: true });
     expect(onSend).not.toHaveBeenCalled();
@@ -61,9 +61,9 @@ describe("InputBox", () => {
   it("disabled=true：发送按钮 disabled + Enter 不触发", () => {
     const onSend = vi.fn();
     render(<InputBox onSend={onSend} disabled={true} />);
-    const ta = screen.getByPlaceholderText("描述你的问题…");
+    const ta = screen.getByPlaceholderText("描述您的問題…");
     fireEvent.change(ta, { target: { value: "x" } });
-    expect(screen.getByLabelText("发送")).toBeDisabled();
+    expect(screen.getByLabelText("傳送")).toBeDisabled();
     fireEvent.keyDown(ta, { key: "Enter" });
     expect(onSend).not.toHaveBeenCalled();
   });
@@ -71,7 +71,7 @@ describe("InputBox", () => {
   it("空文本 + 无附件：不发送", () => {
     const onSend = vi.fn();
     render(<InputBox onSend={onSend} disabled={false} />);
-    const ta = screen.getByPlaceholderText("描述你的问题…");
+    const ta = screen.getByPlaceholderText("描述您的問題…");
     fireEvent.change(ta, { target: { value: "   " } });
     fireEvent.keyDown(ta, { key: "Enter" });
     expect(onSend).not.toHaveBeenCalled();
@@ -90,9 +90,9 @@ describe("InputBox", () => {
   it("emoji + 中文长文本可发", () => {
     const onSend = vi.fn();
     render(<InputBox onSend={onSend} disabled={false} />);
-    const ta = screen.getByPlaceholderText("描述你的问题…");
+    const ta = screen.getByPlaceholderText("描述您的問題…");
     fireEvent.change(ta, { target: { value: "🤖好的".repeat(50) } });
-    fireEvent.click(screen.getByLabelText("发送"));
+    fireEvent.click(screen.getByLabelText("傳送"));
     expect(onSend.mock.calls[0][0]).toMatch(/🤖好的/);
   });
 });

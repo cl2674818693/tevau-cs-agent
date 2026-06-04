@@ -32,7 +32,7 @@ describe("MessageList", () => {
       { role: "assistant", content: "答案二" },
     ];
     render(<MessageList messages={msgs} onFeedback={onFb} />);
-    const ups = screen.getAllByLabelText("有帮助");
+    const ups = screen.getAllByLabelText("有幫助");
     expect(ups).toHaveLength(2);
     fireEvent.click(ups[1]);
     expect(onFb).toHaveBeenCalledWith(3, "up");

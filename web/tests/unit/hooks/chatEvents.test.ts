@@ -141,24 +141,21 @@ describe("handleStreamEvent 主链路派发", () => {
     return Object.assign(fns, { _messages: () => msgs });
   }
 
-  it("mode_change to=human_pending 推系统提示", async () => {
-    const a = mkActions();
+  it("mode_change 只更新 mode，不再 push 系统提示（AI 在 create_ticket 回复里已说，避免重复）", async () => {
+    // human_pending：mode 更新，无 system push
+    let a = mkActions();
     await handleStreamEvent({ type: "mode_change", to: "human_pending" } as ChatEvent, a);
     expect(a.setMode).toHaveBeenCalledWith("human_pending");
-    expect(a._messages().some((m) => /人工/.test((m as { content?: string }).content ?? ""))).toBe(
-      true,
-    );
-  });
+    expect(a._messages()).toEqual([]);
 
-  it("mode_change to=human_takeover 不再推请稍候（修复点）", async () => {
-    const a = mkActions();
+    // human_takeover：客服早在线，更不该 push
+    a = mkActions();
     await handleStreamEvent({ type: "mode_change", to: "human_takeover" } as ChatEvent, a);
     expect(a.setMode).toHaveBeenCalledWith("human_takeover");
     expect(a._messages()).toEqual([]);
-  });
 
-  it("mode_change to=ai 不推任何系统提示", async () => {
-    const a = mkActions();
+    // ai：不 push
+    a = mkActions();
     await handleStreamEvent({ type: "mode_change", to: "ai" } as ChatEvent, a);
     expect(a._messages()).toEqual([]);
   });

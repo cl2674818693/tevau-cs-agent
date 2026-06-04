@@ -315,18 +315,21 @@ export function ConversationDetailRoute() {
             { title: <span style={{ fontWeight: 500 }}>会话 #{convId}</span> },
           ]}
         />
+        {/* H5 窄屏下两个状态按钮 size=small，避免吃掉两行垂直空间 */}
         <Space wrap size={[8, 8]}>
-          <Button onClick={onToggleDraftMode} disabled={otherStaffTook}>
+          <Button size="small" onClick={onToggleDraftMode} disabled={otherStaffTook}>
             {draftMode ? "关闭草稿模式" : "AI 草稿模式"}
           </Button>
           {taken ? (
-            <Button onClick={onRelease}>释放回 AI</Button>
+            <Button size="small" onClick={onRelease}>
+              释放回 AI
+            </Button>
           ) : otherStaffTook ? (
-            <Button disabled>
+            <Button size="small" disabled>
               已被 {conv?.assigned_staff_id} 接管
             </Button>
           ) : (
-            <Button type="primary" onClick={onTake}>
+            <Button size="small" type="primary" onClick={onTake}>
               接管
             </Button>
           )}

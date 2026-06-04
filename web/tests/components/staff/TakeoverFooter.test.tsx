@@ -1,4 +1,4 @@
-// TakeoverFooter：接管态底部操作（回复 / 转派 / 标记已解决）。
+// TakeoverFooter：接管态底部操作（回复 / 更多抽屉里的 转派 + 标记已解决）。
 import { App as AntApp } from "antd";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,12 @@ function wrap(ui: React.ReactNode) {
 
 const PROPS = { token: "tk", convId: 9 } as const;
 
+async function openMore() {
+  fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+  // Drawer mount 后内容才进 DOM
+  await screen.findByRole("button", { name: "标记已解决" });
+}
+
 beforeEach(() => {
   vi.spyOn(staffApi, "listTransferCandidates").mockResolvedValue([
     { staff_id: "a1", display_name: "甲", role: "agent" },
@@ -28,7 +34,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("TakeoverFooter", () => {
-  it("mount 拉转派候选 + 默认渲染回复输入 + 按钮 disabled", async () => {
+  it("mount 拉转派候选 + 默认渲染回复输入 + 发送按钮 disabled", async () => {
     const onNotice = vi.fn();
     wrap(<TakeoverFooter {...PROPS} onNotice={onNotice} />);
     await waitFor(() => expect(staffApi.listTransferCandidates).toHaveBeenCalledWith("tk"));
@@ -59,7 +65,7 @@ describe("TakeoverFooter", () => {
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith(expect.stringContaining("失败")));
   });
 
-  it("按 Enter 也能发送", async () => {
+  it("按 Enter 也能发送（Shift+Enter 用于换行不发送）", async () => {
     const onNotice = vi.fn();
     wrap(<TakeoverFooter {...PROPS} onNotice={onNotice} />);
     const input = screen.getByPlaceholderText("回复用户…");
@@ -68,10 +74,11 @@ describe("TakeoverFooter", () => {
     await waitFor(() => expect(staffApi.sendStaffMessage).toHaveBeenCalled());
   });
 
-  it("标记已解决：调 resolveConversation + onReleased + onNotice", async () => {
+  it("更多抽屉 → 标记已解决：调 resolveConversation + onReleased + onNotice", async () => {
     const onNotice = vi.fn();
     const onReleased = vi.fn();
     wrap(<TakeoverFooter {...PROPS} onNotice={onNotice} onReleased={onReleased} />);
+    await openMore();
     fireEvent.click(screen.getByRole("button", { name: "标记已解决" }));
     await waitFor(() => expect(staffApi.resolveConversation).toHaveBeenCalledWith("tk", 9));
     expect(onReleased).toHaveBeenCalled();
@@ -85,14 +92,16 @@ describe("TakeoverFooter", () => {
     const onNotice = vi.fn();
     const onReleased = vi.fn();
     wrap(<TakeoverFooter {...PROPS} onNotice={onNotice} onReleased={onReleased} />);
+    await openMore();
     fireEvent.click(screen.getByRole("button", { name: "标记已解决" }));
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith(expect.stringContaining("失败")));
     expect(onReleased).not.toHaveBeenCalled();
   });
 
-  it("无转派候选时下拉 disabled + 占位文案变化", async () => {
+  it("无转派候选时（抽屉打开后）下拉 disabled + 占位文案变化", async () => {
     (staffApi.listTransferCandidates as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     wrap(<TakeoverFooter {...PROPS} onNotice={vi.fn()} />);
+    await openMore();
     await waitFor(() =>
       expect(screen.getByText("暂无可转派目标")).toBeInTheDocument(),
     );

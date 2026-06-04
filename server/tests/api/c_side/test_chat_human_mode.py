@@ -1,7 +1,9 @@
 """chat 旁路矩阵：人工模式 / 草稿模式下，端点不再调 LLM。
 
 矩阵：
-- mode=human_takeover → 用户消息只入库 + 推客服侧；返回 mode_change + message_stop(handed_to_human)
+- mode=human_takeover → 用户消息只入库 + 推客服侧；只返回 message_stop(handed_to_human)。
+  不再 yield mode_change：当前 mode 已经稳定不是"切换"，硬推一帧会让前端把这帧当成新一次
+  转人工反复 push 系统提示。真正的 AI→human_pending 切换由 create_ticket 工具走常驻流广播。
 - mode=human_pending → 同上（同一分支）
 - mode=ai_draft     → 调 collect_full_response 收草稿，落库 + 推客服侧；
                        返回 warning + message_stop(ai_draft_pending)
@@ -38,7 +40,8 @@ class TestChatHumanTakeover:
         )
         frames = await parse_sse(r)
         names = [f["event"] for f in frames]
-        assert "mode_change" in names
+        # mode 已经稳定在 human_takeover，不该再推 mode_change（旧契约残留）
+        assert "mode_change" not in names
         last = json.loads(frames[-1]["data"])
         assert last["stop_reason"] == "handed_to_human"
         assert called["n"] == 0

@@ -147,6 +147,113 @@ class TestCategoryMapping:
         assert kw["priority"] == 1  # p3 → 1（最低）
 
 
+class TestRichContext:
+    """context 合并 evidence 关键字段，让事项中心开发人员拿到代码定位/复现 payload/关键 ID，
+    而不是只看到一句 summary 没法干活。"""
+
+    async def test_code_refs_in_context(self, _mock_outbound, seeded_db) -> None:
+        conv = await create_conversation("b", "BU01")
+        await ct.run(
+            subject_id="BU01",
+            user_type="b",
+            conversation_id=conv,
+            category="bug",
+            summary="3DS Webhook txnCurrency 为 null",
+            severity="p1",
+            evidence={
+                "code_evidence": [
+                    "Notify3dsDTO.java:29",
+                    "UpstreamAuthNotificationReceivedLogic.java:158",
+                ],
+                "auth_id": "0c9ad7bf-c833",
+                "repro_payload": "{eventType:3DS}",
+                "api_ref": "8.4 3DS Webhook",
+                "merchant": "Shopee",
+            },
+        )
+        ctx = _mock_outbound["create_task"][0]["context"]
+        # 现象：summary 在第一段
+        assert "3DS Webhook txnCurrency 为 null" in ctx
+        # 代码定位行号必须出现
+        assert "Notify3dsDTO.java:29" in ctx
+        assert "UpstreamAuthNotificationReceivedLogic.java:158" in ctx
+        # 复现 payload + 关键 ID
+        assert "0c9ad7bf-c833" in ctx
+        assert "{eventType:3DS}" in ctx
+        assert "8.4 3DS Webhook" in ctx
+        # 兜底"其他"段：未在白名单的字段（merchant）
+        assert "merchant=Shopee" in ctx
+
+    async def test_dict_code_refs_formatted_as_file_line_note(
+        self, _mock_outbound, seeded_db
+    ) -> None:
+        """AI 偶尔把 code_evidence 写成 dict 而非字符串（如 #142 KYC 双 bug 那条）；
+        必须格式化成 "file:line — note"，不能输出 Python {'file':...} 字面量。"""
+        conv = await create_conversation("b", "BU03")
+        await ct.run(
+            subject_id="BU03",
+            user_type="b",
+            conversation_id=conv,
+            category="bug",
+            summary="KYC validation failures",
+            severity="p1",
+            evidence={
+                "code_evidence": [
+                    {"file": "ReapOperionServiceImpl.java", "lines": "115-123",
+                     "note": "firstName 可能 trim 后为空"},
+                    {"file": "JumIoUtil.java", "line": 147,
+                     "note": "country 硬编码 HKG 与动态列表冲突"},
+                    "OldStyleString.java:42 — plain string format also works",
+                ],
+            },
+        )
+        ctx = _mock_outbound["create_task"][0]["context"]
+        # dict 必须被格式化为 file:line — note，不能裸露 Python 字面量
+        assert "ReapOperionServiceImpl.java:115-123 — firstName 可能 trim 后为空" in ctx
+        assert "JumIoUtil.java:147 — country 硬编码 HKG 与动态列表冲突" in ctx
+        # 兼容字符串形态
+        assert "OldStyleString.java:42 — plain string format also works" in ctx
+        # 防御性：不允许有 dict 字面量泄漏
+        assert "'file':" not in ctx
+        assert "{" not in ctx or "{eventType" in ctx  # 唯一允许的 { 是用户 evidence 文本里的
+
+    async def test_empty_evidence_keeps_summary(self, _mock_outbound, seeded_db) -> None:
+        conv = await create_conversation("c", "U001")
+        await ct.run(
+            subject_id="U001",
+            user_type="c",
+            conversation_id=conv,
+            category="人工介入",
+            summary="please help",
+            severity="p2",
+            evidence={},
+        )
+        # evidence 为空 → context 就是 summary 本身，不强加结构
+        assert _mock_outbound["create_task"][0]["context"] == "please help"
+
+    async def test_card_id_in_entities_not_in_context_extras(
+        self, _mock_outbound, seeded_db
+    ) -> None:
+        # card_id 已抽到 entities 数组，不应再在 context "其他" 段里重复出现
+        conv = await create_conversation("b", "BU02")
+        await ct.run(
+            subject_id="BU02",
+            user_type="b",
+            conversation_id=conv,
+            category="bug",
+            summary="card lock",
+            severity="p2",
+            evidence={"card_id": "CIDV12345", "lock_time": "10:00"},
+        )
+        kw = _mock_outbound["create_task"][0]
+        # entities 含 card
+        assert {"type": "card", "id": "CIDV12345"} in kw["entities"]
+        # context "其他" 段不重复出现 card_id（避免 entities 与 context 信息冗余）
+        assert "card_id=CIDV12345" not in kw["context"]
+        # 但其他字段（lock_time）应在
+        assert "lock_time=10:00" in kw["context"]
+
+
 class TestEntityExtraction:
     """从 evidence 抽取 card_id / transaction_id 等关联实体。"""
 

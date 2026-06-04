@@ -163,6 +163,21 @@ describe("messageToStreamEvent", () => {
     ).toBeNull();
   });
 
+  it("纯空 assistant（纯工具调用回合的产物）→ null，避免在消息流里出现空气泡", () => {
+    // runtime 把无文字的 tool-only 回合 content 落库成 "[]"，留痕接口还原成 ""
+    expect(
+      messageToStreamEvent({ id: 6, role: "assistant", content: "" } as StaffMessage),
+    ).toBeNull();
+    // 但有附件（如纯图回复，理论场景）应保留
+    const a = messageToStreamEvent({
+      id: 7,
+      role: "assistant",
+      content: "",
+      attachments: [{ id: 1, mime: "image/png" }],
+    } as StaffMessage);
+    expect(a?.type).toBe("assistant_message");
+  });
+
   it("不填 draft（避免被 useAiDraft 误判为新草稿）", () => {
     const a = messageToStreamEvent({ id: 1, role: "assistant", content: "x" } as StaffMessage);
     expect(a).not.toHaveProperty("draft");
