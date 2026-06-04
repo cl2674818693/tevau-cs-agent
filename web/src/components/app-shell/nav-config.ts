@@ -1,5 +1,5 @@
 import {
-  Activity, BarChart3, CalendarClock,
+  Activity, BarChart3,
   Headphones, Inbox,
   LayoutDashboard, Lightbulb, type LucideIcon,
   Shield, ShieldCheck, Ticket,
@@ -46,7 +46,6 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/admin/staff", label: "客服账号", icon: Users, roles: ["admin"] },
       { to: "/admin/presence", label: "在线状态", icon: Activity, roles: ["supervisor", "admin"] },
-      { to: "/admin/shifts", label: "排班", icon: CalendarClock, roles: ["supervisor", "admin"] },
       { to: "/admin/rbac", label: "角色权限", icon: Shield, roles: ["admin"] },
     ],
   },

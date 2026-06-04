@@ -5,5 +5,4 @@ export const PATH_TO_PERM: Record<string, string> = {
   "/admin/sla": "admin.sla",
   "/admin/rbac": "admin.rbac",
   "/admin/presence": "admin.presence",
-  "/admin/shifts": "admin.shifts",
 };

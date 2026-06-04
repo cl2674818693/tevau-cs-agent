@@ -5,7 +5,6 @@ import { AppShell } from "./components/app-shell/AppShell";
 import { ForbiddenRoute } from "./routes/ForbiddenRoute";
 import { DashboardRoute } from "./routes/admin/DashboardRoute";
 import { PresenceRoute } from "./routes/admin/PresenceRoute";
-import { ShiftsRoute } from "./routes/admin/ShiftsRoute";
 import { RbacRoute } from "./routes/admin/RbacRoute";
 import { SlaRoute } from "./routes/admin/SlaRoute";
 import { StaffAccountsRoute } from "./routes/admin/StaffAccountsRoute";
@@ -47,7 +46,6 @@ export default function App() {
             <Route path="/admin/dashboard" element={<DashboardRoute />} />
             <Route path="/admin/rbac" element={<RbacRoute />} />
             <Route path="/admin/presence" element={<PresenceRoute />} />
-            <Route path="/admin/shifts" element={<ShiftsRoute />} />
             <Route path="/403" element={<ForbiddenRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

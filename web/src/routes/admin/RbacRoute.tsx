@@ -17,7 +17,7 @@ const PERM_LABELS: Record<string, string> = {
   "admin.rbac": "角色权限",
   "admin.staff_groups": "客服分组",
   "admin.presence": "在线状态",
-  "admin.shifts": "排班",
+  "chat.dispatch": "派单（接客户对话）",
 };
 
 const ROLE_LABELS: Record<string, string> = {
