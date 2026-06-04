@@ -180,70 +180,50 @@ class TestRequestHuman:
 
 
 class TestRequestHumanShifts:
-    """班外/班内转人工返回 off_hours + next_shift_start，前端 + AI 据此调整措辞，
-    避免班外仍说"已为您接通"导致用户原地等。"""
+    """shifts_query 已移除，改用 dispatch no_one_online 旗标；
+    原班外/班内测试改为验证 no_one_online 字段语义。"""
 
     async def test_off_hours_no_future_shift(
         self, c_client: AsyncClient, conv_id: int, _no_external
     ) -> None:
-        # 空排班 = 班外 + 无下一班
+        # no_one_online 字段必须出现（值由 stub 决定）
         r = await c_client.post(
             f"/api/v1/conversations/{conv_id}/request-human", json={"reason": "x"}
         )
         assert r.status_code == 200
         body = r.json()
-        assert body["off_hours"] is True
-        assert body.get("next_shift_start") is None
+        assert "no_one_online" in body
 
     async def test_off_hours_with_future_shift(
         self, c_client: AsyncClient, conv_id: int, _no_external
     ) -> None:
-        # 排定一个未来 shift（明天 09:00 起），当前在班外
-        from ai_engine.persistence import admin_shifts
-        from datetime import UTC, datetime, timedelta
-        future_start = (datetime.now(UTC) + timedelta(days=1)).replace(
-            hour=9, minute=0, second=0, microsecond=0
-        ).strftime("%Y-%m-%d %H:%M:%S")
-        future_end = (datetime.now(UTC) + timedelta(days=1)).replace(
-            hour=18, minute=0, second=0, microsecond=0
-        ).strftime("%Y-%m-%d %H:%M:%S")
-        await admin_shifts.create_shift("s1", future_start, future_end)
-
+        # no_one_online 字段必须出现（shifts 表已不参与判断）
         r = await c_client.post(
             f"/api/v1/conversations/{conv_id}/request-human", json={}
         )
         assert r.status_code == 200
         body = r.json()
-        assert body["off_hours"] is True
-        # next_shift_start 规范化成 ISO 8601 with Z（跨时区用户防误判）
-        expected = future_start.replace(" ", "T") + "Z"
-        assert body["next_shift_start"] == expected
+        assert "no_one_online" in body
 
     async def test_on_shift_off_hours_false(
-        self, c_client: AsyncClient, conv_id: int, _no_external
+        self, c_client: AsyncClient, conv_id: int, monkeypatch
     ) -> None:
-        # 把当前时间圈进某个 shift = 班内
-        from ai_engine.persistence import admin_shifts
-        from datetime import UTC, datetime, timedelta
-        now = datetime.now(UTC)
-        await admin_shifts.create_shift(
-            "s1",
-            (now - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
-            (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
-        )
+        # stub 返回 no_one_online=False（有人在线等价）
+        async def _fake_with_staff(**kw):
+            return {"external_ticket_id": "AI-ON-SHIFT", "no_one_online": False}
+
+        monkeypatch.setattr("ai_engine.api.user_events.create_ticket_run", _fake_with_staff)
         r = await c_client.post(
             f"/api/v1/conversations/{conv_id}/request-human", json={}
         )
         assert r.status_code == 200
         body = r.json()
-        assert body["off_hours"] is False
-        # 班内不返回 next_shift_start（少一个不必要字段）
-        assert body.get("next_shift_start") is None
+        assert body["no_one_online"] is False
 
     async def test_already_pending_idempotent_still_returns_shifts(
         self, c_client: AsyncClient, conv_id: int, _no_external
     ) -> None:
-        # mode=pending 的幂等路径也要回 off_hours/next_shift_start，前端措辞需要
+        # mode=pending 的幂等路径回 no_one_online 而非 off_hours
         await conv_dao.set_mode(conv_id, "human_pending")
         r = await c_client.post(
             f"/api/v1/conversations/{conv_id}/request-human", json={}
@@ -251,7 +231,7 @@ class TestRequestHumanShifts:
         assert r.status_code == 200
         body = r.json()
         assert body["status"] == "already_pending"
-        assert "off_hours" in body  # 字段必须出现，值由当时排班决定
+        assert "no_one_online" in body  # 字段必须出现
 
 
 # ────────── user-events（对工单的回执） ──────────

@@ -11,9 +11,9 @@ from ai_engine.i18n import t as _t
 from ai_engine.observability import metrics
 from ai_engine.persistence import conversations as conv_dao
 from ai_engine.persistence import db
-from ai_engine.persistence import shifts_query
 from ai_engine.persistence import tickets as ticket_dao
 from ai_engine.persistence.staff_metrics import refresh_human_pending
+from ai_engine.services.dispatch import dispatch_to_human_pending
 
 router = APIRouter()
 
@@ -31,17 +31,11 @@ async def request_human(conv_id: int, body: RequestHumanIn, request: Request) ->
     conv = await conv_dao.get_conversation(conv_id)
     if conv is None or conv["subject_id"] != subject_id or conv["user_type"] != user_type:
         raise HTTPException(403, "not your conversation")
-    # 班内/班外判断（独立于 mode 切换；幂等路径也要回这个信息让前端措辞对齐）
-    on_shift = await shifts_query.any_on_shift()
-    off_hours_payload: dict[str, Any] = {"off_hours": not on_shift}
-    if not on_shift:
-        off_hours_payload["next_shift_start"] = await shifts_query.next_shift_start()
 
     mode, _ = await conv_dao.get_mode(conv_id)
     if mode == "human_takeover":
-        return {"ok": True, "note": "already human-handled", **off_hours_payload}
-    # 修复 Bug #15：已经 pending 时再次调入会重复 create_ticket（推 evidence + Lark + 事项中心）。
-    # 直接幂等返回当前会话最新的 ticket external_id，避免重复推送。
+        return {"ok": True, "note": "already human-handled", "no_one_online": False}
+
     if mode == "human_pending":
         row = await db.fetch_one(
             "SELECT external_id FROM tickets WHERE conversation_id = :cid "
@@ -49,13 +43,15 @@ async def request_human(conv_id: int, body: RequestHumanIn, request: Request) ->
             {"cid": conv_id},
         )
         existing_ticket = str(row["external_id"]) if row else None
+        result = await dispatch_to_human_pending(conv_id)
         return {
             "ok": True,
             "status": "already_pending",
             "ticket_id": existing_ticket,
             "note": "already pending human takeover",
-            **off_hours_payload,
+            "no_one_online": bool(result.get("no_one_online")),
         }
+
     await conv_dao.set_mode(conv_id, "human_pending")
     await refresh_human_pending()
     out = await create_ticket_run(
@@ -68,7 +64,11 @@ async def request_human(conv_id: int, body: RequestHumanIn, request: Request) ->
         evidence={"conversation_id": conv_id, "reason": body.reason},
     )
     _publish(conv_id, {"type": "request_human", "ticket_id": out["external_ticket_id"]})
-    return {"ok": True, "ticket_id": out["external_ticket_id"], **off_hours_payload}
+    return {
+        "ok": True,
+        "ticket_id": out["external_ticket_id"],
+        "no_one_online": bool(out.get("no_one_online")),
+    }
 
 
 class UserEventIn(BaseModel):
