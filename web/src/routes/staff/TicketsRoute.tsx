@@ -91,10 +91,7 @@ export function TicketsRoute() {
 
   const buildFilter = useCallback(
     (beforeId?: string) => ({
-      open:
-        status === ""
-          ? undefined
-          : status !== "closed" && status !== "resolved",
+      status: status || undefined,
       severity: severity || undefined,
       beforeId,
       limit: PAGE_SIZE,

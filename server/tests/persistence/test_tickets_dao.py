@@ -196,6 +196,89 @@ class TestListTickets:
         assert rows[0]["closed"] is True
         assert rows[0]["status"] == "closed"
 
+    async def test_filter_by_status_pending(self, db_ready, conv_id) -> None:
+        await tickets.create_ticket("T-pending", conv_id, {})
+        await tickets.create_ticket("T-prog", conv_id, {})
+        await tickets.append_ticket_event("T-prog", "in_progress", None, None, None)
+        rows = await tickets.list_tickets(status="pending")
+        assert [r["external_id"] for r in rows] == ["T-pending"]
+
+    async def test_filter_by_status_in_progress(self, db_ready, conv_id) -> None:
+        await tickets.create_ticket("T-pending", conv_id, {})
+        await tickets.create_ticket("T-prog", conv_id, {})
+        await tickets.create_ticket("T-resolved", conv_id, {})
+        await tickets.create_ticket("T-closed", conv_id, {})
+        await tickets.append_ticket_event("T-prog", "in_progress", None, None, None)
+        await tickets.append_ticket_event("T-resolved", "resolved", None, None, None)
+        await tickets.append_ticket_event("T-closed", "closed", None, None, None)
+        rows = await tickets.list_tickets(status="in_progress")
+        ids = {r["external_id"] for r in rows}
+        assert ids == {"T-prog"}
+
+    async def test_filter_status_in_progress_includes_user_rejected(
+        self, db_ready, conv_id
+    ) -> None:
+        await tickets.create_ticket("T-rej", conv_id, {})
+        await tickets.append_ticket_event("T-rej", "resolved", None, None, None)
+        await tickets.append_ticket_event("T-rej", "user_rejected_resolved", None, None, None)
+        rows = await tickets.list_tickets(status="in_progress")
+        assert {r["external_id"] for r in rows} == {"T-rej"}
+
+    async def test_filter_status_in_progress_includes_unknown_event(
+        self, db_ready, conv_id
+    ) -> None:
+        # 与 _STATUS_OF_EVENT 的兜底一致：未知事件归 in_progress
+        await tickets.create_ticket("T-bogus", conv_id, {})
+        await tickets.append_ticket_event("T-bogus", "bogus_event", None, None, None)
+        rows = await tickets.list_tickets(status="in_progress")
+        assert {r["external_id"] for r in rows} == {"T-bogus"}
+
+    async def test_filter_by_status_resolved(self, db_ready, conv_id) -> None:
+        await tickets.create_ticket("T-r1", conv_id, {})
+        await tickets.create_ticket("T-r2", conv_id, {})
+        await tickets.create_ticket("T-prog", conv_id, {})
+        await tickets.append_ticket_event("T-r1", "resolved", None, None, None)
+        await tickets.append_ticket_event("T-r2", "user_confirmed_resolved", None, None, None)
+        await tickets.append_ticket_event("T-prog", "in_progress", None, None, None)
+        rows = await tickets.list_tickets(status="resolved")
+        ids = {r["external_id"] for r in rows}
+        assert ids == {"T-r1", "T-r2"}
+
+    async def test_filter_by_status_closed(self, db_ready, conv_id) -> None:
+        await tickets.create_ticket("T-c", conv_id, {})
+        await tickets.create_ticket("T-r", conv_id, {})
+        await tickets.append_ticket_event("T-c", "closed", None, None, None)
+        await tickets.append_ticket_event("T-r", "resolved", None, None, None)
+        rows = await tickets.list_tickets(status="closed")
+        assert {r["external_id"] for r in rows} == {"T-c"}
+
+    async def test_filter_status_resolved_then_closed_is_closed(
+        self, db_ready, conv_id
+    ) -> None:
+        # 同时存在 resolved + closed 事件：最新是 closed，应只在 status=closed 命中
+        await tickets.create_ticket("T-rc", conv_id, {})
+        await tickets.append_ticket_event("T-rc", "resolved", None, None, None)
+        await tickets.append_ticket_event("T-rc", "closed", None, None, None)
+        resolved_rows = await tickets.list_tickets(status="resolved")
+        closed_rows = await tickets.list_tickets(status="closed")
+        assert all(r["external_id"] != "T-rc" for r in resolved_rows)
+        assert {r["external_id"] for r in closed_rows} == {"T-rc"}
+
+    async def test_filter_unknown_status_returns_empty(self, db_ready, conv_id) -> None:
+        await tickets.create_ticket("T-1", conv_id, {})
+        rows = await tickets.list_tickets(status="bogus")
+        assert rows == []
+
+    async def test_status_filter_combines_with_severity(
+        self, db_ready, conv_id
+    ) -> None:
+        await tickets.create_ticket("T-1", conv_id, {"severity": "P1"})
+        await tickets.create_ticket("T-2", conv_id, {"severity": "P2"})
+        await tickets.append_ticket_event("T-1", "in_progress", None, None, None)
+        await tickets.append_ticket_event("T-2", "in_progress", None, None, None)
+        rows = await tickets.list_tickets(status="in_progress", severity="P1")
+        assert {r["external_id"] for r in rows} == {"T-1"}
+
     async def test_before_id_cursor(self, db_ready, conv_id) -> None:
         # created_at 是秒级时间戳，需跨秒才能让 t.created_at < :cur_at 严格成立
         await tickets.create_ticket("T-0", conv_id, {})

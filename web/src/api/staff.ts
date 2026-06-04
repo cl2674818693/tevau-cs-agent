@@ -433,7 +433,7 @@ export type Ticket = {
 };
 
 export type ListTicketsFilter = {
-  open?: boolean;
+  status?: TicketStatus;
   severity?: string;
   category?: string;
   beforeId?: string;
@@ -444,9 +444,9 @@ export async function listTickets(
   token: string,
   filter: ListTicketsFilter = {},
 ): Promise<Ticket[]> {
-  const { open, severity, category, beforeId, limit = 50 } = filter;
+  const { status, severity, category, beforeId, limit = 50 } = filter;
   const qs = new URLSearchParams({ limit: String(limit) });
-  if (open) qs.set("open", "true");
+  if (status) qs.set("status", status);
   if (severity) qs.set("severity", severity);
   if (category) qs.set("category", category);
   if (beforeId) qs.set("before_id", beforeId);

@@ -82,9 +82,19 @@ _STATUS_OF_EVENT = {
     "user_rejected_resolved": "in_progress",
 }
 
+# 反向：list_tickets 按 status 过滤时，需要把目标 status 映射回"可能的最新事件"集合。
+# pending 走单独分支（NOT EXISTS 任何事件）。in_progress 用 NOT IN 兜底未知事件，
+# 与 _STATUS_OF_EVENT 的兜底语义保持一致。
+_FINAL_EVENTS = ("closed", "resolved", "user_confirmed_resolved")
+_EVENTS_FOR_STATUS = {
+    "resolved": ("resolved", "user_confirmed_resolved"),
+    "closed": ("closed",),
+}
+
 
 async def list_tickets(
     open_only: bool = False,
+    status: str | None = None,
     severity: str | None = None,
     category: str | None = None,
     limit: int = 50,
@@ -93,6 +103,7 @@ async def list_tickets(
     """运营只读工单列表（最新在前）。外部事项中心是状态真源，本地仅做只读镜像。
 
     - open_only: 只看未关闭（沿用 NOT EXISTS(event='closed') 现算逻辑）
+    - status: 精确按细分状态过滤（pending/in_progress/resolved/closed），基于最新事件反推
     - severity: 按 current_severity 镜像列过滤
     - category: 按 payload_json.category 过滤（在 Python 侧筛，避免 JSON 方言差异）
     - before_id: 游标分页，返回 created_at 早于该游标（external_id）的工单
@@ -105,6 +116,37 @@ async def list_tickets(
         "WHERE e.external_id = t.external_id AND e.event = 'closed')"
     ] if open_only else []
     binds: dict[str, object] = {"lim": limit}
+    if status is not None:
+        if status == "pending":
+            where.append(
+                "NOT EXISTS (SELECT 1 FROM ticket_events e "
+                "WHERE e.external_id = t.external_id)"
+            )
+        elif status == "in_progress":
+            # 最新事件存在且不在 _FINAL_EVENTS — 含 user_rejected_resolved + 未知事件兜底
+            placeholders = ",".join(f":fin{i}" for i in range(len(_FINAL_EVENTS)))
+            where.append(
+                f"EXISTS (SELECT 1 FROM ticket_events e "
+                f"WHERE e.external_id = t.external_id "
+                f"AND e.id = (SELECT MAX(id) FROM ticket_events x WHERE x.external_id = t.external_id) "
+                f"AND e.event NOT IN ({placeholders}))"
+            )
+            for i, ev in enumerate(_FINAL_EVENTS):
+                binds[f"fin{i}"] = ev
+        elif status in _EVENTS_FOR_STATUS:
+            events_for = _EVENTS_FOR_STATUS[status]
+            placeholders = ",".join(f":st{i}" for i in range(len(events_for)))
+            where.append(
+                f"EXISTS (SELECT 1 FROM ticket_events e "
+                f"WHERE e.external_id = t.external_id "
+                f"AND e.id = (SELECT MAX(id) FROM ticket_events x WHERE x.external_id = t.external_id) "
+                f"AND e.event IN ({placeholders}))"
+            )
+            for i, ev in enumerate(events_for):
+                binds[f"st{i}"] = ev
+        else:
+            # 未知 status 视为零结果，避免静默返回全集误导调用方
+            return []
     if severity is not None:
         where.append("t.current_severity = :sev")
         binds["sev"] = severity

@@ -124,6 +124,71 @@ class TestListHappyPath:
         assert t["status"] == "closed"
         assert t["closed"] is True
 
+    async def test_filter_status_pending(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        cid = await insert_conversation()
+        await insert_ticket("T-pending", cid)
+        await insert_ticket("T-prog", cid)
+        await insert_ticket_event("T-prog", "in_progress")
+        resp = await client.get(
+            "/staff/api/v1/tickets?status=pending", headers=agent_headers
+        )
+        ids = {t["external_id"] for t in resp.json()["tickets"]}
+        assert ids == {"T-pending"}
+
+    async def test_filter_status_in_progress(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        cid = await insert_conversation()
+        await insert_ticket("T-prog", cid)
+        await insert_ticket("T-resolved", cid)
+        await insert_ticket("T-closed", cid)
+        await insert_ticket_event("T-prog", "in_progress")
+        await insert_ticket_event("T-resolved", "resolved")
+        await insert_ticket_event("T-closed", "closed")
+        resp = await client.get(
+            "/staff/api/v1/tickets?status=in_progress", headers=agent_headers
+        )
+        ids = {t["external_id"] for t in resp.json()["tickets"]}
+        assert ids == {"T-prog"}
+
+    async def test_filter_status_resolved(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        cid = await insert_conversation()
+        await insert_ticket("T-r1", cid)
+        await insert_ticket("T-r2", cid)
+        await insert_ticket_event("T-r1", "resolved")
+        await insert_ticket_event("T-r2", "user_confirmed_resolved")
+        resp = await client.get(
+            "/staff/api/v1/tickets?status=resolved", headers=agent_headers
+        )
+        ids = {t["external_id"] for t in resp.json()["tickets"]}
+        assert ids == {"T-r1", "T-r2"}
+
+    async def test_filter_status_closed(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        cid = await insert_conversation()
+        await insert_ticket("T-c", cid)
+        await insert_ticket("T-r", cid)
+        await insert_ticket_event("T-c", "closed")
+        await insert_ticket_event("T-r", "resolved")
+        resp = await client.get(
+            "/staff/api/v1/tickets?status=closed", headers=agent_headers
+        )
+        ids = {t["external_id"] for t in resp.json()["tickets"]}
+        assert ids == {"T-c"}
+
+    async def test_invalid_status_422(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        resp = await client.get(
+            "/staff/api/v1/tickets?status=bogus", headers=agent_headers
+        )
+        assert resp.status_code == 422
+
     async def test_limit_validation(
         self, init_self_db, client, agent_headers
     ) -> None:

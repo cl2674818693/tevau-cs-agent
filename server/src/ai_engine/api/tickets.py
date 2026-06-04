@@ -16,9 +16,13 @@ from ai_engine.persistence.tickets import (
 router = APIRouter()
 
 
+_ALLOWED_STATUS = ("pending", "in_progress", "resolved", "closed")
+
+
 @router.get("/staff/api/v1/tickets")
 async def staff_list_tickets(
     open: bool = Query(default=False),
+    status: str | None = Query(default=None),
     severity: str | None = Query(default=None),
     category: str | None = Query(default=None),
     before_id: str | None = Query(default=None),
@@ -27,11 +31,15 @@ async def staff_list_tickets(
 ) -> dict[str, Any]:
     """运营只读工单列表（看 + 跳会话）。外部事项中心是状态真源，本地仅只读镜像。
 
-    可选筛选：open（只看未关闭）/ severity / category；游标分页：before_id。
+    可选筛选：open（只看未关闭）/ status（精确细分状态）/ severity / category；
+    游标分页：before_id。
     """
+    if status is not None and status not in _ALLOWED_STATUS:
+        raise HTTPException(422, f"invalid status: {status}")
     return {
         "tickets": await list_tickets(
             open_only=open,
+            status=status,
             severity=severity,
             category=category,
             limit=limit,
