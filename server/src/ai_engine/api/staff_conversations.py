@@ -157,7 +157,7 @@ async def list_conversations(
     risk_only: bool = Query(False),
     staff: dict[str, Any] = Depends(require_staff),
 ) -> list[dict[str, object]]:
-    return await conv_dao.list_for_staff(status, risk_only=risk_only)
+    return await conv_dao.list_for_staff(status, risk_only=risk_only, me=str(staff["sub"]))
 
 
 @router.get("/staff/api/v1/conversations/{conv_id}")
@@ -178,7 +178,8 @@ async def take(conv_id: int, staff: dict[str, Any] = Depends(require_staff)) -> 
         cur = await conn.execute(
             text(
                 "UPDATE conversations SET mode='human_takeover', assigned_staff_id=:sub, "
-                "assigned_at=:now WHERE id=:id AND assigned_staff_id IS NULL"
+                "assigned_at=:now WHERE id=:id AND "
+                "(assigned_staff_id IS NULL OR assigned_staff_id=:sub)"
             ),
             {"sub": staff["sub"], "now": now_str(), "id": conv_id},
         )

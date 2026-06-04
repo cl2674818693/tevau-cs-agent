@@ -279,12 +279,15 @@ _RISK_WHERE = (
 
 
 async def list_for_staff(
-    filter_status: str = "all", risk_only: bool = False
+    filter_status: str = "all",
+    risk_only: bool = False,
+    me: str | None = None,
 ) -> list[dict[str, object]]:
     """客服工作台列表。
 
     - filter_status ∈ {human_pending, human_takeover, all}：默认 mode 过滤（risk_only=False）。
     - risk_only=True：忽略 mode，按"任一风险信号为真"筛选（含 mode='ai' 的答错会话）。
+    - me：当 filter_status='human_pending' 时，只返回开放池或派给我的会话（隔离别人未到期的派单）。
 
     无论何种过滤，每行都附带风险标记字段：has_failed / has_out_of_scope /
     has_downvote / has_empty_tool（needs_review 为表自身列，随 c.* 返回）。
@@ -298,6 +301,13 @@ async def list_for_staff(
     if filter_status == "all":
         return await db.fetch_all(
             f"SELECT {cols} FROM conversations c WHERE c.mode != 'ai' ORDER BY c.id DESC LIMIT 100"
+        )
+    if filter_status == "human_pending" and me:
+        return await db.fetch_all(
+            f"SELECT {cols} FROM conversations c WHERE c.mode='human_pending' "
+            f"AND (c.assigned_staff_id IS NULL OR c.assigned_staff_id=:me) "
+            f"ORDER BY c.id DESC LIMIT 100",
+            {"me": me},
         )
     return await db.fetch_all(
         f"SELECT {cols} FROM conversations c WHERE c.mode=:m ORDER BY c.id DESC LIMIT 100",
