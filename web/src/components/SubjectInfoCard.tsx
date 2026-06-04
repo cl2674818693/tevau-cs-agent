@@ -1,4 +1,5 @@
 import { Card, Descriptions, Flex, Skeleton, Tag, Tooltip, Typography } from "antd";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { getSubjectInfo, type SubjectInfo } from "../api/staff";
@@ -10,12 +11,37 @@ type Props = {
   convId: number;
 };
 
-/** 用户业务信息 + 客户端环境：admin 详情页右侧栏，调一次后端聚合端点。
- *  业务库未配置或拉取失败时 subject.found=false，仍展示 client_info。 */
+/**
+ * H5 下窗口 < 768px 时默认折叠，标题行显示一行摘要 chip；桌面端默认展开 + 无 toggle 按钮。
+ * 用 matchMedia 探测断点（不用 Tailwind 的 md:hidden 响应式 class，那个 className 里的 `:`
+ * 在 jsdom + nwsapi 下会被某个查询误解析为 `:hidden` 伪类，导致 getByRole 抛 SyntaxError）。
+ */
+function useIsMobile(breakpoint = 768): boolean {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return !window.matchMedia(`(min-width: ${breakpoint}px)`).matches;
+  });
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia(`(min-width: ${breakpoint}px)`);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(!e.matches);
+    mq.addEventListener?.("change", handler);
+    return () => mq.removeEventListener?.("change", handler);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 export function SubjectInfoCard({ token, convId }: Props) {
   const [data, setData] = useState<SubjectInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const isMobile = useIsMobile();
+  // 移动端默认折叠；桌面端默认展开。窗口跨越断点也跟随重置（mq change 触发 isMobile 更新，
+  // 这里独立维护 collapsed 让用户的手动展开/折叠不被尺寸抖动覆盖）。
+  const [collapsed, setCollapsed] = useState(true);
+  useEffect(() => {
+    setCollapsed(isMobile);
+  }, [isMobile]);
 
   useEffect(() => {
     if (!token) return;
@@ -56,32 +82,101 @@ export function SubjectInfoCard({ token, convId }: Props) {
 
   const { subject, client_info } = data;
   const isC = subject.user_type === "c";
+  const summary = summarize(data);
+  // 桌面端永远展开 + 无 toggle；移动端按 collapsed 决定。
+  const bodyHidden = isMobile && collapsed;
+  const showToggle = isMobile;
+  const showSummary = isMobile && collapsed && !!summary;
 
   return (
-    <Card size="small" title="用户信息">
-      <Flex vertical gap={12}>
-        {subject.found ? (
-          isC ? (
-            <CSubjectBlock s={subject} />
+    <Card
+      size="small"
+      title={
+        <Flex align="center" gap="small" wrap="nowrap" style={{ minWidth: 0 }}>
+          <span style={{ flexShrink: 0 }}>用户信息</span>
+          {showSummary && (
+            <Text
+              type="secondary"
+              ellipsis
+              style={{
+                fontSize: 12,
+                fontWeight: 400,
+                minWidth: 0,
+                flex: 1,
+              }}
+            >
+              {summary}
+            </Text>
+          )}
+        </Flex>
+      }
+      extra={
+        showToggle ? (
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            aria-label={collapsed ? "展开用户信息" : "折叠用户信息"}
+            style={{
+              background: "none",
+              border: 0,
+              cursor: "pointer",
+              padding: 4,
+              color: "rgba(0,0,0,0.55)",
+              display: "inline-flex",
+              alignItems: "center",
+            }}
+          >
+            {collapsed ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronUp className="h-4 w-4" />
+            )}
+          </button>
+        ) : null
+      }
+    >
+      <div style={{ display: bodyHidden ? "none" : "block" }}>
+        <Flex vertical gap={12}>
+          {subject.found ? (
+            isC ? (
+              <CSubjectBlock s={subject} />
+            ) : (
+              <BSubjectBlock s={subject} />
+            )
           ) : (
-            <BSubjectBlock s={subject} />
-          )
-        ) : (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            业务库未关联或主体不存在
-          </Text>
-        )}
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              业务库未关联或主体不存在
+            </Text>
+          )}
 
-        {/* 客户端环境（H5 上报）：业务无关，单独分块，没数据时不显示分块 */}
-        {client_info && (
-          <>
-            <Divider />
-            <ClientBlock c={client_info} />
-          </>
-        )}
-      </Flex>
+          {/* 客户端环境（H5 上报）：业务无关，单独分块，没数据时不显示分块 */}
+          {client_info && (
+            <>
+              <Divider />
+              <ClientBlock c={client_info} />
+            </>
+          )}
+        </Flex>
+      </div>
     </Card>
   );
+}
+
+/** 折叠态摘要 chip：取主体名 + 状态 + 平台，三件套 `·` 分隔，不存在的字段跳过。 */
+function summarize(d: SubjectInfo | null): string {
+  if (!d) return "";
+  const { subject, client_info } = d;
+  if (!subject.found) {
+    return ["未关联业务库", client_info?.platform].filter(Boolean).join(" · ");
+  }
+  const isC = subject.user_type === "c";
+  const name = isC
+    ? subject.nick_name || subject.user_code || subject.subject_id
+    : subject.company_name || subject.subject_id;
+  const status = isC
+    ? subject.user_status || subject.kyc_status
+    : subject.status;
+  return [name, status, client_info?.platform].filter(Boolean).join(" · ");
 }
 
 function Divider() {

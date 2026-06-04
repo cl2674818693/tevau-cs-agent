@@ -137,8 +137,9 @@ describe("integration: handoff 全链路（客服侧）", () => {
     const body = JSON.parse(await msgCalls[0].text());
     expect(body).toEqual({ content: "我帮你看下", attachment_ids: [] });
 
-    // 4) 标记已解决
-    fireEvent.click(screen.getByRole("button", { name: /标记已解决/ }));
+    // 4) 标记已解决：先开「更多操作」抽屉，再点抽屉里的「标记已解决」
+    fireEvent.click(screen.getByRole("button", { name: "更多操作" }));
+    fireEvent.click(await screen.findByRole("button", { name: "标记已解决" }));
     await waitFor(() => expect(resolveCalls.length).toBe(1));
     expect(await screen.findByText(/已标记解决并释放回 AI/)).toBeInTheDocument();
   });

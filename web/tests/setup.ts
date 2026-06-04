@@ -51,7 +51,10 @@ if (typeof window !== "undefined" && !window.matchMedia) {
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: (query: string) => ({
-      matches: false,
+      // jsdom 默认当桌面浏览器渲染：(min-width:Xpx) 媒体查询返回 true（"我是桌面"），
+      // 让响应式组件默认走 desktop 分支；(max-width:Xpx) 返回 false（"不是 mobile"）。
+      // 改前默认 false 等于把所有断点都当 mobile，与桌面端测试预期不符。
+      matches: /min-width/i.test(query),
       media: query,
       onchange: null,
       addListener: () => {},
