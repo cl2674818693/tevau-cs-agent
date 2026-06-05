@@ -51,6 +51,21 @@ MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Quá nhiều tin nhắn. Vui lòng thử lại sau.",
         "zh": "消息过于频繁，请稍后再试。",
     },
+    "error.system_busy": {
+        # LLM 并发信号量满载 → 让用户稍后重试，区分于"服务不可用"的 error.internal。
+        "ar": "النظام مزدحم، يرجى المحاولة بعد قليل.",
+        "en": "System busy, please retry shortly.",
+        "es": "Sistema ocupado, por favor inténtalo en breve.",
+        "id": "Sistem sibuk, silakan coba lagi sebentar.",
+        "ja": "システムが混み合っています、しばらくしてから再度お試しください。",
+        "ko": "시스템이 혼잡합니다. 잠시 후 다시 시도해 주세요.",
+        "pt": "Sistema ocupado, por favor tente novamente em instantes.",
+        "ru": "Система перегружена, пожалуйста, повторите попытку чуть позже.",
+        "th": "ระบบหนาแน่น โปรดลองอีกครั้งในไม่ช้า",
+        "tr": "Sistem yoğun, lütfen kısa süre sonra tekrar deneyin.",
+        "vi": "Hệ thống đang bận, vui lòng thử lại sau giây lát.",
+        "zh": "系统繁忙，稍后重试。",
+    },
     "error.internal": {
         "ar": "الخدمة غير متاحة مؤقتاً، يرجى المحاولة لاحقاً.",
         "en": "Service temporarily unavailable. Please try again later.",
