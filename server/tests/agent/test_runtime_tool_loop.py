@@ -271,3 +271,53 @@ class TestAssistantPersistencePerRound:
         assert "final text" in all_text
         assert "查询中" in all_text
         assert "draft text" not in all_text
+
+
+class TestParallelToolDispatch:
+    """LLM 同轮 emit 的多 tool_use 之间无依赖，并发执行——总耗时 ≈ max(各工具) 而非 sum。"""
+
+    async def test_tools_run_concurrently(
+        self, monkeypatch, seeded_db, fake_stream, make_resp
+    ) -> None:
+        import time
+        import asyncio as _aio
+        from ai_engine.agent.tools import base as toolbase
+
+        async def _slow_h(**kw):  # noqa: ANN003
+            await _aio.sleep(0.1)
+            return {"ok": True, "tag": kw.get("tag")}
+
+        for name in ("slow_a", "slow_b", "slow_c"):
+            toolbase.register(
+                toolbase.Tool(
+                    name=name, description="slow",
+                    input_schema={"type": "object", "properties": {"tag": {"type": "string"}}},
+                    handler=_slow_h,
+                )
+            )
+        try:
+            responses = [
+                make_resp(stop_reason="tool_use", tool_calls=[
+                    {"id": "t1", "name": "slow_a", "input": {"tag": "a"}},
+                    {"id": "t2", "name": "slow_b", "input": {"tag": "b"}},
+                    {"id": "t3", "name": "slow_c", "input": {"tag": "c"}},
+                ]),
+                make_resp(text="draft"),
+                make_resp(text="done"),
+            ]
+            monkeypatch.setattr(_ac._client.messages, "stream", fake_stream(responses))
+
+            conv = await create_conversation("c", "U_PAR")
+            t0 = time.monotonic()
+            events = [e async for e in rt.run_turn(
+                conversation_id=conv, user_type="c", subject_id="U_PAR", user_message="run",
+            )]
+            elapsed = time.monotonic() - t0
+        finally:
+            for name in ("slow_a", "slow_b", "slow_c"):
+                toolbase.REGISTRY.pop(name, None)
+
+        # 串行需 ≥0.3s（3×0.1s）；并发应 ≤0.2s（含 LLM 桩 + 调度开销留余量）
+        assert elapsed < 0.2, f"tools ran sequentially: {elapsed}s"
+        # 3 个 tool_result 事件全到位
+        assert sum(1 for e in events if e.get("type") == "tool_result") == 3

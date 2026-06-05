@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -604,21 +605,28 @@ async def _run_tools(
     subject_id: str,
     conversation_id: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """执行本轮 tool_use，返回 (回灌给模型的 tool_result blocks, 流给前端的 tool_result 事件)。"""
-    blocks: list[dict[str, Any]] = []
-    events: list[dict[str, Any]] = []
-    for tc in tool_calls:
+    """执行本轮 tool_use，返回 (回灌给模型的 tool_result blocks, 流给前端的 tool_result 事件)。
+
+    并发执行：LLM 同轮 emit 的多个 tool_use 之间无依赖（依赖会被 LLM 拆到下一轮再 call），
+    用 asyncio.gather 并发执行。深度上限超出的 call 直接生成 error block，不进 gather。
+    blocks 顺序按输入 tool_calls 顺序对齐（用 idx 索引），保证回灌给 LLM 的次序与 tool_use 一致。
+    """
+    # 第一遍：分配 guard 配额，决定哪些 call 真跑 / 哪些挂 over-depth 错误
+    blocks: list[dict[str, Any] | None] = [None] * len(tool_calls)
+    runnable: list[tuple[int, dict[str, Any]]] = []
+    for i, tc in enumerate(tool_calls):
         if not guard.can_call_again():
-            blocks.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": tc["id"],
-                    "content": "ERROR: 达到工具调用深度上限，请直接给出当前结论或建工单。",
-                    "is_error": True,
-                }
-            )
+            blocks[i] = {
+                "type": "tool_result",
+                "tool_use_id": tc["id"],
+                "content": "ERROR: 达到工具调用深度上限，请直接给出当前结论或建工单。",
+                "is_error": True,
+            }
             continue
         guard.note_call()
+        runnable.append((i, tc))
+
+    async def _one(idx: int, tc: dict[str, Any]) -> tuple[int, dict[str, Any], dict[str, Any]]:
         r = await dispatch(
             tool_name=tc["name"],
             params=tc["input"],
@@ -632,23 +640,39 @@ async def _run_tools(
         payload, truncated = guard.maybe_truncate(payload)
         if truncated:
             payload += "\n[TRUNCATED]"
-        blocks.append(
-            {
-                "type": "tool_result",
-                "tool_use_id": tc["id"],
-                "content": payload,
-                "is_error": not r["ok"],
-            }
-        )
+        block = {
+            "type": "tool_result",
+            "tool_use_id": tc["id"],
+            "content": payload,
+            "is_error": not r["ok"],
+        }
         result_count = _result_count(r.get("data")) if r["ok"] else 0
-        events.append(
-            {
-                "type": "tool_result",
-                "id": tc["id"],
-                "name": tc["name"],
-                "ok": r["ok"],
-                "result_count": result_count,
-                "empty": result_count == 0,
-            }
-        )
-    return blocks, events
+        event = {
+            "type": "tool_result",
+            "id": tc["id"],
+            "name": tc["name"],
+            "ok": r["ok"],
+            "result_count": result_count,
+            "empty": result_count == 0,
+        }
+        return idx, block, event
+
+    # 并发执行所有 runnable tool calls；异常以 ok=False 兜底，不让单工具拖垮整轮
+    results = await asyncio.gather(
+        *[_one(idx, tc) for idx, tc in runnable],
+        return_exceptions=True,
+    )
+
+    events: list[dict[str, Any]] = []
+    for item in results:
+        if isinstance(item, BaseException):
+            # gather 捕到异常：dispatch 自己应该已经把异常封装为 r["ok"]=False，
+            # 几乎不进这分支；只是兜底防止异常透传中断整批
+            logger.warning("tool gather got exception: %r", item)
+            continue
+        idx, block, event = item
+        blocks[idx] = block
+        events.append(event)
+
+    final_blocks = [b for b in blocks if b is not None]
+    return final_blocks, events
