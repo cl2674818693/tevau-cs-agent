@@ -1,4 +1,5 @@
 import asyncio
+import weakref
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -28,7 +29,9 @@ _client = _build_client()
 # 进程内 LLM 调用信号量。超载时不阻塞用户长 wait，acquire 超时直接 SystemBusy。
 # asyncio.Semaphore 绑定到创建它的事件循环；生产只一个 loop，所以一次创建够用。
 # 测试每个用例新建 loop（pytest-asyncio function scope），所以按 loop 缓存 sem。
-_llm_sems: "dict[asyncio.AbstractEventLoop, asyncio.Semaphore]" = {}
+_llm_sems: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def _rebuild_llm_semaphore() -> None:
