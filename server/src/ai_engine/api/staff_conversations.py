@@ -20,6 +20,7 @@ from ai_engine.persistence.db import get_conn
 from ai_engine.persistence.schema import now_str
 from ai_engine.persistence.staff import get_staff
 from ai_engine.persistence.staff_metrics import log_staff_action, refresh_human_pending
+from ai_engine.utils.text_sanitize import sanitize_user_text
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -61,16 +62,30 @@ def _deliver_local(conv_id: int, event: dict[str, Any]) -> None:
 
 
 async def _redis_publish(conv_id: int, event: dict[str, Any]) -> None:
+    """B-P1-2: 跨副本事件总线 publish 的退避重试。
+
+    单次失败就丢消息会让多副本部署下的客服 SSE 偶发丢核心事件（user_message /
+    mode_change / human_message 等）。按 50/150/300ms 退避重试 3 次，仍失败仅 log
+    不阻断主链路（本进程订阅者已先行本地投递，不受 Redis 影响）。
+    与 chat.signal_cancel 的重试策略对齐。
+    """
     client = _get_redis()
     if client is None:
         return
-    try:
-        await client.publish(
-            f"conv:{conv_id}",
-            json.dumps({"o": _PROC_ID, "c": conv_id, "e": event}, ensure_ascii=False),
-        )
-    except Exception:  # redis 故障不阻断主链路；本进程订阅者已本地投递
-        logger.warning("conversation bus redis publish failed", exc_info=True)
+    channel = f"conv:{conv_id}"
+    payload = json.dumps({"o": _PROC_ID, "c": conv_id, "e": event}, ensure_ascii=False)
+    delays = (0.05, 0.15, 0.3)
+    for i, delay in enumerate(delays):
+        try:
+            await client.publish(channel, payload)
+            return
+        except Exception:
+            if i + 1 >= len(delays):
+                logger.warning(
+                    "conversation bus redis publish failed after retries", exc_info=True
+                )
+                return
+            await asyncio.sleep(delay)
 
 
 def _publish(conv_id: int, event: dict[str, Any]) -> None:
@@ -189,6 +204,10 @@ async def take(conv_id: int, staff: dict[str, Any] = Depends(require_staff)) -> 
     metrics.staff_takeovers.labels(staff_id=staff["sub"]).inc()
     await refresh_human_pending()
     _publish(conv_id, {"type": "mode_change", "to": "human_takeover", "by_staff_id": staff["sub"]})
+    # B-P0-8: 中断 conv_id 上仍在跑的 AI 流，防止 mode 已切走但 AI 仍在写 assistant 消息
+    from ai_engine.api.chat import signal_cancel  # lazy import 避免循环
+
+    await signal_cancel(conv_id)
     return {"ok": True}
 
 
@@ -279,6 +298,10 @@ async def transfer_to(
     await log_staff_action(conv_id, staff["sub"], "transfer_out")
     await log_staff_action(conv_id, target_staff_id, "take")
     _publish(conv_id, {"type": "transferred", "to_staff_id": target_staff_id})
+    # B-P0-8: 转派也代表当前会话被人接管，中断仍在跑的 AI 流
+    from ai_engine.api.chat import signal_cancel  # lazy import 避免循环
+
+    await signal_cancel(conv_id)
     return {"ok": True}
 
 
@@ -294,9 +317,11 @@ async def send_message(
     mode, sid = await conv_dao.get_mode(conv_id)
     if mode != "human_takeover" or sid != staff["sub"]:
         raise HTTPException(403, "not your conversation")
-    if not body.content.strip() and not body.attachment_ids:
+    # B-P2-5: 先 sanitize 再空校验；避免零宽字符消息绕过 strip
+    content = sanitize_user_text(body.content)
+    if not content.strip() and not body.attachment_ids:
         raise HTTPException(422, "empty message")
-    mid = await conv_dao.append_human_message(conv_id, staff["sub"], body.content)
+    mid = await conv_dao.append_human_message(conv_id, staff["sub"], content)
     from ai_engine.persistence import attachments as att_dao
 
     bound = (
@@ -304,7 +329,7 @@ async def send_message(
         if body.attachment_ids
         else []
     )
-    _publish(conv_id, await _human_message_event(staff["sub"], body.content, bound))
+    _publish(conv_id, await _human_message_event(staff["sub"], content, bound))
     return {"ok": True}
 
 
@@ -318,17 +343,37 @@ async def _require_assigned(conv_id: int, staff_sub: str) -> None:
 async def ai_draft_enable(
     conv_id: int, staff: dict[str, Any] = Depends(require_staff)
 ) -> dict[str, bool]:
-    """切到 ai_draft：AI 出草稿、客服 review 后发。先把会话指派给本客服。"""
+    """切到 ai_draft：AI 出草稿、客服 review 后发。
+
+    安全语义（B-P0-1 / B-P1-10）：
+    - 未指派 / 本人已指派 → 200，接管并切 ai_draft（与原行为一致）；
+    - 他人已接管 → 409（与 take/transfer 一致的反抢占模型）；
+    - conversation 不存在 → 404（避免返回 ok=True 帮攻击者枚举会话 ID）。
+    UPDATE WHERE 与 take 同款 CAS：assigned_staff_id IS NULL OR =:sub，rowcount=0 后用
+    二次 SELECT 区分 404/409，避免"先查后改"的 race。
+    """
     async with get_conn() as conn:
-        await conn.execute(
+        cur = await conn.execute(
             text(
                 "UPDATE conversations SET mode='ai_draft', assigned_staff_id=:sub, "
-                "assigned_at=COALESCE(assigned_at, :now) WHERE id=:id"
+                "assigned_at=COALESCE(assigned_at, :now) WHERE id=:id AND "
+                "(assigned_staff_id IS NULL OR assigned_staff_id=:sub)"
             ),
             {"sub": staff["sub"], "now": now_str(), "id": conv_id},
         )
+        if cur.rowcount == 0:
+            res = await conn.execute(
+                text("SELECT 1 FROM conversations WHERE id=:id"), {"id": conv_id}
+            )
+            if res.first() is None:
+                raise HTTPException(404, "conversation not found")
+            raise HTTPException(409, "already taken by another staff")
     await refresh_human_pending()
     _publish(conv_id, {"type": "mode_change", "to": "ai_draft", "by_staff_id": staff["sub"]})
+    # B-P0-8: enable 把 mode 切去 ai_draft，仍在跑的"AI 直接发用户"流也要中断
+    from ai_engine.api.chat import signal_cancel  # lazy import 避免循环
+
+    await signal_cancel(conv_id)
     return {"ok": True}
 
 
@@ -346,14 +391,46 @@ async def ai_draft_disable(
 async def ai_draft_approve(
     conv_id: int, staff: dict[str, Any] = Depends(require_staff)
 ) -> dict[str, bool]:
-    """通过草稿：把最新草稿作为 assistant 消息发给用户。"""
+    """通过草稿：把最新草稿作为 assistant 消息发给用户。
+
+    B-P1-9 并发幂等：用 DELETE WHERE id=:draft_id 单条删除作为 CAS。两次并发 approve
+    只有一个 rowcount=1 拿到 draft 内容；另一个 rowcount=0 → 404（草稿已被消费）。
+    防"网络抖动 / 前端双击" 导致同一段草稿连发两次 assistant 消息。
+    """
     await _require_assigned(conv_id, staff["sub"])
-    draft = await conv_dao.get_latest_ai_draft(conv_id)
-    if draft is None:
-        raise HTTPException(404, "no pending draft")
-    await conv_dao.append_message(conv_id, role="assistant", content=draft)
-    await conv_dao.clear_ai_drafts(conv_id)
-    _publish(conv_id, {"type": "assistant_message", "content": draft})
+    async with get_conn() as conn:
+        res = await conn.execute(
+            text(
+                "SELECT id, content FROM messages WHERE conversation_id=:id "
+                "AND role='ai_draft' ORDER BY id DESC LIMIT 1"
+            ),
+            {"id": conv_id},
+        )
+        row = res.first()
+        if row is None:
+            raise HTTPException(404, "no pending draft")
+        draft_id, draft_content = row[0], row[1]
+        cur = await conn.execute(
+            text("DELETE FROM messages WHERE id=:id AND role='ai_draft'"),
+            {"id": draft_id},
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "no pending draft")
+        # 防御性：同 conv 下若还有其他 ai_draft 行（理论应只一条），一并清除
+        await conn.execute(
+            text(
+                "DELETE FROM messages WHERE conversation_id=:id AND role='ai_draft'"
+            ),
+            {"id": conv_id},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO messages(conversation_id, role, content, created_at) "
+                "VALUES (:cid, 'assistant', :c, :now)"
+            ),
+            {"cid": conv_id, "c": draft_content, "now": now_str()},
+        )
+    _publish(conv_id, {"type": "assistant_message", "content": draft_content})
     return {"ok": True}
 
 
@@ -371,9 +448,13 @@ async def ai_draft_reject(
     draft = await conv_dao.get_latest_ai_draft(conv_id)
     if draft is None:
         raise HTTPException(404, "no pending draft")
+    # B-P2-5: sanitize rewrite，并防被全零宽字符的 rewrite 绕过有效性
+    rewrite = sanitize_user_text(body.rewrite)
+    if not rewrite.strip():
+        raise HTTPException(422, "rewrite must not be empty")
     await conv_dao.clear_ai_drafts(conv_id)
-    await conv_dao.append_human_message(conv_id, staff["sub"], body.rewrite)
-    _publish(conv_id, await _human_message_event(staff["sub"], body.rewrite))
+    await conv_dao.append_human_message(conv_id, staff["sub"], rewrite)
+    _publish(conv_id, await _human_message_event(staff["sub"], rewrite))
     return {"ok": True}
 
 
@@ -410,20 +491,6 @@ async def stream(
     return _subscribe(conv_id)
 
 
-_STAFF_TOOL_WHITELIST = {
-    "query_user",
-    "query_card",
-    "query_kyc",
-    "query_balance",
-    "query_transaction",
-    "query_bu_order",
-    "query_bu_request_log",
-    "search_code",
-    "lookup_api_doc",
-    "read_file",
-}
-
-
 class AiToolIn(BaseModel):
     params: dict[str, Any] = {}
 
@@ -435,21 +502,35 @@ async def run_ai_tool(
     body: AiToolIn,
     staff: dict[str, Any] = Depends(require_staff),
 ) -> dict[str, Any]:
-    """客服代查 AI 工具：强制以该会话身份调用（不能跨用户），结果仅返回客服、不进对话流。"""
+    """客服代查 AI 工具：强制以该会话身份调用（不能跨用户），结果仅返回客服、不进对话流。
+
+    归属校验（B-P0-2）：仅 senior/engineer 可调；且会话必须未指派或本人已接管。
+    他人已接管时 403，防止通过改 conv_id 越权代查别的客服的客户隐私数据。
+    """
     if staff.get("role") not in ("senior", "engineer"):
         raise HTTPException(403, "ai-tools requires senior/engineer")
-    conv = await conv_dao.get_conversation(conv_id)
+    conv = await conv_dao.get_conversation_meta(conv_id)
     if conv is None:
         raise HTTPException(404, "conversation not found")
-    # senior/engineer 代查时给明文（spec §13.3）；工具白名单/角色细粒度策略已下线。
-    return await dispatch(
-        tool_name=tool_name,
-        params=body.params,
-        user_type=str(conv["user_type"]),
-        subject_id=str(conv["subject_id"]),
-        conversation_id=conv_id,
-        unmask=True,
-    )
+    assigned = conv.get("assigned_staff_id")
+    if assigned is not None and assigned != staff["sub"]:
+        raise HTTPException(403, "conversation assigned to another staff")
+    # B-P1-18: 兜底外层超时，防业务库/LLM 工具卡死把 HTTP 连接吊起
+    try:
+        return await asyncio.wait_for(
+            # senior/engineer 代查时给明文（spec §13.3）；工具白名单/角色细粒度策略已下线。
+            dispatch(
+                tool_name=tool_name,
+                params=body.params,
+                user_type=str(conv["user_type"]),
+                subject_id=str(conv["subject_id"]),
+                conversation_id=conv_id,
+                unmask=True,
+            ),
+            timeout=settings.tool_dispatch_timeout_seconds,
+        )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(504, "tool dispatch timed out") from exc
 
 
 @router.get("/staff/api/v1/conversations/{conv_id}/spectate-stream")

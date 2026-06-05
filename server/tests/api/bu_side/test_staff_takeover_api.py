@@ -335,6 +335,46 @@ class TestAiDraftFlow:
         row = await _get_conv_row(cid)
         assert row["mode"] == "ai"
 
+    async def test_enable_forbidden_when_assigned_to_other_staff(
+        self, init_self_db, client, agent2_headers
+    ) -> None:
+        """B-P0-1: enable 不能抢占他人已接管的会话（之前可绕过 _require_assigned）。"""
+        cid = await insert_conversation(
+            mode="human_takeover", assigned_staff_id="agent-1"
+        )
+        resp = await client.post(
+            f"/staff/api/v1/conversations/{cid}/ai-draft/enable", headers=agent2_headers
+        )
+        assert resp.status_code == 409
+        # 状态未被偷偷改写
+        row = await _get_conv_row(cid)
+        assert row["mode"] == "human_takeover"
+        assert row["assigned_staff_id"] == "agent-1"
+
+    async def test_enable_404_when_conversation_not_exist(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        """B-P1-10: enable 对不存在的 conv_id → 404，不可返回 ok=True 帮 ID 枚举。"""
+        resp = await client.post(
+            "/staff/api/v1/conversations/999999/ai-draft/enable", headers=agent_headers
+        )
+        assert resp.status_code == 404
+
+    async def test_enable_idempotent_when_owned(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        """B-P0-1: 本人已指派会话再次 enable 应幂等 200（保留现有体验）。"""
+        cid = await insert_conversation(
+            mode="ai_draft", assigned_staff_id="agent-1"
+        )
+        resp = await client.post(
+            f"/staff/api/v1/conversations/{cid}/ai-draft/enable", headers=agent_headers
+        )
+        assert resp.status_code == 200
+        row = await _get_conv_row(cid)
+        assert row["mode"] == "ai_draft"
+        assert row["assigned_staff_id"] == "agent-1"
+
     async def test_approve_no_draft_404(
         self, init_self_db, client, agent_headers
     ) -> None:
@@ -447,3 +487,215 @@ class TestRunAiTool:
         )
         assert resp.status_code == 200
         assert resp.json() == {"data": {"hello": "world"}}
+
+    async def test_engineer_forbidden_on_other_staffs_conversation(
+        self, init_self_db, client, auth_headers, monkeypatch
+    ) -> None:
+        """B-P0-2: engineer-A 不能在已被 engineer-B 接管的会话调工具，防越权代查客户隐私。"""
+        cid = await insert_conversation(
+            user_type="c",
+            subject_id="U123",
+            mode="human_takeover",
+            assigned_staff_id="eng-1",
+        )
+        monkeypatch.setattr(
+            "ai_engine.api.staff_conversations.dispatch",
+            AsyncMock(return_value={"data": {"should": "not be called"}}),
+        )
+        eng2 = auth_headers("engineer", sub="eng-2")
+        resp = await client.post(
+            f"/staff/api/v1/conversations/{cid}/ai-tools/query_user",
+            json={"params": {"user_id": "U123"}},
+            headers=eng2,
+        )
+        assert resp.status_code == 403
+
+    async def test_engineer_allowed_when_assigned_to_self(
+        self, init_self_db, client, engineer_headers, monkeypatch
+    ) -> None:
+        """已接管会话本人可继续调工具。"""
+        cid = await insert_conversation(
+            user_type="c",
+            subject_id="U123",
+            mode="human_takeover",
+            assigned_staff_id="eng-1",
+        )
+        monkeypatch.setattr(
+            "ai_engine.api.staff_conversations.dispatch",
+            AsyncMock(return_value={"data": {"ok": 1}}),
+        )
+        resp = await client.post(
+            f"/staff/api/v1/conversations/{cid}/ai-tools/query_user",
+            json={"params": {"user_id": "U123"}},
+            headers=engineer_headers,
+        )
+        assert resp.status_code == 200
+
+    async def test_senior_allowed_on_unassigned_conversation(
+        self, init_self_db, client, senior_headers, monkeypatch
+    ) -> None:
+        """senior 旁观调研：未指派会话允许（保留 spec §13.3 调研用例）。"""
+        cid = await insert_conversation(user_type="c", subject_id="U123")
+        monkeypatch.setattr(
+            "ai_engine.api.staff_conversations.dispatch",
+            AsyncMock(return_value={"data": {"ok": 1}}),
+        )
+        resp = await client.post(
+            f"/staff/api/v1/conversations/{cid}/ai-tools/query_user",
+            json={"params": {"user_id": "U123"}},
+            headers=senior_headers,
+        )
+        assert resp.status_code == 200
+
+
+class TestTakeoverCancelsAiStream:
+    """B-P0-8: 客服接管/转派/启用草稿应中断 conversation 正在跑的 AI 流，防止
+    AI 边写、客服边接管、最后回复污染 human_takeover 会话。"""
+
+    async def test_take_signals_cancel_for_inflight_stream(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        from ai_engine.api import chat as chat_api
+
+        cid = await insert_conversation(mode="human_pending")
+        evt = asyncio.Event()
+        chat_api._cancel_signals[cid] = evt
+        try:
+            r = await client.post(
+                f"/staff/api/v1/conversations/{cid}/take", headers=agent_headers
+            )
+            assert r.status_code == 200
+            assert evt.is_set(), "take should signal cancel to running AI stream"
+        finally:
+            chat_api._cancel_signals.pop(cid, None)
+
+    async def test_transfer_signals_cancel(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        from ai_engine.api import chat as chat_api
+
+        await insert_staff("agent-1", role="agent")
+        await insert_staff("eng-1", role="engineer")
+        cid = await insert_conversation(
+            mode="human_takeover", assigned_staff_id="agent-1"
+        )
+        evt = asyncio.Event()
+        chat_api._cancel_signals[cid] = evt
+        try:
+            r = await client.post(
+                f"/staff/api/v1/conversations/{cid}/transfer-to/eng-1",
+                headers=agent_headers,
+            )
+            assert r.status_code == 200
+            assert evt.is_set(), "transfer should signal cancel to running AI stream"
+        finally:
+            chat_api._cancel_signals.pop(cid, None)
+
+    async def test_ai_draft_enable_signals_cancel(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        from ai_engine.api import chat as chat_api
+
+        cid = await insert_conversation(mode="ai")
+        evt = asyncio.Event()
+        chat_api._cancel_signals[cid] = evt
+        try:
+            r = await client.post(
+                f"/staff/api/v1/conversations/{cid}/ai-draft/enable", headers=agent_headers
+            )
+            assert r.status_code == 200
+            assert evt.is_set(), "ai_draft_enable should signal cancel to running AI stream"
+        finally:
+            chat_api._cancel_signals.pop(cid, None)
+
+    async def test_take_no_inflight_stream_is_noop(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        """没有 inflight 流时 take 仍正常 200（signal_cancel 找不到 evt 是 no-op）。"""
+        cid = await insert_conversation(mode="human_pending")
+        r = await client.post(
+            f"/staff/api/v1/conversations/{cid}/take", headers=agent_headers
+        )
+        assert r.status_code == 200
+
+
+class TestAiDraftApproveIdempotency:
+    """B-P1-9: 并发 / 重复点 approve 不能产生多条 assistant 消息。"""
+
+    async def test_concurrent_approve_only_one_succeeds(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        cid = await insert_conversation(
+            mode="ai_draft", assigned_staff_id="agent-1"
+        )
+        await insert_message(cid, role="ai_draft", content="draft text")
+        results = await asyncio.gather(
+            client.post(
+                f"/staff/api/v1/conversations/{cid}/ai-draft/approve", headers=agent_headers
+            ),
+            client.post(
+                f"/staff/api/v1/conversations/{cid}/ai-draft/approve", headers=agent_headers
+            ),
+            return_exceptions=False,
+        )
+        codes = sorted(r.status_code for r in results)
+        # 一个 200，另一个 404/409
+        assert codes[0] == 200
+        assert codes[1] in (404, 409)
+        async with get_conn() as conn:
+            res = await conn.execute(
+                text(
+                    "SELECT COUNT(*) AS n FROM messages WHERE conversation_id=:c AND role='assistant'"
+                ),
+                {"c": cid},
+            )
+            row = res.mappings().first()
+            assert row["n"] == 1
+
+    async def test_sequential_second_approve_returns_404(
+        self, init_self_db, client, agent_headers
+    ) -> None:
+        """单线程顺序点两次 → 第二次 404（草稿已被消费）。"""
+        cid = await insert_conversation(
+            mode="ai_draft", assigned_staff_id="agent-1"
+        )
+        await insert_message(cid, role="ai_draft", content="draft text")
+        r1 = await client.post(
+            f"/staff/api/v1/conversations/{cid}/ai-draft/approve", headers=agent_headers
+        )
+        r2 = await client.post(
+            f"/staff/api/v1/conversations/{cid}/ai-draft/approve", headers=agent_headers
+        )
+        assert r1.status_code == 200
+        assert r2.status_code == 404
+
+
+class TestRunAiToolTimeout:
+    """B-P1-18: dispatch 超时硬约束（防工具卡死把 HTTP 连接吊起）。"""
+
+    async def test_dispatch_timeout_returns_504(
+        self, init_self_db, client, engineer_headers, monkeypatch
+    ) -> None:
+        from ai_engine.config import settings
+
+        cid = await insert_conversation(user_type="c", subject_id="U123")
+
+        async def _slow_dispatch(**_kwargs):
+            await asyncio.sleep(2.0)
+            return {"data": {"should": "not arrive"}}
+
+        monkeypatch.setattr(
+            "ai_engine.api.staff_conversations.dispatch", _slow_dispatch
+        )
+        monkeypatch.setenv("TOOL_DISPATCH_TIMEOUT_SECONDS", "0.05")
+        settings.reload()
+        try:
+            resp = await client.post(
+                f"/staff/api/v1/conversations/{cid}/ai-tools/query_user",
+                json={"params": {"user_id": "U123"}},
+                headers=engineer_headers,
+            )
+            assert resp.status_code == 504
+        finally:
+            monkeypatch.delenv("TOOL_DISPATCH_TIMEOUT_SECONDS", raising=False)
+            settings.reload()

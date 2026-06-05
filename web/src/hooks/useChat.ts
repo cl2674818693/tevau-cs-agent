@@ -194,14 +194,27 @@ function useChatSend(
           clientMessageId,
           attachmentIds,
         })) {
+          // F-P0-3 stop+send 竞态：用户在本流 yield 间隙点停止 + 立刻发新消息时，
+          // abortRef.current 已被新 send 覆盖。任由旧流继续 setMessages 会污染新流
+          // 的助手气泡 + lastEventId（变成新流的"已读"位）。检测到 controller 被换
+          // 即停止处理后续帧；fetch reader 的 AbortError 会在下一次 .read() 收尾。
+          if (abortRef.current !== controller) break;
           if (ev._eventId) lastEventIdRef.current = ev._eventId;
           await handleStreamEvent(ev, actions);
+          // await 期间也可能被新 send 覆盖（用户慢点 + 网络快），再检一次更稳
+          if (abortRef.current !== controller) break;
         }
       } catch (e) {
         if (controller.signal.aborted) {
           /* 用户主动停止，不提示错误 */
-        } else if (e instanceof AuthExpiredError) await handleAuthExpired();
-        else pushSystem(actions, i18n.t("chat.netError"));
+        } else if (e instanceof AuthExpiredError) {
+          await handleAuthExpired();
+        } else if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          // F-P0-1: 区分"网络掉线"vs"服务端错误"，给用户准确诊断
+          pushSystem(actions, i18n.t("chat.offline", "网络已断开，请检查连接后重试。"));
+        } else {
+          pushSystem(actions, i18n.t("chat.netError"));
+        }
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
         setSending(false);

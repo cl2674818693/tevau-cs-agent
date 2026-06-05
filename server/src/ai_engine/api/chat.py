@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import hashlib
 import logging
 import secrets
 from collections.abc import AsyncIterator
@@ -22,18 +23,35 @@ from ai_engine.i18n import t as _t
 from ai_engine.integrations.anthropic_client import SystemBusy
 from ai_engine.persistence import attachments as att_dao
 from ai_engine.persistence import conversations as conv_dao
+from ai_engine.utils.text_sanitize import sanitize_user_text
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
+def _conv_id_log_repr(conversation_id: int) -> str:
+    """日志中 conversation_id 的安全表示：8 字符 sha256 hash 而非明文整数。
+
+    B-P2-2：明文 conversation_id 暴露给日志读者后可枚举、撞库；改成稳定 hash 后仍可
+    按会话排查（grep 日志统计同 hash 的出现）但不可逆推。
+    """
+    return hashlib.sha256(str(conversation_id).encode()).hexdigest()[:8]
+
+
 async def _authorize_conversation(request: Request, conversation_id: int) -> tuple[str, str]:
-    """解析身份并校验该会话归属当前调用者，防 IDOR 横向越权。返回 (user_type, subject_id)。"""
+    """解析身份并校验该会话归属当前调用者，防 IDOR 横向越权。返回 (user_type, subject_id)。
+
+    校验顺序（B-P0-7）：
+    1) 归属（user_type + subject_id）失败 → 403（不区分"不存在"和"不属于你"，防枚举）。
+    2) 属主访问已归档会话 → 410 Gone（spec §8 archived 后不可再追加消息；非属主仍走 403）。
+    """
     user_type, subject_id = await resolve_identity(request)
     conv = await conv_dao.get_conversation(conversation_id)
     if conv is None or conv["subject_id"] != subject_id or conv["user_type"] != user_type:
         raise HTTPException(403, "not your conversation")
+    if conv.get("archived"):
+        raise HTTPException(410, "conversation archived")
     return user_type, subject_id
 
 
@@ -92,7 +110,9 @@ async def _listen_cancel_redis(conversation_id: int, cancel_evt: asyncio.Event) 
         pass
     except Exception:
         logger.warning(
-            "redis cancel listener crashed (conv_id=%s)", conversation_id, exc_info=True
+            "redis cancel listener crashed (conv_id_hash=%s)",
+            _conv_id_log_repr(conversation_id),
+            exc_info=True,
         )
     finally:
         if pubsub is not None:
@@ -241,6 +261,7 @@ async def _stream_ai_turn(
         conversation_id,
         {"type": "user_message", "content": message, "attachments": spectator_atts},
     )
+    yielded_bytes = 0
     async for ev in runtime.run_turn(
         conversation_id=conversation_id,
         user_type=user_type,
@@ -256,6 +277,13 @@ async def _stream_ai_turn(
         publish_conversation_event(conversation_id, _spectator_event(ev))
         mapped = _map_runtime_event(ev)
         if mapped is not None:
+            # B-P1-17: 累计 yield 字节数兜底；超 settings.runtime_yield_max_bytes 直接 stop
+            yielded_bytes += len(mapped.get("data", "")) + len(mapped.get("event", ""))
+            if yielded_bytes > settings.runtime_yield_max_bytes:
+                yield se.sse_payload(
+                    se.EVENT_MESSAGE_STOP, {"stop_reason": "yield_limit_exceeded"}
+                )
+                return
             yield mapped
     yield se.sse_payload(se.EVENT_MESSAGE_STOP, {"stop_reason": "end_turn"})
 
@@ -271,6 +299,21 @@ async def chat(  # noqa: C901 — 入口 dispatcher 本质，按 mode 分派到�
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> EventSourceResponse:
     """SSE 主链路（两端：C 端 Bearer JWT / B 端 cookie）。client_message_id 用于幂等重放。"""
+    # B-P2-5: 先 sanitize（去 NULL/BOM/零宽字符）再做空校验，防"看起来空"的输入绕过。
+    message = sanitize_user_text(message)
+    # B-P1-14: message 长度护栏 —— 优先于身份/资源校验返回 422，省 DB & gateway 调用。
+    # 同时拦"纯空白"（防绕过空校验造无意义 LLM 调用）和"超长"（防打爆 context/DB）。
+    if not message or not message.strip():
+        raise HTTPException(422, "message must not be empty")
+    if len(message) > settings.chat_max_message_length:
+        raise HTTPException(
+            422, f"message exceeds max length {settings.chat_max_message_length}"
+        )
+    # B-P1-15: client_message_id 空串等同 None；过长（>128）拒绝防索引/日志膨胀
+    if client_message_id == "":
+        client_message_id = None
+    if client_message_id is not None and len(client_message_id) > 128:
+        raise HTTPException(422, "client_message_id too long (max 128)")
     user_type, subject_id = await _authorize_conversation(request, conversation_id)
     att_ids = _parse_attachment_ids(attachment_ids)
     cancel_evt = asyncio.Event()
@@ -358,11 +401,15 @@ async def chat(  # noqa: C901 — 入口 dispatcher 本质，按 mode 分派到�
             # LLM 进程内信号量满载：区分于"服务不可用"，给前端可重试信号而非 INTERNAL_ERROR。
             # 不打 logger.exception 避免噪音（这是预期的过载拒绝路径，由 metrics 单独计数）。
             logger.info(
-                "chat stream rejected: SystemBusy (conversation_id=%s)", conversation_id
+                "chat stream rejected: SystemBusy (conv_id_hash=%s)",
+                _conv_id_log_repr(conversation_id),
             )
             yield se.error_event("SYSTEM_BUSY", _t("error.system_busy", ui_locale))
         except Exception:  # 顶层兜底：记日志，对外只回固定文案，不外泄内部错误细节
-            logger.exception("chat stream failed (conversation_id=%s)", conversation_id)
+            logger.exception(
+                "chat stream failed (conv_id_hash=%s)",
+                _conv_id_log_repr(conversation_id),
+            )
             yield se.error_event("INTERNAL_ERROR", _t("error.internal", ui_locale))
         finally:
             cancel_evt.set()  # 兜底：gen 退出时确保下游协程能看到取消信号
@@ -377,25 +424,44 @@ async def chat(  # noqa: C901 — 入口 dispatcher 本质，按 mode 分派到�
     return EventSourceResponse(gen(), ping=se.PING_INTERVAL_SECONDS)
 
 
-@router.delete("/api/v1/chat/{conversation_id}/stream", status_code=204)
-async def cancel_stream(conversation_id: int, request: Request) -> None:
-    """用户点"停止生成"。本地 + Redis 双路径：
-    - 本地 _cancel_signals.set：同 worker 上跑的 gen() 立刻看到（单 worker / 命中同 worker 时够用）
-    - Redis publish：跨 worker 广播，让 stream 所在 worker 的 _listen_cancel_redis 翻 cancel_evt
-      （Task 8 起 N=2 workers 后 DELETE 50% 概率落到错 worker，纯本地路径就是盲区）
-    Redis 不可达 fail-open，不阻断 DELETE 返回；单 worker / 本地开发回退到原本地字典语义。
+async def signal_cancel(conversation_id: int) -> None:
+    """中断指定 conversation 正在跑的 AI 流，无论流落在哪个 worker。
+
+    本地路径：set 本进程 `_cancel_signals` 中的 evt（同 worker 流命中即时退出）。
+    Redis 路径：publish `cs:cancel:<id>` 让对端 worker 的 `_listen_cancel_redis` 翻自己的 evt。
+
+    调用者（B-P0-8）：
+    - DELETE /api/v1/chat/{id}/stream（用户点"停止生成"）
+    - staff take / transfer_to / ai_draft_enable（接管/转派/切草稿时打断仍在跑的 AI）
+
+    B-P0-4 重试：Redis 临时抖动（连接重置 / 主从切换）时按 50/150/300ms 退避重试 3 次，
+    最终仍失败则 swallow 异常不阻断主链路；单 worker / 本地开发 Redis 不可达直接返回。
+    本地 evt 始终立刻 set，保证同 worker 流即时退出，与 Redis 状态无关。
     """
-    await _authorize_conversation(request, conversation_id)
-    # 本地路径（同 worker 流命中）
     evt = _cancel_signals.get(conversation_id)
     if evt:
         evt.set()
-    # Redis 路径（跨 worker 广播）
     redis = rate_limit._get_redis()
-    if redis is not None:
+    if redis is None:
+        return
+    delays = (0.05, 0.15, 0.3)
+    for i, delay in enumerate(delays):
         try:
             await redis.publish(f"cs:cancel:{conversation_id}", "1")
+            return
         except Exception:
-            logger.warning(
-                "redis publish cancel failed (conv_id=%s)", conversation_id, exc_info=True
-            )
+            if i + 1 >= len(delays):
+                logger.warning(
+                    "redis publish cancel failed after retries (conv_id_hash=%s)",
+                    _conv_id_log_repr(conversation_id),
+                    exc_info=True,
+                )
+                return
+            await asyncio.sleep(delay)
+
+
+@router.delete("/api/v1/chat/{conversation_id}/stream", status_code=204)
+async def cancel_stream(conversation_id: int, request: Request) -> None:
+    """用户点"停止生成"。仅做归属校验，cancel 主逻辑走 `signal_cancel`。"""
+    await _authorize_conversation(request, conversation_id)
+    await signal_cancel(conversation_id)

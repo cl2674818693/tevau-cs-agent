@@ -95,4 +95,52 @@ describe("InputBox", () => {
     fireEvent.click(screen.getByLabelText("傳送"));
     expect(onSend.mock.calls[0][0]).toMatch(/🤖好的/);
   });
+
+  // F-P1-1: textarea maxLength 与后端 chat_max_message_length 对齐
+  it("textarea 有 maxLength 属性（与后端字符上限对齐）", () => {
+    render(<InputBox onSend={vi.fn()} disabled={false} />);
+    const ta = screen.getByPlaceholderText("描述您的問題…") as HTMLTextAreaElement;
+    expect(ta.maxLength).toBeGreaterThan(0);
+    // 现行配置：10000 字符
+    expect(ta.maxLength).toBe(10000);
+  });
+
+  // F-P1-4: 粘贴的图片超过单图大小上限时不上传（防被后端拒后丢提示）
+  it("粘贴的超大图片不上传 + 显示提示", async () => {
+    const upload = vi.fn(async () => 99);
+    render(<InputBox onSend={vi.fn()} disabled={false} upload={upload} />);
+    const ta = screen.getByPlaceholderText("描述您的問題…");
+    // 模拟 6MB 文件（>5MB 上限）
+    const big = new File([new Uint8Array(6 * 1024 * 1024)], "big.jpg", { type: "image/jpeg" });
+    const dataTransfer = {
+      files: { length: 1, 0: big, item: (i: number) => (i === 0 ? big : null) } as unknown as FileList,
+      types: ["Files"],
+    } as unknown as DataTransfer;
+    fireEvent.paste(ta, { clipboardData: dataTransfer });
+    // upload 不应被调用
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  // F-P1-3: 张数超出（已有 MAX_IMAGES=4）的图片不上传
+  it("粘贴张数超出（room=0）时不上传", async () => {
+    const upload = vi.fn(async () => 1);
+    render(<InputBox onSend={vi.fn()} disabled={false} upload={upload} />);
+    const ta = screen.getByPlaceholderText("描述您的問題…");
+    // 模拟一张 1KB 合法图
+    const img = new File([new Uint8Array(1024)], "x.jpg", { type: "image/jpeg" });
+    const transfer = (n: number): DataTransfer =>
+      ({
+        files: Object.assign(
+          { length: n, item: (i: number) => (i < n ? img : null) },
+          Array.from({ length: n }, () => img).reduce((a, f, i) => ({ ...a, [i]: f }), {}),
+        ) as unknown as FileList,
+        types: ["Files"],
+      }) as unknown as DataTransfer;
+    // 5 张 → 砍到 4，第 5 张不上传
+    fireEvent.paste(ta, { clipboardData: transfer(5) });
+    // 等待异步上传完成
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(upload.mock.calls.length).toBeLessThanOrEqual(4);
+  });
 });

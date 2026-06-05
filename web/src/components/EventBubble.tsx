@@ -1,6 +1,7 @@
 import { Avatar, Flex, Typography } from "antd";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+
+import { safeMarkdownProps } from "@/lib/markdown-safe";
 
 import { staffAttachmentUrl } from "../api/attachments";
 import type { StaffMessage, StaffStreamEvent } from "../api/staff";
@@ -214,7 +215,7 @@ function AssistantBubble({ content }: { content: string }) {
           {/* 与 H5 MessageBubble 对齐：AI 回复走 markdown 渲染（粗体 / 代码 / 表格 / 列表）。
               admin 端之前用纯 pre-wrap 显示 ** 和 ` 原文，与用户端不一致。 */}
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            {...safeMarkdownProps}
             components={{
               table: ({ node: _node, ...props }) => (
                 <div style={{ overflowX: "auto" }}>

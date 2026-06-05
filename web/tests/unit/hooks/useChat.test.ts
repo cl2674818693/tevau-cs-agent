@@ -351,6 +351,57 @@ describe("useChat", () => {
     expect(cancelStream).toHaveBeenCalledWith(100);
   });
 
+  // F-P0-3 stop+send 竞态：旧流被 stop 后立刻新 send，旧流仍在 yield 的 delta 不应污染新流
+  it("旧流 stop+新 send 后，旧流的 delta 不进入新流 setMessages", async () => {
+    const s1 = controlled();
+    const s2 = controlled();
+    streamChatImpl
+      .mockImplementationOnce(() => s1.gen)
+      .mockImplementationOnce(() => s2.gen);
+    const { result } = renderHook(() => useChat());
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    let p1!: Promise<void>;
+    await act(async () => {
+      p1 = result.current.send("first");
+    });
+    // 第一流先 yield 一帧确认进入处理
+    await act(async () => {
+      s1.push({ type: "message_start", message_id: "m1" });
+    });
+    // stop 旧流，立刻发新消息
+    await act(async () => {
+      result.current.stop();
+    });
+    let p2!: Promise<void>;
+    await act(async () => {
+      p2 = result.current.send("second");
+    });
+    // 旧流"延迟到达"的一帧 delta —— 不应污染新流的助手气泡内容
+    await act(async () => {
+      s1.push({
+        type: "content_block_delta",
+        delta: { type: "text_delta", text: "STALE-OLD-STREAM" },
+      });
+      s1.close();
+    });
+    // 新流推一帧正常 delta 让它走 happy path 收尾
+    await act(async () => {
+      s2.push({ type: "message_start", message_id: "m2" });
+      s2.push({
+        type: "content_block_delta",
+        delta: { type: "text_delta", text: "ok" },
+      });
+      s2.close();
+      await p1.catch(() => {});
+      await p2.catch(() => {});
+    });
+    const text = result.current.messages
+      .filter((m) => m.role === "assistant")
+      .map((m) => (m as { content: string }).content)
+      .join("|");
+    expect(text).not.toContain("STALE-OLD-STREAM");
+  });
+
   describe("requestHandoff", () => {
     it("正常用户：调 requestHuman + 切到 human_pending", async () => {
       const { result } = renderHook(() => useChat());

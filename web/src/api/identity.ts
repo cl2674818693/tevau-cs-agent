@@ -42,13 +42,35 @@ function guestId(): string {
  * 降级为游客头 X-Guest-ID，让后端走匿名降级会话，不再因 401 卡死。
  * B 端已登录时 cookie 经 credentials:'include' 仍会带上，后端优先用它。
  */
+// F-P0-2: bridge.getToken 永不 resolve（APP bug）时整个 fetch 会挂死；
+// 套 race + timeout 保护，超时按未登录处理。生产 5s 够 APP 内 bridge 一次往返；
+// 测试可通过 _setGetTokenTimeoutForTest 缩短。
+let _getTokenTimeoutMs = 5000;
+export function _setGetTokenTimeoutForTest(ms: number | null): void {
+  _getTokenTimeoutMs = ms ?? 5000;
+}
+
+async function _resolveTokenWithTimeout(
+  fn: () => Promise<string | null>,
+): Promise<string | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<string | null>((resolve) => {
+    timer = setTimeout(() => resolve(null), _getTokenTimeoutMs);
+  });
+  try {
+    return await Promise.race([fn(), timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function authHeaders(): Promise<Record<string, string>> {
   const guest = { "X-Guest-ID": guestId() };
   if (!_identity) return guest;
   if (_identity.kind === "b") {
     return _identity.buId ? { "X-BU-ID": _identity.buId } : guest;
   }
-  const token = await _identity.getToken();
+  const token = await _resolveTokenWithTimeout(_identity.getToken);
   return token ? { Authorization: `Bearer ${token}` } : guest;
 }
 

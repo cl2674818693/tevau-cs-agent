@@ -49,7 +49,8 @@ async def get_resumable(
 
 async def get_conversation(conv_id: int) -> dict[str, object] | None:
     return await db.fetch_one(
-        "SELECT id, user_type, subject_id, inferred_locale, created_at "
+        "SELECT id, user_type, subject_id, inferred_locale, "
+        "COALESCE(archived, 0) AS archived, created_at "
         "FROM conversations WHERE id=:id",
         {"id": conv_id},
     )

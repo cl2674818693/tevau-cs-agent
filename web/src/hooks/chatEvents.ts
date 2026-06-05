@@ -66,6 +66,9 @@ function dropTrailingEmptyAssistant(prev: Message[]): Message[] {
   return prev;
 }
 
+/** F-P1-5: RATE_LIMITED 锁定输入框的自动解锁时长（与后端 chat_rate_limit_per_min 窗口对齐）。 */
+export const RATE_LIMITED_AUTO_UNLOCK_MS = 60_000;
+
 async function handleErrorEvent(
   ev: Extract<ChatEvent, { type: "error" }>,
   a: ChatActions,
@@ -75,13 +78,19 @@ async function handleErrorEvent(
   if (ev.code === "RATE_LIMITED") {
     a.setRateLimited(true);
     pushSystem(a, ev.message || "请求过于频繁，请稍后再试。");
+    // F-P1-5: 60s 后自动解锁，避免用户必须手动刷新；时间窗与后端兜底限流对齐
+    setTimeout(() => a.setRateLimited(false), RATE_LIMITED_AUTO_UNLOCK_MS);
   } else if (ev.code === "SYSTEM_BUSY") {
     // 后端 Semaphore 满载（区别于 RATE_LIMITED 用户级限流）：不锁死输入，让用户手动重试
     pushSystem(a, ev.message || "系统繁忙，请稍后再试。");
+  } else if (ev.code === "MODEL_OVERLOADED") {
+    // F-P0-5: 区分于 SYSTEM_BUSY（本服务过载）—— 模型方过载，独立提示让用户知道是上游。
+    pushSystem(a, ev.message || "模型暂时超载，请稍后重试。");
   } else if (ev.code === "AUTH_EXPIRED") {
     await a.onAuthExpired();
   } else {
-    pushSystem(a, ev.message || "出错了，请重试。");
+    // F-P0-5: 兜底文案显式不带技术细节（堆栈/路径/SQL）
+    pushSystem(a, ev.message || "服务出错了，请稍后重试。");
   }
 }
 

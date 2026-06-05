@@ -7,6 +7,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    # 运行时环境标识：dev / test / production。生产环境强制不信任 X-BU-ID 头
+    # （DEV_TRUST_BU_HEADER 仅 dev/test 生效），防 misconfig 导致跨租户冒充。
+    env: str = "dev"
     anthropic_api_key: str = Field(...)
     anthropic_base_url: str | None = None  # 自建 Claude 网关; None 走官方 API
     # SDK 默认 max_retries=2（指数退避，对 429/5xx/连接错误生效），显式化便于按环境调。
@@ -66,6 +69,15 @@ class Settings(BaseSettings):
     # 0 = 关闭。建议生产 30-60s；只对只读 query_* 工具启用。
     tool_cache_ttl_seconds: int = 30
     chat_rate_limit_per_min: int = 30  # 单 subject 每分钟消息上限（spec §6.4 兜底层）
+    # B-P1-14: 用户单条消息字符上限。GET /chat 的 message 参数走 URL encode 后超此值即 422 拒。
+    # 防长消息打爆 LLM context / DB content 列 / 日志/审计存储。
+    chat_max_message_length: int = 10_000
+    # B-P1-17: 单次 LLM 流式回合内累计 yield 给前端的字节上限（超限即强制 message_stop）。
+    # 防恶意/异常 runtime 产生超大输出导致 OOM 与下游 SSE buffer 爆炸。
+    runtime_yield_max_bytes: int = 2 * 1024 * 1024
+    # B-P1-18: 工具调用单次硬超时（含 query_* / search_code / 业务库查询）。
+    # runtime 内部已有 timeout，这里是 admin 端 run_ai_tool 路径的兜底外层超时。
+    tool_dispatch_timeout_seconds: float = 30.0
     # 限流共享存储；配置后多副本全局精确计数，未配则回退进程内（单副本/测试）
     redis_url: str | None = None
     # 图片附件对象存储（S3 兼容：dev=MinIO，生产=OSS/S3）。多实例需共享存储，故不用本地卷。
@@ -85,6 +97,9 @@ class Settings(BaseSettings):
     # 回合处理中(status=processing)超过此时长视为僵尸（服务崩溃/卡死），后台标 failed
     stale_turn_timeout_seconds: int = 120
     stale_sweep_interval_seconds: int = 60  # 后台清理扫描间隔；<=0 关闭后台任务
+    # F-P0-4 / B-P1: human_takeover 状态下指派客服心跳超此秒数即视为掉线，sweep_loop
+    # 自动释放（mode=ai + assigned_staff_id=NULL）。默认 5min = 心跳间隔 30s × 10。
+    staff_idle_release_seconds: int = 300
     log_level: str = "INFO"
 
     @model_validator(mode="after")

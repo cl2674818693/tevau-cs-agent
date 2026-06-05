@@ -41,13 +41,17 @@ def _verify_bu_session(token: str) -> str | None:
 
 
 def _tenant_from_request(request: Request) -> str | None:
-    """从签名 session cookie 解析 tenant_id。仅 dev_trust_bu_header 开启时才回退信任 X-BU-ID。"""
+    """从签名 session cookie 解析 tenant_id。仅 dev_trust_bu_header 开启时才回退信任 X-BU-ID。
+
+    B-P1-7 生产硬约束：env=production 时永远拒绝 X-BU-ID 回退，无论 dev_trust_bu_header
+    开关状态。防止生产 misconfig 导致前端可伪造任意租户身份。
+    """
     cookie = request.cookies.get(SESSION_COOKIE)
     if cookie:
         tenant_id = _verify_bu_session(cookie)
         if tenant_id:
             return tenant_id
-    if settings.dev_trust_bu_header:
+    if settings.dev_trust_bu_header and settings.env != "production":
         return request.headers.get("X-BU-ID")
     return None
 

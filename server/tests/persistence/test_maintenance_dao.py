@@ -146,6 +146,41 @@ class TestPushPendingTakeoverTimeouts:
         await maintenance.push_pending_takeover_timeouts()
         assert push_count == 1  # 第二次因去重表跳过
 
+    async def test_dedup_insert_race_does_not_crash(
+        self, db_ready, monkeypatch
+    ) -> None:
+        """B-P1-3: 两个 sweeper 并发跑同一 conv —— A SELECT 没有 → A push → 期间 B 已
+        INSERT 占位 → A INSERT 必须静默跳过（ON CONFLICT DO NOTHING），不抛主键冲突。"""
+        from ai_engine.persistence import db as db_mod
+
+        cid = await conv.create_conversation("c", "U1")
+        await conv.set_mode(cid, "human_pending")
+        old = (datetime.now(UTC) - timedelta(seconds=600)).strftime("%Y-%m-%d %H:%M:%S")
+        await execute(
+            "UPDATE conversations SET created_at=:t WHERE id=:id", {"t": old, "id": cid}
+        )
+        await admin_sla.create_policy("take_time", 60, "all", None)
+
+        async def _race_push(**_kwargs):
+            # 模拟另一 sweeper 在我推送期间已经写入了去重行
+            await db_mod.execute(
+                "INSERT INTO pending_timeout_pushes(conversation_id, pushed_at, threshold_seconds) "
+                "VALUES (:cid, :at, :th)",
+                {"cid": cid, "at": "2026-01-01 00:00:00", "th": 60},
+            )
+            return True
+
+        monkeypatch.setattr(maintenance, "create_task", _race_push)
+        # 当前实现会在自己的 INSERT 步骤抛主键冲突；修复后期望静默通过
+        n = await maintenance.push_pending_takeover_timeouts()
+        assert n in (0, 1)
+        # 去重行存在恰好 1 条
+        rows = await fetch_all(
+            "SELECT conversation_id FROM pending_timeout_pushes WHERE conversation_id=:c",
+            {"c": cid},
+        )
+        assert len(rows) == 1
+
     async def test_push_failure_no_dedup_write(self, db_ready, monkeypatch) -> None:
         cid = await conv.create_conversation("c", "U1")
         await conv.set_mode(cid, "human_pending")

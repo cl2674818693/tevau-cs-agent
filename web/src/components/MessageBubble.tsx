@@ -3,7 +3,8 @@ import { BadgeCheck } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+
+import { safeMarkdownProps } from "@/lib/markdown-safe";
 
 import type { Attachment, Message } from "../types";
 
@@ -157,7 +158,7 @@ export function MessageBubble({
         <div className="markdown-body-dark">
           {m.content ? (
             <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
+              {...safeMarkdownProps}
               components={{
                 table: ({ node: _node, ...props }) => (
                   <div className="overflow-x-auto scrollbar-hide -mx-1 px-1">

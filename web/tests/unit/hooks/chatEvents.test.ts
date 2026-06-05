@@ -217,6 +217,52 @@ describe("handleStreamEvent 主链路派发", () => {
     expect(a._messages()[0]).toMatchObject({ role: "system" });
   });
 
+  // F-P0-5: MODEL_OVERLOADED 区分于 SYSTEM_BUSY，自有 fallback 文案 + 不锁输入
+  it("MODEL_OVERLOADED：自己的 fallback 文案，不锁 rateLimited", async () => {
+    const a = mkActions();
+    await handleStreamEvent(
+      { type: "error", code: "MODEL_OVERLOADED", message: "" } as ChatEvent,
+      a,
+    );
+    expect(a.setRateLimited).not.toHaveBeenCalled();
+    const sys = a._messages()[0] as { content: string };
+    expect(sys.content).toMatch(/模型|超载|稍后/);
+  });
+
+  // F-P0-5: INTERNAL_ERROR fallback 不含技术细节
+  it("INTERNAL_ERROR：通用错误文案，不泄露内部信息", async () => {
+    const a = mkActions();
+    await handleStreamEvent(
+      { type: "error", code: "INTERNAL_ERROR", message: "" } as ChatEvent,
+      a,
+    );
+    const sys = a._messages()[0] as { content: string };
+    expect(sys.content).toMatch(/出错|稍后/);
+    // 不应包含堆栈 / 文件路径等内部细节关键字
+    expect(sys.content).not.toMatch(/Traceback|\/server\/src|line \d+/);
+  });
+
+  // F-P1-5: RATE_LIMITED 后 setTimeout 60s 自动解锁
+  it("RATE_LIMITED 后 60s 自动调 setRateLimited(false) 解锁输入", async () => {
+    vi.useFakeTimers();
+    try {
+      const a = mkActions();
+      await handleStreamEvent(
+        { type: "error", code: "RATE_LIMITED", message: "限流" } as ChatEvent,
+        a,
+      );
+      expect(a.setRateLimited).toHaveBeenLastCalledWith(true);
+      // 60s 内不应解锁
+      vi.advanceTimersByTime(30_000);
+      expect(a.setRateLimited).not.toHaveBeenLastCalledWith(false);
+      // 跨过 60s 后自动解锁
+      vi.advanceTimersByTime(31_000);
+      expect(a.setRateLimited).toHaveBeenLastCalledWith(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("普通事件转给 applyEvent", async () => {
     const a = mkActions();
     await handleStreamEvent({ type: "message_start", message_id: "m" } as ChatEvent, a);

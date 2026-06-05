@@ -167,6 +167,36 @@ class TestChatAuth:
         assert r.status_code == 403
 
 
+class TestChatArchived:
+    """B-P0-7: archived 会话状态机硬约束 —— 已归档会话禁止追加消息。"""
+
+    async def test_archived_own_conversation_returns_410(
+        self, c_client: AsyncClient, conv_id: int
+    ) -> None:
+        """属主访问已归档会话 → 410 Gone（资源存在但不再可用）。"""
+        from ai_engine.persistence import conversations as conv_dao
+
+        await conv_dao.archive_conversation(conv_id)
+        r = await c_client.get(
+            "/api/v1/chat", params={"conversation_id": conv_id, "message": "hi"}
+        )
+        assert r.status_code == 410
+
+    async def test_archived_others_conversation_still_403(
+        self, client: AsyncClient, conv_id: int
+    ) -> None:
+        """非属主访问 archived 会话仍 403（防 410/403 时序泄漏会话存在性）。"""
+        from ai_engine.persistence import conversations as conv_dao
+
+        await conv_dao.archive_conversation(conv_id)
+        r = await client.get(
+            "/api/v1/chat",
+            params={"conversation_id": conv_id, "message": "hi"},
+            headers=auth_headers(TOKEN_B),
+        )
+        assert r.status_code == 403
+
+
 class TestChatValidation:
     """参数校验：必填缺失 → 422；类型错 → 422。"""
 
@@ -187,6 +217,138 @@ class TestChatValidation:
     ) -> None:
         r = await c_client.get(
             "/api/v1/chat", params={"conversation_id": "not-int", "message": "x"}
+        )
+        assert r.status_code == 422
+
+
+class TestChatMessageLength:
+    """B-P1-14: 用户单条消息长度边界。"""
+
+    async def test_empty_message_returns_422(
+        self, c_client: AsyncClient, conv_id: int
+    ) -> None:
+        """空字符串 message 不可发送（Query 接收 "" 默认有值，需 in-function 拦）。"""
+        r = await c_client.get(
+            "/api/v1/chat", params={"conversation_id": conv_id, "message": ""}
+        )
+        assert r.status_code == 422
+
+    async def test_whitespace_only_message_returns_422(
+        self, c_client: AsyncClient, conv_id: int
+    ) -> None:
+        """纯空白也不可发送，防绕过空校验。"""
+        r = await c_client.get(
+            "/api/v1/chat", params={"conversation_id": conv_id, "message": "   \t\n"}
+        )
+        assert r.status_code == 422
+
+    async def test_message_too_long_returns_422(
+        self, c_client: AsyncClient, conv_id: int, monkeypatch
+    ) -> None:
+        from ai_engine.config import settings
+
+        monkeypatch.setenv("CHAT_MAX_MESSAGE_LENGTH", "100")
+        settings.reload()
+        try:
+            r = await c_client.get(
+                "/api/v1/chat",
+                params={"conversation_id": conv_id, "message": "x" * 101},
+            )
+            assert r.status_code == 422
+        finally:
+            monkeypatch.delenv("CHAT_MAX_MESSAGE_LENGTH", raising=False)
+            settings.reload()
+
+    async def test_message_all_invisible_returns_422(
+        self, c_client: AsyncClient, conv_id: int
+    ) -> None:
+        """B-P2-5: 含零宽 + NULL 的"看起来空"消息被 sanitize 后变空 → 422。"""
+        # 字面 NULL byte 无法直接写在源文件，全部用 codepoint escape
+        invisible = "​‌﻿" + chr(0)
+        r = await c_client.get(
+            "/api/v1/chat",
+            params={"conversation_id": conv_id, "message": invisible},
+        )
+        assert r.status_code == 422
+
+    async def test_message_at_limit_accepted(
+        self, c_client: AsyncClient, conv_id: int, monkeypatch
+    ) -> None:
+        from ai_engine.config import settings
+
+        from .conftest import stub_run_turn
+
+        monkeypatch.setenv("CHAT_MAX_MESSAGE_LENGTH", "100")
+        settings.reload()
+        stub_run_turn(monkeypatch, [{"type": "text", "text": "ok"}])
+        try:
+            r = await c_client.get(
+                "/api/v1/chat",
+                params={"conversation_id": conv_id, "message": "x" * 100},
+            )
+            assert r.status_code == 200
+        finally:
+            monkeypatch.delenv("CHAT_MAX_MESSAGE_LENGTH", raising=False)
+            settings.reload()
+
+
+class TestChatYieldLimit:
+    """B-P1-17: 单流累计 yield 字节超 settings.runtime_yield_max_bytes 强制停。"""
+
+    async def test_yield_limit_exceeded_stops_stream(
+        self, c_client: AsyncClient, conv_id: int, monkeypatch
+    ) -> None:
+        from ai_engine.config import settings
+
+        from .conftest import stub_run_turn
+
+        monkeypatch.setenv("RUNTIME_YIELD_MAX_BYTES", "200")
+        settings.reload()
+        # 5 段 100 字符 text，每帧 data ≈ 100+ bytes，第 2 帧后必触发上限
+        stub_run_turn(
+            monkeypatch,
+            [{"type": "text", "text": "x" * 100} for _ in range(5)],
+        )
+        try:
+            r = await c_client.get(
+                "/api/v1/chat",
+                params={"conversation_id": conv_id, "message": "hi"},
+            )
+            frames = await parse_sse(r)
+            last = json.loads(frames[-1]["data"])
+            assert last["stop_reason"] == "yield_limit_exceeded"
+        finally:
+            monkeypatch.delenv("RUNTIME_YIELD_MAX_BYTES", raising=False)
+            settings.reload()
+
+
+class TestChatClientMessageId:
+    """B-P1-15: client_message_id 输入边界。"""
+
+    async def test_empty_string_treated_as_none(
+        self, c_client: AsyncClient, conv_id: int, monkeypatch
+    ) -> None:
+        """空字符串 client_message_id 等同未传（不应 422，也不应触发幂等查询）。"""
+        from .conftest import stub_run_turn
+
+        stub_run_turn(monkeypatch, [{"type": "text", "text": "ok"}])
+        r = await c_client.get(
+            "/api/v1/chat",
+            params={"conversation_id": conv_id, "message": "hi", "client_message_id": ""},
+        )
+        assert r.status_code == 200
+
+    async def test_too_long_client_message_id_returns_422(
+        self, c_client: AsyncClient, conv_id: int
+    ) -> None:
+        """超长 client_message_id 拒绝（>128 字符，防打爆索引/日志）。"""
+        r = await c_client.get(
+            "/api/v1/chat",
+            params={
+                "conversation_id": conv_id,
+                "message": "hi",
+                "client_message_id": "x" * 129,
+            },
         )
         assert r.status_code == 422
 

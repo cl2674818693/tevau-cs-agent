@@ -18,6 +18,46 @@ from ai_engine.persistence.schema import now_str
 logger = logging.getLogger(__name__)
 
 
+async def reclaim_zombie_takeovers(staff_idle_seconds: int = 300) -> list[int]:
+    """F-P0-4 / B-P1: 客服掉线后 mode=human_takeover 卡死的会话自动释放回 AI。
+
+    条件：会话 mode=human_takeover 且 assigned_staff_id 对应的 staff 满足之一：
+    - 无 staff_presence 行（从未发心跳，等同已离线）；
+    - staff_presence.last_seen_at 早于 now - staff_idle_seconds（心跳超时）；
+    - staff_presence.status='offline'（显式下线但未 release）。
+
+    释放后 mode=ai + assigned_staff_id=NULL。返回被释放的 conv_id 列表，调用方按需推
+    mode_change 事件。SQLite/PG 通用语法（不依赖 UPDATE...RETURNING）。
+    """
+    cutoff = (datetime.now(UTC) - timedelta(seconds=staff_idle_seconds)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    # 找出所有当前 human_takeover 但 staff 已离线/超时/无心跳的会话
+    rows = await db.fetch_all(
+        "SELECT c.id FROM conversations c "
+        "LEFT JOIN staff_presence sp ON sp.staff_id = c.assigned_staff_id "
+        "WHERE c.mode='human_takeover' AND c.assigned_staff_id IS NOT NULL "
+        "AND (sp.staff_id IS NULL "
+        "  OR sp.status='offline' "
+        "  OR sp.last_seen_at < :cutoff)",
+        {"cutoff": cutoff},
+    )
+    ids = [int(r["id"]) for r in rows]
+    if not ids:
+        return []
+    placeholders = ",".join(f":id{i}" for i in range(len(ids)))
+    params: dict[str, object] = {f"id{i}": v for i, v in enumerate(ids)}
+    await db.execute(
+        f"UPDATE conversations SET mode='ai', assigned_staff_id=NULL, assigned_at=NULL "
+        f"WHERE id IN ({placeholders}) AND mode='human_takeover'",
+        params,
+    )
+    logger.warning(
+        "reclaimed %d zombie takeovers (idle_seconds=%d)", len(ids), staff_idle_seconds
+    )
+    return ids
+
+
 async def reclaim_stale_turns(timeout_seconds: int) -> int:
     """把 status=processing 且 created_at 早于 cutoff 的 user 回合标 failed，返回清理条数。"""
     cutoff = (datetime.now(UTC) - timedelta(seconds=timeout_seconds)).strftime("%Y-%m-%d %H:%M:%S")
@@ -83,9 +123,13 @@ async def push_pending_takeover_timeouts() -> int:
         ok = await create_task(**payload)
         if not ok:
             continue
+        # B-P1-3: 并发 sweeper race —— A SELECT 没有 → A push → 期间 B 已 INSERT 占位 →
+        # A 自己 INSERT 必须静默跳过（事项中心已用 event_id 幂等去重，重复 push 无副作用；
+        # 这里仅防主键冲突让 sweep 协程崩掉）。SQLite 3.24+ / PG 都支持 ON CONFLICT。
         await db.execute(
             "INSERT INTO pending_timeout_pushes(conversation_id, pushed_at, threshold_seconds) "
-            "VALUES (:cid, :at, :th)",
+            "VALUES (:cid, :at, :th) "
+            "ON CONFLICT(conversation_id) DO NOTHING",
             {"cid": cid, "at": now_str(), "th": int(b["threshold_seconds"])},
         )
         pushed_count += 1
@@ -108,6 +152,18 @@ async def sweep_loop() -> None:
             await reclaim_stale_turns(settings.stale_turn_timeout_seconds)
         except Exception:
             logger.exception("stale sweep iteration failed")
+        try:
+            released = await reclaim_zombie_takeovers(
+                staff_idle_seconds=settings.staff_idle_release_seconds
+            )
+            # F-P0-4: 释放后推 mode_change 让旁观/前端立刻刷新
+            if released:
+                from ai_engine.api.staff_conversations import _publish  # lazy import 避免循环
+
+                for cid in released:
+                    _publish(cid, {"type": "mode_change", "to": "ai", "reason": "staff_idle_timeout"})
+        except Exception:
+            logger.exception("zombie takeover reclaim failed")
         try:
             await push_pending_takeover_timeouts()
         except Exception:
