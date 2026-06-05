@@ -74,3 +74,19 @@ async def test_watch_disconnect_exits_when_cancel_evt_set():
 
     await asyncio.wait_for(chat_api._watch_disconnect(_Req(), cancel_evt), timeout=1.0)
     # 没超时即通过
+
+
+async def test_watch_disconnect_fast_exit_on_external_set():
+    """cancel_evt 外部 set 时 watcher 应立刻返回，不空转 0.25s。"""
+    cancel_evt = asyncio.Event()
+
+    class _Req:
+        client = type("c", (), {"host": "127.0.0.1"})()
+        async def is_disconnected(self):
+            return False
+
+    task = asyncio.create_task(chat_api._watch_disconnect(_Req(), cancel_evt))
+    await asyncio.sleep(0.02)  # 让 watcher 进入 wait_for
+    cancel_evt.set()
+    # 期望 <100ms 内退出（vs 旧 sleep 实现的 ~250ms）
+    await asyncio.wait_for(task, timeout=0.1)

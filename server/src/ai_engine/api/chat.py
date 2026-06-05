@@ -45,14 +45,18 @@ async def _watch_disconnect(request: Request, cancel_evt: asyncio.Event) -> None
 
     sse_starlette 本身在 yield 时也会检测，但若 runtime 卡在 LLM 调用（非 yield 中），
     SSE 层察觉不到 client 已走 —— 这里 250ms 主动 poll 一次，覆盖该缝隙。
-    cancel_evt 已被外部 set 时直接退出，避免空转。
+    用 wait_for(cancel_evt.wait()) 兼任"外部取消时立即退出"，避免空转 250ms。
     """
     try:
         while not cancel_evt.is_set():
             if await request.is_disconnected():
                 cancel_evt.set()
                 return
-            await asyncio.sleep(0.25)
+            try:
+                await asyncio.wait_for(cancel_evt.wait(), timeout=0.25)
+                return  # event set externally → exit immediately
+            except asyncio.TimeoutError:
+                pass
     except asyncio.CancelledError:
         pass
 
