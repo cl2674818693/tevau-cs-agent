@@ -321,3 +321,49 @@ class TestParallelToolDispatch:
         assert elapsed < 0.2, f"tools ran sequentially: {elapsed}s"
         # 3 个 tool_result 事件全到位
         assert sum(1 for e in events if e.get("type") == "tool_result") == 3
+
+    async def test_gather_exception_synthesizes_error_block(
+        self, monkeypatch, seeded_db, fake_stream, make_resp
+    ) -> None:
+        """工具 handler 异常时仍要产出 tool_result block，否则下一轮 Anthropic 会 400。"""
+        from ai_engine.agent.tools import base as toolbase
+
+        async def _explode_h(**_kw):
+            raise RuntimeError("boom")
+
+        toolbase.register(toolbase.Tool(
+            name="explode_tool", description="x",
+            input_schema={"type": "object", "properties": {}},
+            handler=_explode_h,
+        ))
+        try:
+            responses = [
+                make_resp(stop_reason="tool_use", tool_calls=[
+                    {"id": "tx", "name": "explode_tool", "input": {}},
+                ]),
+                make_resp(text="draft"),
+                make_resp(text="done"),
+            ]
+            monkeypatch.setattr(_ac._client.messages, "stream", fake_stream(responses))
+
+            # dispatch 自己 catch Exception 返回 ok=False，不会触发 gather-exception 分支；
+            # 这里直接让 dispatch 抛出，强制进入新分支
+            from ai_engine.agent import runtime as rt_mod
+
+            async def _boom(*a, **k):  # noqa: ANN002, ANN003
+                raise RuntimeError("boom")
+
+            monkeypatch.setattr(rt_mod, "dispatch", _boom)
+
+            conv = await create_conversation("c", "U_X")
+            events = [e async for e in rt.run_turn(
+                conversation_id=conv, user_type="c", subject_id="U_X", user_message="run",
+            )]
+        finally:
+            toolbase.REGISTRY.pop("explode_tool", None)
+
+        # 哪怕 dispatch 自己已经把异常封了，error block 也得到位
+        tool_results = [e for e in events if e.get("type") == "tool_result"]
+        assert len(tool_results) == 1
+        assert tool_results[0]["id"] == "tx"
+        assert tool_results[0]["ok"] is False

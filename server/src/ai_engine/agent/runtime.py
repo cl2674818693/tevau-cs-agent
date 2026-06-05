@@ -664,14 +664,31 @@ async def _run_tools(
     )
 
     events: list[dict[str, Any]] = []
-    for item in results:
+    for (idx, tc), item in zip(runnable, results, strict=True):
         if isinstance(item, BaseException):
-            # gather 捕到异常：dispatch 自己应该已经把异常封装为 r["ok"]=False，
-            # 几乎不进这分支；只是兜底防止异常透传中断整批
-            logger.warning("tool gather got exception: %r", item)
+            # gather 兜底：synthesize 一个 error tool_result 保证 tool_use/tool_result 配对，
+            # 否则 Anthropic API 下一轮会因 unpaired tool_use 直接 400。
+            logger.warning(
+                "tool dispatch raised, synthesizing error block: tool=%s id=%s err=%r",
+                tc["name"], tc["id"], item,
+            )
+            blocks[idx] = {
+                "type": "tool_result",
+                "tool_use_id": tc["id"],
+                "content": "ERROR: 工具执行异常，已记录。",
+                "is_error": True,
+            }
+            events.append({
+                "type": "tool_result",
+                "id": tc["id"],
+                "name": tc["name"],
+                "ok": False,
+                "result_count": 0,
+                "empty": True,
+            })
             continue
-        idx, block, event = item
-        blocks[idx] = block
+        _idx, block, event = item
+        blocks[_idx] = block
         events.append(event)
 
     final_blocks = [b for b in blocks if b is not None]
