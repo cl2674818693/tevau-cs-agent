@@ -100,6 +100,10 @@ class Settings(BaseSettings):
     # F-P0-4 / B-P1: human_takeover 状态下指派客服心跳超此秒数即视为掉线，sweep_loop
     # 自动释放（mode=ai + assigned_staff_id=NULL）。默认 5min = 心跳间隔 30s × 10。
     staff_idle_release_seconds: int = 300
+    # C 端空闲会话归档窗口（小时）。超过该时长无消息活动的 mode='ai' 会话
+    # 会被 sweep_loop 标记 archived=1，APP 重新打开时 get_resumable 拿不到旧会话。
+    # 0 = 禁用该清理。
+    idle_conversation_archive_hours: int = 48
     log_level: str = "INFO"
 
     @model_validator(mode="after")

@@ -78,6 +78,45 @@ async def reclaim_stale_turns(timeout_seconds: int) -> int:
     return n
 
 
+async def archive_idle_conversations(hours: int) -> int:
+    """归档 mode='ai' 且空闲超 hours 小时的会话，返回 SELECT 出的候选条数。
+
+    空闲判定：COALESCE(MAX(messages.created_at), conversations.created_at) < cutoff，
+    即按"最后一条消息时间"算；空会话用 conversations.created_at 兜底。
+    只动 mode='ai'：转人工态(human_pending/human_takeover)可能仍在客服 follow-up 中，
+    归档会让 C 端用户回来时接不上原客服。hours<=0 时直接返回 0（开关禁用）。
+
+    Race-guard：UPDATE 时带 NOT EXISTS(... created_at >= cutoff) 复算，避免
+    SELECT→UPDATE 窗口内用户回来发新消息却仍被归档（会丢失刚发的消息）。
+    返回的是 SELECT 候选数；个别 conv 因 race-guard 被跳过时实际状态以 archived 列为准。
+    """
+    if hours <= 0:
+        return 0
+    cutoff = (datetime.now(UTC) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+    rows = await db.fetch_all(
+        "SELECT c.id FROM conversations c "
+        "LEFT JOIN messages m ON m.conversation_id = c.id "
+        "WHERE COALESCE(c.archived, 0) = 0 AND c.mode = 'ai' "
+        "GROUP BY c.id, c.created_at "
+        "HAVING COALESCE(MAX(m.created_at), c.created_at) < :cutoff",
+        {"cutoff": cutoff},
+    )
+    if not rows:
+        return 0
+    for r in rows:
+        await db.execute(
+            "UPDATE conversations SET archived = 1 "
+            "WHERE id = :id AND COALESCE(archived, 0) = 0 "
+            "AND NOT EXISTS ("
+            "SELECT 1 FROM messages "
+            "WHERE conversation_id = :id AND created_at >= :cutoff"
+            ")",
+            {"id": int(r["id"]), "cutoff": cutoff},
+        )
+    logger.info("archived %d idle conversations (cutoff=%s)", len(rows), cutoff)
+    return len(rows)
+
+
 async def push_pending_takeover_timeouts() -> int:
     """对超 SLA take_time 阈值且未推送过的会话推 pending_takeover_timeout 事件。
 
@@ -143,7 +182,7 @@ async def push_pending_takeover_timeouts() -> int:
 
 
 async def sweep_loop() -> None:
-    """后台周期清理 + 转人工超时推送。interval<=0 时立即退出（关闭）。"""
+    """后台周期清理 + 转人工超时推送 + 空闲会话归档。interval<=0 时立即退出（关闭）。"""
     interval = settings.stale_sweep_interval_seconds
     if interval <= 0:
         return
@@ -168,4 +207,8 @@ async def sweep_loop() -> None:
             await push_pending_takeover_timeouts()
         except Exception:
             logger.exception("pending takeover timeout sweep failed")
+        try:
+            await archive_idle_conversations(settings.idle_conversation_archive_hours)
+        except Exception:
+            logger.exception("idle conversation archive sweep failed")
         await asyncio.sleep(interval)
