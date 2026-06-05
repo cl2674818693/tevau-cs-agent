@@ -1,5 +1,5 @@
 import { SearchOutlined } from "@ant-design/icons";
-import { Button, Flex } from "antd";
+import { Flex } from "antd";
 import { useEffect, useState } from "react";
 
 import { PresenceToggle } from "@/components/PresenceToggle";
@@ -26,27 +26,40 @@ export function AppTopbar() {
       <div style={{ flex: 1 }}>
         <Breadcrumbs />
       </div>
-      <Button
-        size="small"
-        icon={<SearchOutlined />}
-        className="!hidden md:!inline-flex"
+      <button
+        type="button"
+        className="hidden md:inline-flex"
         onClick={() =>
           window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))
         }
+        style={{
+          alignItems: "center",
+          gap: 8,
+          height: 28,
+          padding: "0 10px",
+          border: "1px solid #d9d9d9",
+          borderRadius: 6,
+          background: "#fff",
+          color: "rgba(0, 0, 0, 0.45)",
+          fontSize: 13,
+          lineHeight: 1,
+          cursor: "pointer",
+        }}
       >
-        搜索菜单
+        <SearchOutlined />
+        <span>搜索菜单</span>
         <kbd
           style={{
-            marginLeft: 8,
             padding: "1px 6px",
             fontSize: 10,
             background: "rgba(0, 0, 0, 0.04)",
             borderRadius: 4,
+            fontFamily: "inherit",
           }}
         >
           {hint}
         </kbd>
-      </Button>
+      </button>
       {canDispatch && token && <PresenceToggle token={token} />}
       <UserMenu />
       <CommandPalette />
