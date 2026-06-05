@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     # 回合处理中(status=processing)超过此时长视为僵尸（服务崩溃/卡死），后台标 failed
     stale_turn_timeout_seconds: int = 120
     stale_sweep_interval_seconds: int = 60  # 后台清理扫描间隔；<=0 关闭后台任务
+    # C 端空闲会话归档窗口（小时）。超过该时长无消息活动的 mode='ai' 会话
+    # 会被 sweep_loop 标记 archived=1，APP 重新打开时 get_resumable 拿不到旧会话。
+    # 0 = 禁用该清理。
+    idle_conversation_archive_hours: int = 48
     log_level: str = "INFO"
 
     @model_validator(mode="after")
