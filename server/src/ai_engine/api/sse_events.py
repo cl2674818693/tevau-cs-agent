@@ -24,6 +24,7 @@ EVENT_PING = "ping"  # 心跳
 ErrorCode = Literal[
     "AUTH_EXPIRED",
     "RATE_LIMITED",
+    "SYSTEM_BUSY",  # 新增：进程内 LLM 并发上限拒绝（Semaphore busy），前端可短退避后重试
     "TOOL_DEPTH_EXCEEDED",
     "MODEL_OVERLOADED",
     "CONVERSATION_NOT_FOUND",

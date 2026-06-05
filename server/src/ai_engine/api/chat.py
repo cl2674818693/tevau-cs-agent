@@ -19,6 +19,7 @@ from ai_engine.auth.bu_session import USER_TYPE_GUEST, resolve_identity
 from ai_engine.config import settings
 from ai_engine.governance import rate_limit, token_budget
 from ai_engine.i18n import t as _t
+from ai_engine.integrations.anthropic_client import SystemBusy
 from ai_engine.persistence import attachments as att_dao
 from ai_engine.persistence import conversations as conv_dao
 
@@ -59,6 +60,47 @@ async def _watch_disconnect(request: Request, cancel_evt: asyncio.Event) -> None
                 pass
     except asyncio.CancelledError:
         pass
+
+
+async def _listen_cancel_redis(conversation_id: int, cancel_evt: asyncio.Event) -> None:
+    """订阅 Redis cs:cancel:<conv_id> 频道，收到任何消息即 set cancel_evt。
+
+    解决多 worker 部署下 DELETE /chat/{id}/stream 落到 A worker 但 stream 在 B worker
+    的取消盲区：本地 _cancel_signals dict 是进程内的；A worker 的 set() 在 B 看不到。
+    DELETE handler 在 set 本地 evt 之外，同时 publish 一条消息到该频道；所有 worker
+    上 gen() 起的本协程都订阅同频道，收到消息后翻自己进程的 cancel_evt。
+
+    Redis 不可达（settings.redis_url 未配 / 连接失败）时 fail-open：立即返回，退化到
+    原本地 _cancel_signals 字典语义。单 worker 部署 / 测试环境照旧能跑。
+    """
+    redis = rate_limit._get_redis()
+    if redis is None:
+        return
+    channel = f"cs:cancel:{conversation_id}"
+    pubsub = None
+    try:
+        pubsub = redis.pubsub()
+        await pubsub.subscribe(channel)
+        while not cancel_evt.is_set():
+            # timeout=1.0：让循环每秒检查一次 cancel_evt（被本地 watcher 或 finally set 时退出）
+            msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if msg is not None and msg.get("type") == "message":
+                cancel_evt.set()
+                return
+    except asyncio.CancelledError:
+        # gen() finally 里 task.cancel() 走这里干净退出
+        pass
+    except Exception:
+        logger.warning(
+            "redis cancel listener crashed (conv_id=%s)", conversation_id, exc_info=True
+        )
+    finally:
+        if pubsub is not None:
+            try:
+                await pubsub.unsubscribe(channel)
+                await pubsub.aclose()
+            except Exception:
+                pass
 
 
 def _map_runtime_event(ev: dict[str, Any]) -> dict[str, str] | None:
@@ -237,6 +279,10 @@ async def chat(  # noqa: C901 — 入口 dispatcher 本质，按 mode 分派到�
     async def gen() -> AsyncIterator[dict[str, str]]:
         # 客户端 TCP 断开 → set cancel_evt → _stream_ai_turn 主动 return → runtime/LLM 上游级联关闭
         watcher = asyncio.create_task(_watch_disconnect(request, cancel_evt))
+        # 跨 worker cancel：DELETE 落到别 worker 时本地 _cancel_signals 看不到，需 Redis pub/sub 桥接
+        cancel_listener = asyncio.create_task(
+            _listen_cancel_redis(conversation_id, cancel_evt)
+        )
         try:
             yield se.sse_payload(
                 se.EVENT_CONVERSATION,
@@ -308,14 +354,24 @@ async def chat(  # noqa: C901 — 入口 dispatcher 本质，按 mode 分派到�
                 ui_locale,
             ):
                 yield frame
+        except SystemBusy:
+            # LLM 进程内信号量满载：区分于"服务不可用"，给前端可重试信号而非 INTERNAL_ERROR。
+            # 不打 logger.exception 避免噪音（这是预期的过载拒绝路径，由 metrics 单独计数）。
+            logger.info(
+                "chat stream rejected: SystemBusy (conversation_id=%s)", conversation_id
+            )
+            yield se.error_event("SYSTEM_BUSY", _t("error.system_busy", ui_locale))
         except Exception:  # 顶层兜底：记日志，对外只回固定文案，不外泄内部错误细节
             logger.exception("chat stream failed (conversation_id=%s)", conversation_id)
             yield se.error_event("INTERNAL_ERROR", _t("error.internal", ui_locale))
         finally:
             cancel_evt.set()  # 兜底：gen 退出时确保下游协程能看到取消信号
             watcher.cancel()
+            cancel_listener.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await watcher
+            with contextlib.suppress(asyncio.CancelledError):
+                await cancel_listener
             _cancel_signals.pop(conversation_id, None)
 
     return EventSourceResponse(gen(), ping=se.PING_INTERVAL_SECONDS)
@@ -323,8 +379,23 @@ async def chat(  # noqa: C901 — 入口 dispatcher 本质，按 mode 分派到�
 
 @router.delete("/api/v1/chat/{conversation_id}/stream", status_code=204)
 async def cancel_stream(conversation_id: int, request: Request) -> None:
-    """用户点"停止生成"。gen() 检测信号后 yield message_stop(cancelled) 并关闭流。"""
+    """用户点"停止生成"。本地 + Redis 双路径：
+    - 本地 _cancel_signals.set：同 worker 上跑的 gen() 立刻看到（单 worker / 命中同 worker 时够用）
+    - Redis publish：跨 worker 广播，让 stream 所在 worker 的 _listen_cancel_redis 翻 cancel_evt
+      （Task 8 起 N=2 workers 后 DELETE 50% 概率落到错 worker，纯本地路径就是盲区）
+    Redis 不可达 fail-open，不阻断 DELETE 返回；单 worker / 本地开发回退到原本地字典语义。
+    """
     await _authorize_conversation(request, conversation_id)
+    # 本地路径（同 worker 流命中）
     evt = _cancel_signals.get(conversation_id)
     if evt:
         evt.set()
+    # Redis 路径（跨 worker 广播）
+    redis = rate_limit._get_redis()
+    if redis is not None:
+        try:
+            await redis.publish(f"cs:cancel:{conversation_id}", "1")
+        except Exception:
+            logger.warning(
+                "redis publish cancel failed (conv_id=%s)", conversation_id, exc_info=True
+            )
