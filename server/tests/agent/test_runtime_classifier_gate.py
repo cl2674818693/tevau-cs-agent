@@ -90,6 +90,7 @@ class TestRuntimeClassifierGate:
         from ai_engine.config import settings as _settings
 
         monkeypatch.setattr(_settings, "topic_classifier_enabled", True)
+        monkeypatch.setattr(_settings, "topic_classifier_skip_authed", False, raising=False)
 
         async def _cls(_msg):
             return "no"
@@ -131,6 +132,7 @@ class TestRuntimeClassifierGate:
         from ai_engine.config import settings as _settings
 
         monkeypatch.setattr(_settings, "topic_classifier_enabled", True)
+        monkeypatch.setattr(_settings, "topic_classifier_skip_authed", False, raising=False)
 
         async def _cls(_msg):
             return "uncertain"
@@ -164,6 +166,7 @@ class TestRuntimeClassifierGate:
         from ai_engine.config import settings as _settings
 
         monkeypatch.setattr(_settings, "topic_classifier_enabled", True)
+        monkeypatch.setattr(_settings, "topic_classifier_skip_authed", False, raising=False)
 
         async def _cls(_msg):
             return "yes"
@@ -215,3 +218,100 @@ class TestRuntimeClassifierGate:
         user_rows = [m for m in msgs if m["role"] == "user"]
         # topic_verdict 不应被写入
         assert user_rows[-1]["topic_verdict"] is None
+
+
+class TestSkipForAuthed:
+    """topic_classifier_enabled + skip_authed=True 时，已绑定身份用户跳过分类；游客仍跑。"""
+
+    async def test_authed_c_skips_haiku(self, monkeypatch, seeded_db, fake_stream, make_resp):
+        from ai_engine.config import settings
+        monkeypatch.setattr(settings, "topic_classifier_enabled", True, raising=False)
+        monkeypatch.setattr(settings, "topic_classifier_skip_authed", True, raising=False)
+
+        called = {"n": 0}
+
+        async def _classify(_m):
+            called["n"] += 1
+            return "yes"
+
+        from ai_engine.agent import topic_classifier as tc
+        monkeypatch.setattr(tc, "classify", _classify)
+
+        monkeypatch.setattr(_ac._client.messages, "stream", fake_stream([
+            make_resp(text="draft"), make_resp(text="ok"),
+        ]))
+        conv = await create_conversation("c", "U_AUTH")
+        _ = [e async for e in rt.run_turn(
+            conversation_id=conv, user_type="c", subject_id="U_AUTH",
+            user_message="为什么我的卡被冻结了",
+        )]
+        assert called["n"] == 0, "authed C user should skip topic classifier"
+
+    async def test_authed_b_skips_haiku(self, monkeypatch, seeded_db, fake_stream, make_resp):
+        from ai_engine.config import settings
+        monkeypatch.setattr(settings, "topic_classifier_enabled", True, raising=False)
+        monkeypatch.setattr(settings, "topic_classifier_skip_authed", True, raising=False)
+
+        called = {"n": 0}
+        async def _classify(_m):
+            called["n"] += 1
+            return "yes"
+        from ai_engine.agent import topic_classifier as tc
+        monkeypatch.setattr(tc, "classify", _classify)
+
+        monkeypatch.setattr(_ac._client.messages, "stream", fake_stream([
+            make_resp(text="draft"), make_resp(text="ok"),
+        ]))
+        conv = await create_conversation("b", "T1")
+        _ = [e async for e in rt.run_turn(
+            conversation_id=conv, user_type="b", subject_id="T1",
+            user_message="开放接口的 webhook 怎么配",
+        )]
+        assert called["n"] == 0, "authed B tenant should skip topic classifier"
+
+    async def test_guest_still_classified(self, monkeypatch, seeded_db, fake_stream, make_resp):
+        from ai_engine.config import settings
+        monkeypatch.setattr(settings, "topic_classifier_enabled", True, raising=False)
+        monkeypatch.setattr(settings, "topic_classifier_skip_authed", True, raising=False)
+
+        called = {"n": 0}
+        async def _classify(_m):
+            called["n"] += 1
+            return "yes"
+        from ai_engine.agent import topic_classifier as tc
+        monkeypatch.setattr(tc, "classify", _classify)
+
+        monkeypatch.setattr(_ac._client.messages, "stream", fake_stream([
+            make_resp(text="draft"), make_resp(text="ok"),
+        ]))
+        conv = await create_conversation("g", "anon")
+        _ = [e async for e in rt.run_turn(
+            conversation_id=conv, user_type="g", subject_id="anon",
+            user_message="hi",
+        )]
+        assert called["n"] == 1, "guest must still go through topic classifier"
+
+    async def test_skip_disabled_authed_still_classified(
+        self, monkeypatch, seeded_db, fake_stream, make_resp
+    ):
+        """skip_authed=False 时，恢复原行为：所有用户都跑分类。"""
+        from ai_engine.config import settings
+        monkeypatch.setattr(settings, "topic_classifier_enabled", True, raising=False)
+        monkeypatch.setattr(settings, "topic_classifier_skip_authed", False, raising=False)
+
+        called = {"n": 0}
+        async def _classify(_m):
+            called["n"] += 1
+            return "yes"
+        from ai_engine.agent import topic_classifier as tc
+        monkeypatch.setattr(tc, "classify", _classify)
+
+        monkeypatch.setattr(_ac._client.messages, "stream", fake_stream([
+            make_resp(text="draft"), make_resp(text="ok"),
+        ]))
+        conv = await create_conversation("c", "U_AUTH2")
+        _ = [e async for e in rt.run_turn(
+            conversation_id=conv, user_type="c", subject_id="U_AUTH2",
+            user_message="查我余额",
+        )]
+        assert called["n"] == 1, "skip_authed=False must keep classifying authed users"

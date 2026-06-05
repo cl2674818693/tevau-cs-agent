@@ -337,7 +337,14 @@ async def run_turn(
 
     # spec §6.4 第二层：haiku 前置话题分类（按需开启）。判定一律落库 + 计数。
     # 纯图片消息（文本为空）无可分类文本，跳过分类视为放行，交给主模型 vision 判断。
-    if settings.topic_classifier_enabled and user_message.strip():
+    # 已绑定身份用户（C 端 user / B 端 tenant）跳过：游客仍跑（边界更脆弱）。
+    _is_guest = (user_type == "g")
+    _should_classify = (
+        settings.topic_classifier_enabled
+        and bool(user_message.strip())
+        and (not settings.topic_classifier_skip_authed or _is_guest)
+    )
+    if _should_classify:
         verdict = await topic_classifier.classify(user_message)
         await set_turn_verdict(turn_id, verdict)
         metrics.topic_verdict_total.labels(verdict=verdict).inc()
