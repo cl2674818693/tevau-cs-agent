@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import secrets
 from collections.abc import AsyncIterator
@@ -37,6 +38,27 @@ async def _authorize_conversation(request: Request, conversation_id: int) -> tup
 
 # conversation_id → asyncio.Event（用户点"停止生成"时 set，gen() 检测后退出）
 _cancel_signals: dict[int, asyncio.Event] = {}
+
+
+async def _watch_disconnect(request: Request, cancel_evt: asyncio.Event) -> None:
+    """周期性检测 client 是否断开；断开则 set cancel_evt 让 gen 链路立刻退出。
+
+    sse_starlette 本身在 yield 时也会检测，但若 runtime 卡在 LLM 调用（非 yield 中），
+    SSE 层察觉不到 client 已走 —— 这里 250ms 主动 poll 一次，覆盖该缝隙。
+    用 wait_for(cancel_evt.wait()) 兼任"外部取消时立即退出"，避免空转 250ms。
+    """
+    try:
+        while not cancel_evt.is_set():
+            if await request.is_disconnected():
+                cancel_evt.set()
+                return
+            try:
+                await asyncio.wait_for(cancel_evt.wait(), timeout=0.25)
+                return  # event set externally → exit immediately
+            except asyncio.TimeoutError:
+                pass
+    except asyncio.CancelledError:
+        pass
 
 
 def _map_runtime_event(ev: dict[str, Any]) -> dict[str, str] | None:
@@ -213,6 +235,8 @@ async def chat(  # noqa: C901 — 入口 dispatcher 本质，按 mode 分派到�
     _cancel_signals[conversation_id] = cancel_evt
 
     async def gen() -> AsyncIterator[dict[str, str]]:
+        # 客户端 TCP 断开 → set cancel_evt → _stream_ai_turn 主动 return → runtime/LLM 上游级联关闭
+        watcher = asyncio.create_task(_watch_disconnect(request, cancel_evt))
         try:
             yield se.sse_payload(
                 se.EVENT_CONVERSATION,
@@ -288,6 +312,10 @@ async def chat(  # noqa: C901 — 入口 dispatcher 本质，按 mode 分派到�
             logger.exception("chat stream failed (conversation_id=%s)", conversation_id)
             yield se.error_event("INTERNAL_ERROR", _t("error.internal", ui_locale))
         finally:
+            cancel_evt.set()  # 兜底：gen 退出时确保下游协程能看到取消信号
+            watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
             _cancel_signals.pop(conversation_id, None)
 
     return EventSourceResponse(gen(), ping=se.PING_INTERVAL_SECONDS)

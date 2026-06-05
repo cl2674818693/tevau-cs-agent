@@ -2,6 +2,7 @@ import json
 import time
 from typing import Any
 
+from ai_engine.agent.tools import _cache as tool_cache
 from ai_engine.agent.tools import base
 from ai_engine.auth.bu_session import USER_TYPE_C, USER_TYPE_GUEST
 from ai_engine.observability import metrics
@@ -90,6 +91,14 @@ async def dispatch(
         metrics.tool_calls.labels(tool=tool_name, ok="false").inc()
         return {"ok": False, "error": _GUEST_BLOCKED}
 
+    # 工具结果短缓存（query_* 只读工具，TTL = settings.tool_cache_ttl_seconds）。
+    # 用原始 params + subject_id 作 key，避免 userCode→user_id 翻译缓存对命中造成不一致。
+    if tool_cache.is_cacheable(tool_name):
+        cached = await tool_cache.get(tool_name, dict(params), subject_id)
+        if cached is not None:
+            metrics.tool_calls.labels(tool=tool_name, ok="cache_hit").inc()
+            return cached
+
     # 身份注入：把会话身份强写入工具声明的 subject_field（覆盖 AI 传值）。
     # 工具内部按自身语义用该值查对应列（C 端 user_id / B 端 tenant_id / 工单 bu_id）。
     safe_params = dict(params)
@@ -142,6 +151,7 @@ async def dispatch(
             user_type=user_type,
         )
         _observe(tool_name, duration_ms, ok=True)
+        await tool_cache.set_(tool_name, dict(params), subject_id, {"ok": True, "data": data})
         return {"ok": True, "data": data}
     except ValueError as e:
         duration_ms = int((time.perf_counter() - started) * 1000)

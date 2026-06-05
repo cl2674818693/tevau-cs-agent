@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -336,7 +337,14 @@ async def run_turn(
 
     # spec §6.4 第二层：haiku 前置话题分类（按需开启）。判定一律落库 + 计数。
     # 纯图片消息（文本为空）无可分类文本，跳过分类视为放行，交给主模型 vision 判断。
-    if settings.topic_classifier_enabled and user_message.strip():
+    # 已绑定身份用户（C 端 user / B 端 tenant）跳过：游客仍跑（边界更脆弱）。
+    _is_guest = (user_type == "g")
+    _should_classify = (
+        settings.topic_classifier_enabled
+        and bool(user_message.strip())
+        and (not settings.topic_classifier_skip_authed or _is_guest)
+    )
+    if _should_classify:
         verdict = await topic_classifier.classify(user_message)
         await set_turn_verdict(turn_id, verdict)
         metrics.topic_verdict_total.labels(verdict=verdict).inc()
@@ -361,19 +369,38 @@ async def run_turn(
         max_depth=settings.max_tool_depth, max_result_bytes=settings.max_tool_result_bytes
     )
 
+    # finalize_turn 必须在所有退出路径执行：成功 / Exception / GeneratorExit(aclose)。
+    # 历史 bug：原 try/except Exception 不捕获 GeneratorExit（BaseException 子类），
+    # 上游 SSE client disconnect 触发 gen.aclose() 时 turn 卡在 processing，等 120s
+    # stale sweep 才回收。改 finally 块兜住所有退出路径。
+    final_status: tuple[str, str | None] = ("failed", "INTERNAL_ERROR")
+    fail_event: dict[str, Any] | None = None
     try:
         with metrics.active_conversations.track_inprogress():
             async for ev in _agent_loop(
                 system_blocks, tools, model, messages, guard, user_type, subject_id, conversation_id, ui_locale
             ):
                 yield ev
-        await finalize_turn(turn_id, "done")
+        final_status = ("done", None)
+    except GeneratorExit:
+        # 调用方 aclose（如 SSE client disconnect）：标 cancelled，不算失败、不上 metric
+        final_status = ("cancelled", None)
+        raise
     except Exception:
         # fail-soft：LLM/工具异常不裸抛，标 failed + 给用户固定兜底文案
         logger.exception("agent turn failed (conversation_id=%s)", conversation_id)
         metrics.llm_turn_failures_total.inc()
-        await finalize_turn(turn_id, "failed", "INTERNAL_ERROR")
-        yield {"type": "error", "code": "INTERNAL_ERROR", "text": _failsoft_text(ui_locale)}
+        final_status = ("failed", "INTERNAL_ERROR")
+        fail_event = {"type": "error", "code": "INTERNAL_ERROR", "text": _failsoft_text(ui_locale)}
+    finally:
+        # finalize 必跑，避免 turn 卡在 processing 等 120s stale sweep
+        try:
+            await finalize_turn(turn_id, final_status[0], final_status[1])
+        except Exception:
+            logger.warning("finalize_turn after exit failed", exc_info=True)
+    # 不能在 finally 内 yield，把 fail 事件挪到外面发
+    if fail_event is not None:
+        yield fail_event
 
 
 class _StreamRedactor:
@@ -604,21 +631,28 @@ async def _run_tools(
     subject_id: str,
     conversation_id: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """执行本轮 tool_use，返回 (回灌给模型的 tool_result blocks, 流给前端的 tool_result 事件)。"""
-    blocks: list[dict[str, Any]] = []
-    events: list[dict[str, Any]] = []
-    for tc in tool_calls:
+    """执行本轮 tool_use，返回 (回灌给模型的 tool_result blocks, 流给前端的 tool_result 事件)。
+
+    并发执行：LLM 同轮 emit 的多个 tool_use 之间无依赖（依赖会被 LLM 拆到下一轮再 call），
+    用 asyncio.gather 并发执行。深度上限超出的 call 直接生成 error block，不进 gather。
+    blocks 顺序按输入 tool_calls 顺序对齐（用 idx 索引），保证回灌给 LLM 的次序与 tool_use 一致。
+    """
+    # 第一遍：分配 guard 配额，决定哪些 call 真跑 / 哪些挂 over-depth 错误
+    blocks: list[dict[str, Any] | None] = [None] * len(tool_calls)
+    runnable: list[tuple[int, dict[str, Any]]] = []
+    for i, tc in enumerate(tool_calls):
         if not guard.can_call_again():
-            blocks.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": tc["id"],
-                    "content": "ERROR: 达到工具调用深度上限，请直接给出当前结论或建工单。",
-                    "is_error": True,
-                }
-            )
+            blocks[i] = {
+                "type": "tool_result",
+                "tool_use_id": tc["id"],
+                "content": "ERROR: 达到工具调用深度上限，请直接给出当前结论或建工单。",
+                "is_error": True,
+            }
             continue
         guard.note_call()
+        runnable.append((i, tc))
+
+    async def _one(idx: int, tc: dict[str, Any]) -> tuple[int, dict[str, Any], dict[str, Any]]:
         r = await dispatch(
             tool_name=tc["name"],
             params=tc["input"],
@@ -632,23 +666,56 @@ async def _run_tools(
         payload, truncated = guard.maybe_truncate(payload)
         if truncated:
             payload += "\n[TRUNCATED]"
-        blocks.append(
-            {
+        block = {
+            "type": "tool_result",
+            "tool_use_id": tc["id"],
+            "content": payload,
+            "is_error": not r["ok"],
+        }
+        result_count = _result_count(r.get("data")) if r["ok"] else 0
+        event = {
+            "type": "tool_result",
+            "id": tc["id"],
+            "name": tc["name"],
+            "ok": r["ok"],
+            "result_count": result_count,
+            "empty": result_count == 0,
+        }
+        return idx, block, event
+
+    # 并发执行所有 runnable tool calls；异常以 ok=False 兜底，不让单工具拖垮整轮
+    results = await asyncio.gather(
+        *[_one(idx, tc) for idx, tc in runnable],
+        return_exceptions=True,
+    )
+
+    events: list[dict[str, Any]] = []
+    for (idx, tc), item in zip(runnable, results, strict=True):
+        if isinstance(item, BaseException):
+            # gather 兜底：synthesize 一个 error tool_result 保证 tool_use/tool_result 配对，
+            # 否则 Anthropic API 下一轮会因 unpaired tool_use 直接 400。
+            logger.warning(
+                "tool dispatch raised, synthesizing error block: tool=%s id=%s err=%r",
+                tc["name"], tc["id"], item,
+            )
+            blocks[idx] = {
                 "type": "tool_result",
                 "tool_use_id": tc["id"],
-                "content": payload,
-                "is_error": not r["ok"],
+                "content": "ERROR: 工具执行异常，已记录。",
+                "is_error": True,
             }
-        )
-        result_count = _result_count(r.get("data")) if r["ok"] else 0
-        events.append(
-            {
+            events.append({
                 "type": "tool_result",
                 "id": tc["id"],
                 "name": tc["name"],
-                "ok": r["ok"],
-                "result_count": result_count,
-                "empty": result_count == 0,
-            }
-        )
-    return blocks, events
+                "ok": False,
+                "result_count": 0,
+                "empty": True,
+            })
+            continue
+        _idx, block, event = item
+        blocks[_idx] = block
+        events.append(event)
+
+    final_blocks = [b for b in blocks if b is not None]
+    return final_blocks, events

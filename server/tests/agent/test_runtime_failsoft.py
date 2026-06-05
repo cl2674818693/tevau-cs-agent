@@ -210,3 +210,43 @@ class TestUserRowAlwaysWritten:
         msgs = await list_messages(conv)
         user_texts = [m["content"] for m in msgs if m["role"] == "user"]
         assert "hello world" in user_texts
+
+
+class TestAcloseFinalizesTurn:
+    """外部 aclose（模拟 SSE client disconnect）必须 finalize turn。
+
+    历史 bug：try/except Exception 不捕获 GeneratorExit（BaseException 子类），
+    导致 finalize_turn 不执行，turn 卡在 processing 状态等 120s stale sweep 才回收。
+    修复后：finally 块保证所有退出路径都落库状态。
+    """
+
+    async def test_run_turn_finalizes_on_aclose(
+        self, monkeypatch, seeded_db, fake_stream, make_resp
+    ) -> None:
+        # 用普通可流式响应；测试在拿到首个事件后立刻 aclose，触发 GeneratorExit
+        monkeypatch.setattr(
+            _ac._client.messages,
+            "stream",
+            fake_stream([make_resp(text="hello"), make_resp(text="hello")]),
+        )
+        conv = await create_conversation("c", "U_C1")
+        gen = rt.run_turn(
+            conversation_id=conv,
+            user_type="c",
+            subject_id="U_C1",
+            user_message="hi",
+        )
+        # 拿首个事件后外部 aclose（模拟 _stream_ai_turn return → 上游 gen.aclose()）
+        first_ev = await gen.__anext__()
+        assert first_ev is not None
+        await gen.aclose()
+
+        # 找到该 conv 最新的 user 行，状态必须不是 processing
+        msgs = await list_messages(conv)
+        user_msgs = [m for m in msgs if m["role"] == "user"]
+        assert user_msgs, "user turn should exist"
+        status = user_msgs[-1]["status"]
+        assert status != "processing", (
+            f"turn stuck in processing after aclose: {status} — "
+            "finalize_turn 未在 GeneratorExit 路径执行"
+        )

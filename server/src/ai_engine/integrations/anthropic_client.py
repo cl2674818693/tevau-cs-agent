@@ -1,9 +1,16 @@
+import asyncio
+import weakref
 from collections.abc import AsyncIterator
 from typing import Any
 
 from anthropic import AsyncAnthropic
 
 from ai_engine.config import settings
+from ai_engine.observability import metrics
+
+
+class SystemBusy(Exception):
+    """LLM 调用信号量超载——所有 worker 都满了，建议前端稍后重试。"""
 
 
 # base_url 为 None 时 SDK 默认连官方 api.anthropic.com;
@@ -11,13 +18,49 @@ from ai_engine.config import settings
 def _build_client() -> AsyncAnthropic:
     return AsyncAnthropic(
         api_key=settings.anthropic_api_key,
-        base_url=settings.anthropic_base_url,  # None => SDK 用默认
-        max_retries=settings.anthropic_max_retries,  # 显式重试（指数退避）
-        timeout=settings.anthropic_timeout_seconds,  # 显式超时，避免默认 600s
+        base_url=settings.anthropic_base_url,
+        max_retries=settings.anthropic_max_retries,
+        timeout=settings.anthropic_timeout_seconds,
     )
 
 
 _client = _build_client()
+
+# 进程内 LLM 调用信号量。超载时不阻塞用户长 wait，acquire 超时直接 SystemBusy。
+# asyncio.Semaphore 绑定到创建它的事件循环；生产只一个 loop，所以一次创建够用。
+# 测试每个用例新建 loop（pytest-asyncio function scope），所以按 loop 缓存 sem。
+_llm_sems: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _rebuild_llm_semaphore() -> None:
+    """测试 monkeypatch settings 后清掉所有 loop 的缓存；下次访问时按当前 loop 重建。"""
+    _llm_sems.clear()
+
+
+def _get_sem() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    sem = _llm_sems.get(loop)
+    if sem is None:
+        sem = asyncio.Semaphore(int(settings.llm_max_concurrency))
+        _llm_sems[loop] = sem
+    return sem
+
+
+async def _acquire_or_busy() -> None:
+    sem = _get_sem()
+    try:
+        await asyncio.wait_for(sem.acquire(), timeout=settings.llm_acquire_timeout_seconds)
+    except asyncio.TimeoutError as e:
+        metrics.llm_busy_rejections_total.inc()
+        raise SystemBusy("LLM concurrency limit reached") from e
+    metrics.llm_inflight.inc()
+
+
+def _release() -> None:
+    _get_sem().release()
+    metrics.llm_inflight.dec()
 
 
 # Anthropic 限制：整请求最多 4 个带 cache_control 的块。system 块里稳定提示前缀在前、
@@ -65,13 +108,17 @@ _CLASSIFY_SYSTEM = (
 
 async def classify_topic(message: str) -> str:
     """spec §6.4 第二层：haiku 意图分类，返回模型原始单词文本（调用方解析）。"""
-    resp = await _client.messages.create(
-        model=settings.summary_model,
-        max_tokens=10,
-        stop_sequences=["\n"],
-        system=_CLASSIFY_SYSTEM,
-        messages=[{"role": "user", "content": message}],
-    )
+    await _acquire_or_busy()
+    try:
+        resp = await _client.messages.create(
+            model=settings.summary_model,
+            max_tokens=10,
+            stop_sequences=["\n"],
+            system=_CLASSIFY_SYSTEM,
+            messages=[{"role": "user", "content": message}],
+        )
+    finally:
+        _release()
     parts = [getattr(b, "text", "") for b in getattr(resp, "content", [])]
     return "".join(parts).strip().lower()
 
@@ -79,11 +126,18 @@ async def classify_topic(message: str) -> str:
 async def stream_turn(request_body: dict[str, object]) -> AsyncIterator[dict[str, Any]]:
     """流式跑一轮 LLM。先逐段 yield {"text_delta": str} 文本增量，最后 yield {"final": Message}。
 
+    被外层 CancelledError 时 async with 自动 aclose 上游 HTTP，
+    保证客户端断开后 token 不再继续消耗。
+
     runtime 据此实现真 token 流式：最终回复轮把增量实时推给用户；预自检/工具轮先缓冲。
     {"final"} 携带完整消息（content / stop_reason / usage），供记账、工具判定、落库。
     """
-    async with _client.messages.stream(**request_body) as stream:  # type: ignore[arg-type]
-        async for text in stream.text_stream:
-            yield {"text_delta": text}
-        final = await stream.get_final_message()
-    yield {"final": final}
+    await _acquire_or_busy()
+    try:
+        async with _client.messages.stream(**request_body) as stream:  # type: ignore[arg-type]
+            async for text in stream.text_stream:
+                yield {"text_delta": text}
+            final = await stream.get_final_message()
+        yield {"final": final}
+    finally:
+        _release()

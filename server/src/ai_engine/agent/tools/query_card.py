@@ -14,13 +14,14 @@ WHERE user_id=%s AND del=0
 ORDER BY create_time DESC
 """
 
-# 冻结历史表：按 user_id + target_id(=卡主键id) + target_type=1(卡) 隔离，
-# operation_type=1 取冻结记录（2 是解冻），取最新一条。
+# 冻结历史表：按 user_id + target_id IN (...) + target_type=1(卡) 隔离，
+# operation_type=1 取冻结记录。一次查回所有冻结卡的最新一条，避免 N+1。
+# aiomysql 对 IN %s 接 tuple：传 ((c1, c2, c3),) 展开为 IN (c1,c2,c3)。
 FREEZE_SQL = """
-SELECT freeze_reason, reason_desc, create_time, auto_unfreeze_time
+SELECT target_id, freeze_reason, reason_desc, create_time, auto_unfreeze_time
 FROM t_tevaupay_bank_card_freeze_history
-WHERE user_id=%s AND target_id=%s AND target_type=1 AND operation_type=1 AND del=0
-ORDER BY create_time DESC
+WHERE user_id=%s AND target_id IN %s AND target_type=1 AND operation_type=1 AND del=0
+ORDER BY target_id, create_time DESC
 """
 
 # card_status 字典（真实库列注释 + 后端 CardStatusEnum 双重核对；13/14 列注释缺失，按后端枚举补全）
@@ -99,17 +100,33 @@ def _card_view(row: dict[str, Any], unmask: bool) -> dict[str, Any]:
 
 
 async def run(user_id: str, unmask: bool = False) -> dict[str, Any]:
-    """查当前用户名下所有卡的状态（锁定/冻结看 status；冻结卡带出真实冻结原因；卡号脱敏，unmask 仅 engineer 代查）。"""
+    """查当前用户名下所有卡的状态（锁定/冻结看 status；冻结卡带出真实冻结原因；卡号脱敏，unmask 仅 engineer 代查）。
+
+    N+1 消除：所有冻结/锁定卡的 freeze_history 一次 IN 批查，按 target_id 分组取最新。
+    """
     db = get_db("unlimitpay")
     rows = await db.fetch_all(SQL, (user_id,), limit=20)
+    # 一次性收集需要查冻结历史的卡 id
+    frozen_ids = [r["id"] for r in rows if r.get("card_status") in _FROZEN_STATUSES]
+    freeze_by_card: dict[Any, dict[str, Any]] = {}
+    if frozen_ids:
+        freezes = await db.fetch_all(
+            FREEZE_SQL,
+            (user_id, tuple(frozen_ids)),
+            limit=len(frozen_ids) * 4,
+        )
+        # ORDER BY target_id, create_time DESC → 同 target_id 第一条即最新
+        for fr in freezes:
+            tid = fr.get("target_id")
+            if tid not in freeze_by_card:
+                freeze_by_card[tid] = fr
+
     cards = []
     for r in rows:
         view = _card_view(r, unmask)
-        # 冻结/锁定态的卡：去独立冻结历史表查真实冻结原因（主表 status_desc 只是卡方串）
         if r.get("card_status") in _FROZEN_STATUSES:
-            freezes = await db.fetch_all(FREEZE_SQL, (user_id, r["id"]), limit=1)
-            if freezes:
-                fr = freezes[0]
+            fr = freeze_by_card.get(r["id"])
+            if fr:
                 view["freeze_reason"] = label(_FREEZE_REASON, fr.get("freeze_reason"))
                 view["freeze_reason_code"] = fr.get("freeze_reason")
                 view["freeze_reason_desc"] = fr.get("reason_desc")

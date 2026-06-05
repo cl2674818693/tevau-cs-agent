@@ -76,6 +76,7 @@ class TestQueryCard:
             "card_alias_name": None, "active_time": None, "create_time": None,
         }]
         fake_db.freezes = [{
+            "target_id": 200,
             "freeze_reason": 4,  # 人工冻结卡
             "reason_desc": "客户疑似盗刷",
             "create_time": "2026-01-01 00:00:00",
@@ -127,3 +128,41 @@ class TestQueryCard:
         out = await qc.run(user_id="1")
         assert out["cards"][0]["status"] == "未知(999)"
         assert out["cards"][0]["currency"] == "UNKNOWN"  # 0 in dict
+
+
+class TestBatchFreezeQuery:
+    """多张冻结卡共用一次 FREEZE_SQL 批查（消除 N+1）。"""
+
+    async def test_three_frozen_cards_one_freeze_query(self, fake_db) -> None:
+        fake_db.cards = [
+            {"id": 1, "card_number": "4938750672464590", "card_status": 9,
+             "card_status_description": None, "card_balance": "0", "card_currency": 2,
+             "card_type": 1, "expiry_date": None, "reject_reason": None,
+             "cancel_card_reason": None, "card_alias_name": None,
+             "active_time": None, "create_time": None},
+            {"id": 2, "card_number": "4938750672464591", "card_status": 9,
+             "card_status_description": None, "card_balance": "0", "card_currency": 2,
+             "card_type": 1, "expiry_date": None, "reject_reason": None,
+             "cancel_card_reason": None, "card_alias_name": None,
+             "active_time": None, "create_time": None},
+            {"id": 3, "card_number": "4938750672464592", "card_status": 2,
+             "card_status_description": None, "card_balance": "0", "card_currency": 2,
+             "card_type": 1, "expiry_date": None, "reject_reason": None,
+             "cancel_card_reason": None, "card_alias_name": None,
+             "active_time": None, "create_time": None},
+        ]
+        # 假冻结历史：id=1 → 4(人工), id=2 → 1(黑名单); id=3 无冻结历史
+        fake_db.freezes = [
+            {"target_id": 1, "freeze_reason": 4, "reason_desc": "人工",
+             "create_time": "2026-01-01", "auto_unfreeze_time": None},
+            {"target_id": 2, "freeze_reason": 1, "reason_desc": "黑名单",
+             "create_time": "2026-01-02", "auto_unfreeze_time": None},
+        ]
+        out = await qc.run(user_id="1")
+        assert fake_db.freeze_calls == 1, (
+            f"freeze table queried {fake_db.freeze_calls} times; expected 1 (batched)"
+        )
+        m = {c["card_id"]: c for c in out["cards"]}
+        assert m[1]["freeze_reason"] == "人工冻结卡"
+        assert m[2]["freeze_reason"] == "黑名单商户交易"
+        assert "freeze_reason" not in m[3]
