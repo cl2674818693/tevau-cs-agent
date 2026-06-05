@@ -75,6 +75,9 @@ async function handleErrorEvent(
   if (ev.code === "RATE_LIMITED") {
     a.setRateLimited(true);
     pushSystem(a, ev.message || "请求过于频繁，请稍后再试。");
+  } else if (ev.code === "SYSTEM_BUSY") {
+    // 后端 Semaphore 满载（区别于 RATE_LIMITED 用户级限流）：不锁死输入，让用户手动重试
+    pushSystem(a, ev.message || "系统繁忙，请稍后再试。");
   } else if (ev.code === "AUTH_EXPIRED") {
     await a.onAuthExpired();
   } else {

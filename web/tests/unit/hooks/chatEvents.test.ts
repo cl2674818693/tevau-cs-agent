@@ -181,6 +181,27 @@ describe("handleStreamEvent 主链路派发", () => {
     expect(a._messages()).toEqual([{ role: "system", content: "慢点" }]);
   });
 
+  it("SYSTEM_BUSY 错误：推后端文案提示，但不锁死 sending（区别于 RATE_LIMITED）", async () => {
+    const a = mkActions();
+    a.setMessages(() => [{ role: "assistant", content: "", tool_calls: [] }]);
+    await handleStreamEvent(
+      { type: "error", code: "SYSTEM_BUSY", message: "系统繁忙，请稍后再试。" } as ChatEvent,
+      a,
+    );
+    // 关键差异：SYSTEM_BUSY 不调 setRateLimited（不锁输入框）
+    expect(a.setRateLimited).not.toHaveBeenCalled();
+    expect(a._messages()).toEqual([{ role: "system", content: "系统繁忙，请稍后再试。" }]);
+  });
+
+  it("SYSTEM_BUSY 缺 message 时回退默认提示", async () => {
+    const a = mkActions();
+    await handleStreamEvent(
+      { type: "error", code: "SYSTEM_BUSY", message: "" } as ChatEvent,
+      a,
+    );
+    expect(a._messages()[0]).toMatchObject({ role: "system", content: "系统繁忙，请稍后再试。" });
+  });
+
   it("AUTH_EXPIRED 错误调用 onAuthExpired", async () => {
     const a = mkActions();
     await handleStreamEvent(
