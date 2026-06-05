@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     llm_max_concurrency: int = 20
     # 拿不到信号量的等待时长；超过即视为系统繁忙，避免 SSE 长时间挂起
     llm_acquire_timeout_seconds: float = 0.5
+    # 工具结果缓存：同 (tool, subject_id, normalized_params) 在 TTL 内复用 Redis 缓存值。
+    # 0 = 关闭。建议生产 30-60s；只对只读 query_* 工具启用。
+    tool_cache_ttl_seconds: int = 30
     chat_rate_limit_per_min: int = 30  # 单 subject 每分钟消息上限（spec §6.4 兜底层）
     # 限流共享存储；配置后多副本全局精确计数，未配则回退进程内（单副本/测试）
     redis_url: str | None = None
