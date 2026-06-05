@@ -258,3 +258,35 @@ class TestArchiveIdleConversations:
         )
         n = await maintenance.archive_idle_conversations(hours=0)
         assert n == 0
+
+
+class TestSweepLoopArchives:
+    async def test_sweep_loop_invokes_archive_once(
+        self, db_ready, monkeypatch
+    ) -> None:
+        """sweep_loop 单次迭代会调用 archive_idle_conversations 一次。"""
+        from ai_engine.config import settings
+
+        monkeypatch.setattr(settings, "stale_sweep_interval_seconds", 60)
+        monkeypatch.setattr(settings, "idle_conversation_archive_hours", 48)
+
+        calls: list[int] = []
+
+        async def _fake_archive(hours: int) -> int:
+            calls.append(hours)
+            raise asyncio.CancelledError
+
+        monkeypatch.setattr(maintenance, "archive_idle_conversations", _fake_archive)
+
+        async def _noop_reclaim(*_a, **_k) -> int:
+            return 0
+
+        async def _noop_push() -> int:
+            return 0
+
+        monkeypatch.setattr(maintenance, "reclaim_stale_turns", _noop_reclaim)
+        monkeypatch.setattr(maintenance, "push_pending_takeover_timeouts", _noop_push)
+
+        with pytest.raises(asyncio.CancelledError):
+            await maintenance.sweep_loop()
+        assert calls == [48]

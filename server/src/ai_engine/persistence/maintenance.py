@@ -129,7 +129,7 @@ async def push_pending_takeover_timeouts() -> int:
 
 
 async def sweep_loop() -> None:
-    """后台周期清理 + 转人工超时推送。interval<=0 时立即退出（关闭）。"""
+    """后台周期清理 + 转人工超时推送 + 空闲会话归档。interval<=0 时立即退出（关闭）。"""
     interval = settings.stale_sweep_interval_seconds
     if interval <= 0:
         return
@@ -142,4 +142,8 @@ async def sweep_loop() -> None:
             await push_pending_takeover_timeouts()
         except Exception:
             logger.exception("pending takeover timeout sweep failed")
+        try:
+            await archive_idle_conversations(settings.idle_conversation_archive_hours)
+        except Exception:
+            logger.exception("idle conversation archive sweep failed")
         await asyncio.sleep(interval)
