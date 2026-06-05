@@ -177,3 +177,84 @@ class TestSweepLoop:
         monkeypatch.setattr(s, "stale_sweep_interval_seconds", 0)
         # 不该挂起：interval<=0 立即退出
         await asyncio.wait_for(maintenance.sweep_loop(), timeout=1.0)
+
+
+class TestArchiveIdleConversations:
+    async def test_archives_ai_conversation_with_old_last_message(self, db_ready) -> None:
+        cid = await conv.create_conversation("c", "U1")
+        old = (datetime.now(UTC) - timedelta(hours=49)).strftime("%Y-%m-%d %H:%M:%S")
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'hi', 'done', :t)",
+            {"cid": cid, "t": old},
+        )
+        n = await maintenance.archive_idle_conversations(hours=48)
+        assert n == 1
+        row = await fetch_one("SELECT archived FROM conversations WHERE id=:id", {"id": cid})
+        assert row["archived"] == 1
+
+    async def test_keeps_recent_ai_conversation(self, db_ready) -> None:
+        cid = await conv.create_conversation("c", "U1")
+        recent = (datetime.now(UTC) - timedelta(hours=47)).strftime("%Y-%m-%d %H:%M:%S")
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'hi', 'done', :t)",
+            {"cid": cid, "t": recent},
+        )
+        n = await maintenance.archive_idle_conversations(hours=48)
+        assert n == 0
+        row = await fetch_one("SELECT archived FROM conversations WHERE id=:id", {"id": cid})
+        assert row["archived"] == 0
+
+    async def test_archives_empty_conversation_by_created_at(self, db_ready) -> None:
+        cid = await conv.create_conversation("c", "U2")
+        old = (datetime.now(UTC) - timedelta(hours=49)).strftime("%Y-%m-%d %H:%M:%S")
+        await execute(
+            "UPDATE conversations SET created_at=:t WHERE id=:id", {"t": old, "id": cid}
+        )
+        n = await maintenance.archive_idle_conversations(hours=48)
+        assert n == 1
+
+    async def test_keeps_recent_empty_conversation(self, db_ready) -> None:
+        await conv.create_conversation("c", "U2")
+        n = await maintenance.archive_idle_conversations(hours=48)
+        assert n == 0
+
+    async def test_does_not_archive_non_ai_mode(self, db_ready) -> None:
+        cid = await conv.create_conversation("c", "U3")
+        await execute(
+            "UPDATE conversations SET mode='human_takeover' WHERE id=:id", {"id": cid}
+        )
+        old = (datetime.now(UTC) - timedelta(hours=72)).strftime("%Y-%m-%d %H:%M:%S")
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'hi', 'done', :t)",
+            {"cid": cid, "t": old},
+        )
+        n = await maintenance.archive_idle_conversations(hours=48)
+        assert n == 0
+        row = await fetch_one("SELECT archived FROM conversations WHERE id=:id", {"id": cid})
+        assert row["archived"] == 0
+
+    async def test_skips_already_archived(self, db_ready) -> None:
+        cid = await conv.create_conversation("c", "U4")
+        old = (datetime.now(UTC) - timedelta(hours=49)).strftime("%Y-%m-%d %H:%M:%S")
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'hi', 'done', :t)",
+            {"cid": cid, "t": old},
+        )
+        await execute("UPDATE conversations SET archived=1 WHERE id=:id", {"id": cid})
+        n = await maintenance.archive_idle_conversations(hours=48)
+        assert n == 0
+
+    async def test_hours_zero_disables(self, db_ready) -> None:
+        cid = await conv.create_conversation("c", "U5")
+        old = (datetime.now(UTC) - timedelta(hours=999)).strftime("%Y-%m-%d %H:%M:%S")
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'hi', 'done', :t)",
+            {"cid": cid, "t": old},
+        )
+        n = await maintenance.archive_idle_conversations(hours=0)
+        assert n == 0

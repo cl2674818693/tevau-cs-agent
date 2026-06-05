@@ -38,6 +38,36 @@ async def reclaim_stale_turns(timeout_seconds: int) -> int:
     return n
 
 
+async def archive_idle_conversations(hours: int) -> int:
+    """归档 mode='ai' 且空闲超 hours 小时的会话，返回归档条数。
+
+    空闲判定：COALESCE(MAX(messages.created_at), conversations.created_at) < cutoff，
+    即按"最后一条消息时间"算；空会话用 conversations.created_at 兜底。
+    只动 mode='ai'：转人工态(human_pending/human_takeover)可能仍在客服 follow-up 中，
+    归档会让 C 端用户回来时接不上原客服。hours<=0 时直接返回 0（开关禁用）。
+    """
+    if hours <= 0:
+        return 0
+    cutoff = (datetime.now(UTC) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+    rows = await db.fetch_all(
+        "SELECT c.id FROM conversations c "
+        "LEFT JOIN messages m ON m.conversation_id = c.id "
+        "WHERE COALESCE(c.archived, 0) = 0 AND c.mode = 'ai' "
+        "GROUP BY c.id, c.created_at "
+        "HAVING COALESCE(MAX(m.created_at), c.created_at) < :cutoff",
+        {"cutoff": cutoff},
+    )
+    if not rows:
+        return 0
+    for r in rows:
+        await db.execute(
+            "UPDATE conversations SET archived = 1 WHERE id = :id",
+            {"id": int(r["id"])},
+        )
+    logger.info("archived %d idle conversations (cutoff=%s)", len(rows), cutoff)
+    return len(rows)
+
+
 async def push_pending_takeover_timeouts() -> int:
     """对超 SLA take_time 阈值且未推送过的会话推 pending_takeover_timeout 事件。
 
