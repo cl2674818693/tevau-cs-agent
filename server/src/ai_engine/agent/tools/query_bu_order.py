@@ -14,15 +14,14 @@ WHERE tenant_id=%s AND del_flag=0
 ORDER BY create_time DESC
 """
 
-# 失败原因不在订单主表，在 t_nexus_trans_exception（卡级异常）。
-# 该表无 order_sn/trade_order_sn 关联键，trans_id 是卡网 txId（与订单号不匹配）。
-# 唯一可用且带租户隔离的关联：tenant_id + card_id，订单侧用 third_card_id 对应异常表 card_id。
-# 因此 failure_reason 是"该卡近期异常线索"（卡级），非订单级精确归因。
+# 失败原因批查：所有失败订单的 third_card_id 一次 IN，避免 N+1。
+# 该表无 order_sn 关联键；唯一可用的关联是 tenant_id + card_id（订单侧 third_card_id 对应异常表 card_id）。
+# 因此 failure_reason 是"卡级异常线索"，非订单级精确归因。
 EXC_SQL = """
-SELECT reason, error_trans_code, trans_type, exception_type, create_time
+SELECT card_id, reason, error_trans_code, trans_type, exception_type, create_time
 FROM t_nexus_trans_exception
-WHERE tenant_id=%s AND card_id=%s AND del_flag=0
-ORDER BY create_time DESC
+WHERE tenant_id=%s AND card_id IN %s AND del_flag=0
+ORDER BY card_id, create_time DESC
 """
 
 # order_type 枚举：以真实库列注释 + 后端 OrderTypeEnum.java 双重核对。
@@ -69,27 +68,38 @@ _STATUS: dict[Any, str] = {
 _FAILED_STATUS = 4
 
 
-async def _failure_reason(db: Any, tenant_id: str, third_card_id: Any) -> dict[str, Any] | None:
-    """失败订单的卡级异常线索（tenant_id 隔离 + card_id 关联）。无 third_card_id 或无异常则 None。"""
-    if not third_card_id or third_card_id in ("", "-"):
+def _norm_card_id(v: Any) -> str | None:
+    """规范 third_card_id：空串 / '-' / None → None，其余 str() 化（异常表 card_id 是字符串）。"""
+    if not v or v in ("", "-"):
         return None
-    rows = await db.fetch_all(EXC_SQL, (tenant_id, third_card_id), limit=3)
-    if not rows:
-        return None
-    top = rows[0]
-    return {
-        "note": "卡级异常线索（按租户+卡号关联，非订单级精确归因）",
-        "reason": top.get("reason"),
-        "error_trans_code": top.get("error_trans_code"),
-        "trans_type": top.get("trans_type"),
-        "exception_count": len(rows),
-    }
+    return str(v)
 
 
 async def run(tenant_id: str, unmask: bool = False) -> dict[str, Any]:
-    """查当前 BU(租户)最近订单（开卡/充值/提现/销卡等及状态）。BU 问订单状态/对账/某笔为何失败时用。"""
+    """查当前 BU(租户)最近订单（开卡/充值/提现/销卡等及状态）。失败订单的卡级异常一次 IN 批查。"""
     db = get_db("nexus")
     rows = await db.fetch_all(SQL, (tenant_id,), limit=20)
+
+    # 收集失败订单的 third_card_id（去重 + 过滤无效）
+    failed_card_ids = sorted({
+        _norm_card_id(r.get("third_card_id"))
+        for r in rows if r.get("status") == _FAILED_STATUS
+    } - {None})
+
+    exc_by_card: dict[str, dict[str, Any]] = {}
+    exc_count_by_card: dict[str, int] = {}
+    if failed_card_ids:
+        exceptions = await db.fetch_all(
+            EXC_SQL,
+            (tenant_id, tuple(failed_card_ids)),
+            limit=len(failed_card_ids) * 4,
+        )
+        for ex in exceptions:
+            cid = str(ex.get("card_id"))
+            exc_count_by_card[cid] = exc_count_by_card.get(cid, 0) + 1
+            if cid not in exc_by_card:  # ORDER BY card_id, create_time DESC → 第一条即最新
+                exc_by_card[cid] = ex
+
     orders = []
     for r in rows:
         o: dict[str, Any] = {
@@ -108,7 +118,18 @@ async def run(tenant_id: str, unmask: bool = False) -> dict[str, Any]:
             "remark": r.get("remark"),
         }
         if r.get("status") == _FAILED_STATUS:
-            o["failure_reason"] = await _failure_reason(db, tenant_id, r.get("third_card_id"))
+            cid = _norm_card_id(r.get("third_card_id"))
+            if cid and cid in exc_by_card:
+                top = exc_by_card[cid]
+                o["failure_reason"] = {
+                    "note": "卡级异常线索（按租户+卡号关联，非订单级精确归因）",
+                    "reason": top.get("reason"),
+                    "error_trans_code": top.get("error_trans_code"),
+                    "trans_type": top.get("trans_type"),
+                    "exception_count": exc_count_by_card.get(cid, 0),
+                }
+            else:
+                o["failure_reason"] = None
         orders.append(o)
     return {"orders": orders, "count": len(orders)}
 

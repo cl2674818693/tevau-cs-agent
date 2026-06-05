@@ -1,10 +1,11 @@
 """Tool: query_bu_order
 
-被测对象：tools.query_bu_order.run + _failure_reason
+被测对象：tools.query_bu_order.run
 - 命中：order 列表 + 翻译 order_type / status。
 - status=4(失败) → 触发卡级异常二级查询。
 - third_card_id 为空/'-' → 不去查异常。
 - 异常表无对应行 → failure_reason=None。
+- 多笔失败订单 → 一次 IN 批查（消除 N+1）。
 """
 
 import pytest
@@ -67,6 +68,7 @@ class TestQueryBuOrder:
             "third_card_id": "CIDV-XYZ",
         }]
         fake_db.exceptions = [{
+            "card_id": "CIDV-XYZ",
             "reason": "卡组织拒绝",
             "error_trans_code": "DECL01",
             "trans_type": 4,
@@ -129,3 +131,39 @@ class TestQueryBuOrder:
         out = await qbo.run(tenant_id="1011010000068")
         assert out["orders"][0]["order_type"] == "未知(99)"
         assert out["orders"][0]["status"] == "审核中"
+
+
+class TestBatchExceptionQuery:
+    """多笔失败订单共用一次 EXC_SQL 批查（消除 N+1）。"""
+
+    async def test_three_failed_orders_one_exc_query(self, fake_db) -> None:
+        fake_db.orders = [
+            {"order_sn": "o1", "trade_order_sn": "to1", "order_type": 18, "status": 4,
+             "trade_amount": "100", "fee": "1", "channel_amount": "100", "channel_fee": "0",
+             "currency": "USD", "create_time": "2026-01-01", "end_time": None,
+             "remark": None, "third_card_id": "card-A"},
+            {"order_sn": "o2", "trade_order_sn": "to2", "order_type": 18, "status": 4,
+             "trade_amount": "200", "fee": "1", "channel_amount": "200", "channel_fee": "0",
+             "currency": "USD", "create_time": "2026-01-02", "end_time": None,
+             "remark": None, "third_card_id": "card-B"},
+            {"order_sn": "o3", "trade_order_sn": "to3", "order_type": 18, "status": 1,
+             "trade_amount": "300", "fee": "1", "channel_amount": "300", "channel_fee": "0",
+             "currency": "USD", "create_time": "2026-01-03", "end_time": None,
+             "remark": None, "third_card_id": "card-C"},  # status=1 已完成，不查异常
+        ]
+        fake_db.exceptions = [
+            {"card_id": "card-A", "reason": "insufficient funds",
+             "error_trans_code": "E01", "trans_type": "PAY", "exception_type": 1,
+             "create_time": "2026-01-01"},
+            {"card_id": "card-B", "reason": "card frozen",
+             "error_trans_code": "E02", "trans_type": "PAY", "exception_type": 1,
+             "create_time": "2026-01-02"},
+        ]
+        out = await qbo.run(tenant_id="T1")
+        assert fake_db.exc_calls == 1, (
+            f"exception table queried {fake_db.exc_calls} times; expected 1 (batched)"
+        )
+        m = {o["order_sn"]: o for o in out["orders"]}
+        assert m["o1"]["failure_reason"]["reason"] == "insufficient funds"
+        assert m["o2"]["failure_reason"]["reason"] == "card frozen"
+        assert "failure_reason" not in m["o3"]  # 非失败订单不查异常
