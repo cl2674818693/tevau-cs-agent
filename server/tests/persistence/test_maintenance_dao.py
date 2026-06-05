@@ -290,3 +290,207 @@ class TestSweepLoopArchives:
         with pytest.raises(asyncio.CancelledError):
             await maintenance.sweep_loop()
         assert calls == [48]
+
+
+class TestArchiveIdleEdgeCases:
+    async def test_max_of_messages_not_first_or_last(self, db_ready) -> None:
+        # 同一会话两条消息：老的 100h、新的 47h。COALESCE(MAX, ...) 应取 47h，未到 48h，不归档。
+        cid = await conv.create_conversation("c", "EDGE1")
+        very_old = (datetime.now(UTC) - timedelta(hours=100)).strftime("%Y-%m-%d %H:%M:%S")
+        recent = (datetime.now(UTC) - timedelta(hours=47)).strftime("%Y-%m-%d %H:%M:%S")
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'old', 'done', :t)",
+            {"cid": cid, "t": very_old},
+        )
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'assistant', 'new', 'done', :t)",
+            {"cid": cid, "t": recent},
+        )
+        n = await maintenance.archive_idle_conversations(hours=48)
+        assert n == 0
+        row = await fetch_one("SELECT archived FROM conversations WHERE id=:id", {"id": cid})
+        assert row["archived"] == 0
+
+    async def test_does_not_archive_human_pending_mode(self, db_ready) -> None:
+        # human_takeover 已被现有测试覆盖；这里补 human_pending 同样不归档。
+        cid = await conv.create_conversation("c", "EDGE2")
+        await execute(
+            "UPDATE conversations SET mode='human_pending' WHERE id=:id", {"id": cid}
+        )
+        old = (datetime.now(UTC) - timedelta(hours=72)).strftime("%Y-%m-%d %H:%M:%S")
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'hi', 'done', :t)",
+            {"cid": cid, "t": old},
+        )
+        n = await maintenance.archive_idle_conversations(hours=48)
+        assert n == 0
+        row = await fetch_one("SELECT archived FROM conversations WHERE id=:id", {"id": cid})
+        assert row["archived"] == 0
+
+    async def test_mixed_batch_only_qualifying_archived(self, db_ready) -> None:
+        # 一次 sweep 内：合规归档 / 非到期 / 非 ai / 已归档 共存，期望只有 1 个被归档。
+        ai_old = await conv.create_conversation("c", "BATCH_A")
+        ai_recent = await conv.create_conversation("c", "BATCH_B")
+        human_old = await conv.create_conversation("c", "BATCH_C")
+        ai_already = await conv.create_conversation("c", "BATCH_D")
+
+        old = (datetime.now(UTC) - timedelta(hours=49)).strftime("%Y-%m-%d %H:%M:%S")
+        recent = (datetime.now(UTC) - timedelta(hours=47)).strftime("%Y-%m-%d %H:%M:%S")
+        very_old = (datetime.now(UTC) - timedelta(hours=72)).strftime("%Y-%m-%d %H:%M:%S")
+
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'x', 'done', :t)",
+            {"cid": ai_old, "t": old},
+        )
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'x', 'done', :t)",
+            {"cid": ai_recent, "t": recent},
+        )
+        await execute(
+            "UPDATE conversations SET mode='human_takeover' WHERE id=:id", {"id": human_old}
+        )
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'x', 'done', :t)",
+            {"cid": human_old, "t": very_old},
+        )
+        await execute("UPDATE conversations SET archived=1 WHERE id=:id", {"id": ai_already})
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'x', 'done', :t)",
+            {"cid": ai_already, "t": old},
+        )
+
+        n = await maintenance.archive_idle_conversations(hours=48)
+        assert n == 1
+
+        rows = await fetch_all(
+            "SELECT id, archived FROM conversations WHERE id IN (:a, :b, :c, :d) ORDER BY id",
+            {"a": ai_old, "b": ai_recent, "c": human_old, "d": ai_already},
+        )
+        by_id = {int(r["id"]): int(r["archived"]) for r in rows}
+        assert by_id[ai_old] == 1
+        assert by_id[ai_recent] == 0
+        assert by_id[human_old] == 0
+        assert by_id[ai_already] == 1  # 一直是 1，未被改回
+
+    async def test_archives_all_qualifying_in_one_sweep(self, db_ready) -> None:
+        # 5 个老 AI 会话同时存在，期望一次 sweep 全部 archived=1。
+        old = (datetime.now(UTC) - timedelta(hours=49)).strftime("%Y-%m-%d %H:%M:%S")
+        for i in range(5):
+            cid = await conv.create_conversation("c", f"MANY{i}")
+            await execute(
+                "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+                "VALUES (:cid, 'user', 'x', 'done', :t)",
+                {"cid": cid, "t": old},
+            )
+
+        n = await maintenance.archive_idle_conversations(hours=48)
+        assert n == 5
+        rows = await fetch_all(
+            "SELECT archived FROM conversations WHERE subject_id LIKE :p",
+            {"p": "MANY%"},
+        )
+        assert len(rows) == 5
+        assert all(int(r["archived"]) == 1 for r in rows)
+
+    async def test_cutoff_strict_less_than(self, db_ready) -> None:
+        # HAVING 使用 `<` 严格小于。若最后消息时间正好等于 cutoff，不该归档。
+        # 我们覆写 datetime.now：固定它，使函数算出的 cutoff 与 message.created_at 完全相等。
+        fixed_now = datetime(2026, 6, 5, 12, 0, 0, tzinfo=UTC)
+        cutoff_str = (fixed_now - timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S")
+        cid = await conv.create_conversation("c", "BOUND")
+        # 让 conversations.created_at 也早于 cutoff（避免空-conv 兜底干扰）
+        await execute(
+            "UPDATE conversations SET created_at=:t WHERE id=:id",
+            {"t": cutoff_str, "id": cid},
+        )
+        # 最后消息恰好 = cutoff
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'x', 'done', :t)",
+            {"cid": cid, "t": cutoff_str},
+        )
+
+        class _FixedDT:
+            @staticmethod
+            def now(_tz=None):
+                return fixed_now
+
+        # 只 patch maintenance.datetime（函数从此模块取）
+        import ai_engine.persistence.maintenance as _m
+
+        original = _m.datetime
+        _m.datetime = _FixedDT  # type: ignore[assignment]
+        try:
+            n = await maintenance.archive_idle_conversations(hours=48)
+        finally:
+            _m.datetime = original
+        assert n == 0  # 相等不归档（严格 <）
+        row = await fetch_one("SELECT archived FROM conversations WHERE id=:id", {"id": cid})
+        assert row["archived"] == 0
+
+    async def test_negative_hours_disables(self, db_ready) -> None:
+        cid = await conv.create_conversation("c", "NEG")
+        old = (datetime.now(UTC) - timedelta(hours=999)).strftime("%Y-%m-%d %H:%M:%S")
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'x', 'done', :t)",
+            {"cid": cid, "t": old},
+        )
+        n = await maintenance.archive_idle_conversations(hours=-1)
+        assert n == 0
+
+    async def test_default_settings_is_48(self) -> None:
+        # 真实读 settings 验证默认值（不 monkeypatch）。
+        from ai_engine.config import settings as s
+
+        assert s.idle_conversation_archive_hours == 48
+
+    async def test_race_user_replies_in_select_to_update_window(
+        self, db_ready, monkeypatch
+    ) -> None:
+        """SELECT→UPDATE 窗口内用户发了新消息，UPDATE 应复算 last_msg 并跳过该 conv。
+
+        模拟方式：monkeypatch db.execute，在第一次 UPDATE 之前插入一条"刚发的新消息"。
+        没有 race-guard 时，函数仍归档；有 guard 时，跳过 → n==1 但该 conv archived 仍为 0。
+        """
+        cid = await conv.create_conversation("c", "RACE")
+        old = (datetime.now(UTC) - timedelta(hours=49)).strftime("%Y-%m-%d %H:%M:%S")
+        await execute(
+            "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+            "VALUES (:cid, 'user', 'old', 'done', :t)",
+            {"cid": cid, "t": old},
+        )
+
+        # 在 archive 的 SELECT 之后、UPDATE 之前插入新消息
+        import ai_engine.persistence.maintenance as _m
+
+        original_execute = _m.db.execute
+        injected = {"done": False}
+
+        async def _wrapped_execute(sql: str, params: dict | None = None):
+            if not injected["done"] and sql.startswith("UPDATE conversations SET archived"):
+                now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+                await original_execute(
+                    "INSERT INTO messages(conversation_id, role, content, status, created_at) "
+                    "VALUES (:cid, 'user', 'fresh', 'done', :t)",
+                    {"cid": cid, "t": now_str},
+                )
+                injected["done"] = True
+            return await original_execute(sql, params)
+
+        monkeypatch.setattr(_m.db, "execute", _wrapped_execute)
+
+        await maintenance.archive_idle_conversations(hours=48)
+        row = await fetch_one("SELECT archived FROM conversations WHERE id=:id", {"id": cid})
+        # 期望：race guard 生效，archived 仍为 0；用户刚发的新消息留在活跃会话
+        assert row["archived"] == 0, (
+            "Race condition: SELECT→UPDATE 窗口内用户发了新消息，"
+            "UPDATE 仍然归档了会话；该会话变成不可续接的 archived，丢失刚发的消息"
+        )

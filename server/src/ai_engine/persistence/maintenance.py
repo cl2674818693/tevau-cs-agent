@@ -39,12 +39,16 @@ async def reclaim_stale_turns(timeout_seconds: int) -> int:
 
 
 async def archive_idle_conversations(hours: int) -> int:
-    """归档 mode='ai' 且空闲超 hours 小时的会话，返回归档条数。
+    """归档 mode='ai' 且空闲超 hours 小时的会话，返回 SELECT 出的候选条数。
 
     空闲判定：COALESCE(MAX(messages.created_at), conversations.created_at) < cutoff，
     即按"最后一条消息时间"算；空会话用 conversations.created_at 兜底。
     只动 mode='ai'：转人工态(human_pending/human_takeover)可能仍在客服 follow-up 中，
     归档会让 C 端用户回来时接不上原客服。hours<=0 时直接返回 0（开关禁用）。
+
+    Race-guard：UPDATE 时带 NOT EXISTS(... created_at >= cutoff) 复算，避免
+    SELECT→UPDATE 窗口内用户回来发新消息却仍被归档（会丢失刚发的消息）。
+    返回的是 SELECT 候选数；个别 conv 因 race-guard 被跳过时实际状态以 archived 列为准。
     """
     if hours <= 0:
         return 0
@@ -61,8 +65,13 @@ async def archive_idle_conversations(hours: int) -> int:
         return 0
     for r in rows:
         await db.execute(
-            "UPDATE conversations SET archived = 1 WHERE id = :id",
-            {"id": int(r["id"])},
+            "UPDATE conversations SET archived = 1 "
+            "WHERE id = :id AND COALESCE(archived, 0) = 0 "
+            "AND NOT EXISTS ("
+            "SELECT 1 FROM messages "
+            "WHERE conversation_id = :id AND created_at >= :cutoff"
+            ")",
+            {"id": int(r["id"]), "cutoff": cutoff},
         )
     logger.info("archived %d idle conversations (cutoff=%s)", len(rows), cutoff)
     return len(rows)
