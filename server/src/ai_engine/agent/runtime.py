@@ -369,19 +369,38 @@ async def run_turn(
         max_depth=settings.max_tool_depth, max_result_bytes=settings.max_tool_result_bytes
     )
 
+    # finalize_turn 必须在所有退出路径执行：成功 / Exception / GeneratorExit(aclose)。
+    # 历史 bug：原 try/except Exception 不捕获 GeneratorExit（BaseException 子类），
+    # 上游 SSE client disconnect 触发 gen.aclose() 时 turn 卡在 processing，等 120s
+    # stale sweep 才回收。改 finally 块兜住所有退出路径。
+    final_status: tuple[str, str | None] = ("failed", "INTERNAL_ERROR")
+    fail_event: dict[str, Any] | None = None
     try:
         with metrics.active_conversations.track_inprogress():
             async for ev in _agent_loop(
                 system_blocks, tools, model, messages, guard, user_type, subject_id, conversation_id, ui_locale
             ):
                 yield ev
-        await finalize_turn(turn_id, "done")
+        final_status = ("done", None)
+    except GeneratorExit:
+        # 调用方 aclose（如 SSE client disconnect）：标 cancelled，不算失败、不上 metric
+        final_status = ("cancelled", None)
+        raise
     except Exception:
         # fail-soft：LLM/工具异常不裸抛，标 failed + 给用户固定兜底文案
         logger.exception("agent turn failed (conversation_id=%s)", conversation_id)
         metrics.llm_turn_failures_total.inc()
-        await finalize_turn(turn_id, "failed", "INTERNAL_ERROR")
-        yield {"type": "error", "code": "INTERNAL_ERROR", "text": _failsoft_text(ui_locale)}
+        final_status = ("failed", "INTERNAL_ERROR")
+        fail_event = {"type": "error", "code": "INTERNAL_ERROR", "text": _failsoft_text(ui_locale)}
+    finally:
+        # finalize 必跑，避免 turn 卡在 processing 等 120s stale sweep
+        try:
+            await finalize_turn(turn_id, final_status[0], final_status[1])
+        except Exception:
+            logger.warning("finalize_turn after exit failed", exc_info=True)
+    # 不能在 finally 内 yield，把 fail 事件挪到外面发
+    if fail_event is not None:
+        yield fail_event
 
 
 class _StreamRedactor:
