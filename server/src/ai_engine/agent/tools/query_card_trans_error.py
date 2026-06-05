@@ -1,6 +1,6 @@
 from typing import Any
 
-from ai_engine.agent.tools.base import Tool, register
+from ai_engine.agent.tools.base import Tool, gated, register
 from ai_engine.persistence.business_db import get_db
 
 # 真实库 tevau_nexus_test.t_nexus_trans_error（交易异常记录表），按 tenant_id 隔离。
@@ -42,7 +42,8 @@ async def run(tenant_id: str, card_id: str | None = None, unmask: bool = False) 
             "error_code": r.get("error_trans_code"),
             "trans_type": r.get("trans_type"),
             "exception_type": _EXCEPTION_TYPE.get(r.get("exception_type"), r.get("exception_type")),
-            "reason": _clip(r.get("reason")),
+            # reason 含卡方/平台异常的具体原因文本（可能含规则名/阈值），默认 gate
+            "reason": gated(_clip(r.get("reason")), unmask),
             "create_time": str(r["create_time"]) if r.get("create_time") else None,
         }
         if unmask:  # engineer 代查：完整交易请求报文

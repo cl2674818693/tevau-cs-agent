@@ -1,6 +1,6 @@
 from typing import Any
 
-from ai_engine.agent.tools.base import Tool, register
+from ai_engine.agent.tools.base import Tool, gated, register
 from ai_engine.integrations.redact import mask_email, mask_id_card, mask_phone
 from ai_engine.persistence.business_db import get_db
 
@@ -66,7 +66,8 @@ async def run(tenant_id: str, user_code: str, unmask: bool = False) -> dict[str,
     if k:
         kyc: dict[str, Any] = {
             "audit_status": _KYC_AUDIT.get(k.get("audit_status"), k.get("audit_status")),
-            "failed_reason": k.get("identity_failer_reason"),
+            # KYC 厂商失败明细（算法置信度/触发规则），默认 gate；engineer 代查可解锁
+            "failed_reason": gated(k.get("identity_failer_reason"), unmask),
             "country": k.get("live_country") or k.get("country_area"),
             "id_type": _ID_TYPE.get(k.get("identity_card_type")),
             "request_time": str(k["request_time"]) if k.get("request_time") else None,
@@ -94,8 +95,9 @@ async def run(tenant_id: str, user_code: str, unmask: bool = False) -> dict[str,
     if a and (a.get("third_party_fail_reason") or a.get("identity_failer_reason")):
         user["latest_audit"] = {
             "audit_status": _KYC_AUDIT.get(a.get("audit_status"), a.get("audit_status")),
-            "third_party_reason": a.get("third_party_fail_reason"),
-            "failed_reason": a.get("identity_failer_reason"),
+            # 第三方厂商返回的失败原文：含厂商错误码/算法触发规则，默认 gate
+            "third_party_reason": gated(a.get("third_party_fail_reason"), unmask),
+            "failed_reason": gated(a.get("identity_failer_reason"), unmask),
             "manual_audit": a.get("person_audit_status") == 1,
             "time": str(a["create_time"]) if a.get("create_time") else None,
         }

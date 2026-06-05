@@ -1,6 +1,6 @@
 from typing import Any
 
-from ai_engine.agent.tools.base import Tool, register
+from ai_engine.agent.tools.base import Tool, gated, register
 from ai_engine.persistence.business_db import get_db
 
 # 真实库 tevau_nexus_test.t_nexus_jit_request_log（JIT 外部授权请求日志），按 tenant_id 隔离。
@@ -41,14 +41,16 @@ async def run(tenant_id: str, card_id: str | None = None, unmask: bool = False) 
             "transaction_id": r.get("transaction_id"),
             "card_id": r.get("card_id"),
             "decision": r.get("decision"),  # APPROVED / DECLINED / TIMEOUT
-            "decline_reason": r.get("decline_reason"),
+            # decline_reason 原文含发卡方风控触发条件/阈值，直接给用户=教反欺诈，默认 gate
+            "decline_reason": gated(r.get("decline_reason"), unmask),
             "amount": str(r["trans_amount"]) if r.get("trans_amount") is not None else None,
             "currency": r.get("trans_currency"),
             "card_fee": str(r["card_fee"]) if r.get("card_fee") is not None else None,
             "channel_fee": str(r["channel_fee"]) if r.get("channel_fee") is not None else None,
             "http_status": r.get("http_status"),
             "duration_ms": r.get("duration_ms"),
-            "error_message": r.get("error_message"),
+            # error_message 是上游 HTTP 错误消息，常含上游返回的拒绝细节，默认 gate
+            "error_message": gated(r.get("error_message"), unmask),
             "channel": _CHANNEL.get(r.get("channel_type"), r.get("channel_type")),
             "request_time": str(r["request_time"]) if r.get("request_time") else None,
             "response_time": str(r["response_time"]) if r.get("response_time") else None,

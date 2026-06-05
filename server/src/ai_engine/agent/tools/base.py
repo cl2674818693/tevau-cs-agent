@@ -45,3 +45,14 @@ def label(mapping: dict, value):
 def scope_note(source: str, covered: str, not_covered: str) -> str:
     """查空时给 AI 的边界说明，避免把'本表无'当成'用户无'。"""
     return f"本次仅查询了{source}（覆盖：{covered}）。未覆盖：{not_covered}。查不到不代表用户没有相关记录。"
+
+
+_HIDDEN_PLACEHOLDER = "[hidden — 内部细节不向用户暴露；engineer 可 unmask 代查]"
+
+
+def gated(value: Any, unmasked: bool, placeholder: str = _HIDDEN_PLACEHOLDER) -> Any:
+    """敏感原文字段门控：unmasked=False 且字段有值时返回占位字符串；无值返回 None；unmasked=True 透传。
+    用于决策原因 / 风控原因 / 三方失败明细等"内部细节"字段——AI 看到占位串应只翻译业务结论给用户。"""
+    if value is None or value == "":
+        return None
+    return value if unmasked else placeholder

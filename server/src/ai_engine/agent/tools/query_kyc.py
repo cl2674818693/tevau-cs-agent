@@ -1,6 +1,6 @@
 from typing import Any
 
-from ai_engine.agent.tools.base import Tool, label, register
+from ai_engine.agent.tools.base import Tool, gated, label, register
 from ai_engine.integrations.redact import mask_id_card, mask_phone
 from ai_engine.persistence.business_db import get_db
 
@@ -40,7 +40,8 @@ async def run(user_id: str, unmask: bool = False) -> dict[str, Any]:
     out: dict[str, Any] = {
         "user_kyc_status": label(_KYC_STATUS, row.get("user_kyc_status")),
         "audit_status": label(_AUDIT, row.get("audit_status")),
-        "failed_reason": row.get("identity_failer_reason"),
+        # identity_failer_reason 含 KYC 厂商失败明细（含算法置信度、触发规则），直给用户=教伪造，默认 gate
+        "failed_reason": gated(row.get("identity_failer_reason"), unmask),
         "certification_status": row.get("certification_status"),
         "country": row.get("live_country") or row.get("country_area"),
         "id_type": _ID_TYPE.get(row.get("identity_card_type")),

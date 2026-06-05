@@ -23,6 +23,23 @@ from ai_engine.persistence.tickets import find_open_ticket_for_subject as _find_
 VALID_CATEGORIES = {"bug", "事务", "CQ", "无信息", "人工介入"}
 VALID_SEVERITIES = {"p0", "p1", "p2", "p3"}
 
+# 与 base.gated 的占位前缀一致。evidence 值含该前缀时说明 AI 在用户会话中拿到的是脱敏占位，
+# 客服开工单时需走 staff 端 unmask=True 代查工具拿原文，否则 evidence 失去诊断价值。
+_REDACTED_PREFIX = "[hidden —"
+
+
+def _has_redacted_evidence(evidence: dict[str, Any]) -> bool:
+    """递归扫描 evidence 内任何字符串值是否含 gated 占位前缀。dict/list 嵌套都查。"""
+    def walk(v: Any) -> bool:
+        if isinstance(v, str):
+            return _REDACTED_PREFIX in v
+        if isinstance(v, dict):
+            return any(walk(x) for x in v.values())
+        if isinstance(v, list):
+            return any(walk(x) for x in v)
+        return False
+    return walk(evidence)
+
 # category → 事项中心 action_type 映射。
 # task=需要人处理；notify=仅记录无需操作。"无信息"=AI 收集到信息不够无需推动客服，
 # 其他四类都需要人跟进。
@@ -100,7 +117,15 @@ def _build_rich_context(summary: str, evidence: dict[str, Any]) -> str:
     """
     if not evidence:
         return summary
-    parts: list[str] = [summary, "", "—— 关键证据 ——"]
+    parts: list[str] = []
+    if _has_redacted_evidence(evidence):
+        parts.append(
+            "⚠️ 本工单 evidence 含被 gate 的内部字段（如 risk_reason / decline_reason / "
+            "failed_reason / error_message / reason），原文已隐藏成占位串。客服处理时请到 "
+            "staff 端 (admin) 用 unmask=True 重查对应工具获取原文，evidence 里的占位串无诊断价值。"
+        )
+        parts.append("")
+    parts += [summary, "", "—— 关键证据 ——"]
 
     code_refs = evidence.get("code_evidence") or evidence.get("code_refs")
     if code_refs:
@@ -209,6 +234,7 @@ async def run(
     ext_id = _new_external_id()
     # 本地审计 payload 仍保留 cs-engine 内部 schema（external_ticket_id/category/severity/evidence），
     # 给 admin 后台展示用；推事项中心的是另一份按对方契约重塑的 payload。
+    has_redacted = _has_redacted_evidence(evidence)
     local_payload: dict[str, object] = {
         "source": "ai_engine",
         "external_ticket_id": ext_id,
@@ -218,6 +244,8 @@ async def run(
         "summary": summary,
         "severity": severity,
         "evidence": evidence,
+        # admin 列表可据此字段标红/排序，提示客服该工单需代查 unmask 原文
+        "has_redacted_fields": has_redacted,
         "created_at": datetime.now(UTC).isoformat(),
     }
 

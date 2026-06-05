@@ -60,7 +60,7 @@ def build_system_blocks(
                     "都不要调用查询工具，而是礼貌告知：需在 APP 内登录后才能查询。"
                     "也不要承诺创建工单或转人工。\n\n"
                     "**重要：query_user / query_card / query_balance / query_transaction /"
-                    " query_kyc / query_bu_* / create_ticket 等所有需要身份的工具，runtime"
+                    " query_kyc / query_financing / query_stock / query_bu_* / create_ticket 等所有需要身份的工具，runtime"
                     " 会硬拒（返回 'guest not allowed'）——调了等于白白浪费一个 turn 且把"
                     "'被拒'结果灌给你自己当上下文。所以宁可不调也不要试探，直接用文字答用户：'"
                     "您还没登录，无法查询您的账户信息，请在 APP 内登录后再发起咨询'。"
