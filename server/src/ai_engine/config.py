@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     c_identity_cache_ttl: int = 300  # token→userCode 缓存秒数，避免每请求一次远程校验
     c_identity_timeout_seconds: float = 5.0
     daily_token_limit: int = 500_000  # 单 BU/单 user 单日 token 硬阈值（spec §8 成本治理）
+    # LLM 并发护栏：单进程内同时进行的 LLM 调用上限（含 stream + classify）。
+    # 多 worker 时全局并发 = workers × llm_max_concurrency。超载快失败 → 用户看到 system_busy 提示。
+    llm_max_concurrency: int = 20
+    # 拿不到信号量的等待时长；超过即视为系统繁忙，避免 SSE 长时间挂起
+    llm_acquire_timeout_seconds: float = 0.5
     chat_rate_limit_per_min: int = 30  # 单 subject 每分钟消息上限（spec §6.4 兜底层）
     # 限流共享存储；配置后多副本全局精确计数，未配则回退进程内（单副本/测试）
     redis_url: str | None = None

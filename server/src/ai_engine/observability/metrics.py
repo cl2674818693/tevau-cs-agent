@@ -44,3 +44,9 @@ llm_turn_failures_total = Counter("ai_engine_llm_turn_failures_total", "回合�
 stale_turns_reclaimed_total = Counter(
     "ai_engine_stale_turns_reclaimed_total", "超时僵尸回合被标记 failed 的数量"
 )
+
+# LLM 并发护栏
+llm_inflight = Gauge("ai_engine_llm_inflight", "进行中的 LLM 调用数（含 stream + classify）")
+llm_busy_rejections_total = Counter(
+    "ai_engine_llm_busy_rejections_total", "因 Semaphore 满拒绝的 LLM 调用次数"
+)
