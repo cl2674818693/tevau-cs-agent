@@ -44,6 +44,12 @@ services:
       - OBJECT_STORE_BUCKET=${OBJECT_STORE_BUCKET:-cs-attachments}
       - OBJECT_STORE_ACCESS_KEY=${OBJECT_STORE_ACCESS_KEY:-minioadmin}
       - OBJECT_STORE_SECRET_KEY=${OBJECT_STORE_SECRET_KEY:-minioadmin}
+      # 部署护栏：worker 数量、LLM 进程内并发上限、工具缓存 TTL、classifier 跳过开关
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-2}
+      - LLM_MAX_CONCURRENCY=${LLM_MAX_CONCURRENCY:-20}
+      - LLM_ACQUIRE_TIMEOUT_SECONDS=${LLM_ACQUIRE_TIMEOUT_SECONDS:-0.5}
+      - TOOL_CACHE_TTL_SECONDS=${TOOL_CACHE_TTL_SECONDS:-30}
+      - TOPIC_CLASSIFIER_SKIP_AUTHED=${TOPIC_CLASSIFIER_SKIP_AUTHED:-true}
     labels:
       # 供 sidecar/服务发现抓取 /metrics（spec §11 可观测性，端点始终开启）
       - "prometheus.scrape=true"
