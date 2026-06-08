@@ -1,7 +1,6 @@
-"""Persistence: insights.py — 知识缺口 / 工具健康度 / Prompt A/B 对比 / 下钻。
+"""Persistence: insights.py — 知识缺口 / 工具健康度 / 下钻。
 
 覆盖：knowledge_gaps（4 项信号计数 + 时间窗）, tool_health（按工具聚合 / 防除零）,
-prompt_ab_stats（仅 assistant + prompt_version IS NOT NULL）,
 gap_conversations（kind 白名单 / 非法 raise）。
 """
 
@@ -87,36 +86,6 @@ class TestToolHealth:
         await audit.log_tool_call(c, "t", {}, 0, 0, False, None, is_empty=False)
         rows = await insights.tool_health(None, None)
         assert rows[0]["empty_rate"] == 0.0
-
-
-class TestPromptABStats:
-    async def test_only_assistant_with_version(self, db_ready) -> None:
-        c = await conv.create_conversation("c", "U1")
-        # assistant with version
-        await conv.append_message(c, "assistant", "a1", prompt_version="v1.0.0")
-        await conv.append_message(c, "assistant", "a2", prompt_version="v1.1.0")
-        # 无版本不计入
-        await conv.append_message(c, "assistant", "no-version")
-        # user 不计入
-        await conv.append_user_turn(c, "u", client_message_id=None)
-        rows = await insights.prompt_ab_stats(None, None)
-        versions = {r["version"] for r in rows}
-        assert versions == {"v1.0.0", "v1.1.0"}
-        for r in rows:
-            assert r["assistant_turns"] == 1
-            assert r["failed_rate"] == 0.0
-            assert r["downvote_rate"] == 0.0
-
-    async def test_downvote_join(self, db_ready) -> None:
-        c = await conv.create_conversation("c", "U1")
-        mid = await conv.append_message(c, "assistant", "a", prompt_version="v1.0.0")
-        await feedback.add_feedback(c, mid, "down", None, "U1", "c")
-        rows = await insights.prompt_ab_stats(None, None)
-        assert rows[0]["downvote"] == 1
-        assert rows[0]["downvote_rate"] == 1.0
-
-    async def test_empty(self, db_ready) -> None:
-        assert await insights.prompt_ab_stats(None, None) == []
 
 
 class TestGapConversations:

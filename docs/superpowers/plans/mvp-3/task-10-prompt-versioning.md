@@ -1,5 +1,10 @@
 # Task 10: Prompt 版本化 + 哈希分桶灰度
 
+> **⚠️ 已废弃（2026-06-06）**：本 task 描述的灰度方案已下线，prompt 改回单版本全量直发。
+> 现状：`server/src/ai_engine/prompts/*.md` 直接对应运行时 prompt，改完 `docker compose up -d --build api` 即全量生效；
+> 已删 `registry.py` / `registry.yaml` / `v1.0.0/` / `v1.1.0/` 子目录、messages.prompt_version 列、`prompt_ab_stats` DAO。
+> 本文档保留作为历史决策记录。
+>
 > MVP-3 plan 拆分文件 — 总览见 [README.md](./README.md)。
 
 **Files:**

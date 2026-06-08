@@ -50,7 +50,6 @@ from ai_engine.persistence.conversations import (
     set_turn_verdict,
 )
 from ai_engine.prompts.loader import build_system_blocks, read_prompt
-from ai_engine.prompts.registry import model_for, pick_version
 from ai_engine.storage.object_store import get_object_store
 
 from ai_engine.i18n import t as _t
@@ -300,10 +299,8 @@ async def run_turn(
     attachment_ids: list[int] | None = None,
     ui_locale: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    # spec §8 prompt 版本化：按 subject_id 哈希分桶选版本；该版本贯穿本轮
-    prompt_version = pick_version(subject_id)
-    model = model or model_for(prompt_version) or settings.default_model
-    system_blocks = build_system_blocks(user_type=user_type, version=prompt_version)
+    model = model or settings.default_model
+    system_blocks = build_system_blocks(user_type=user_type)
     tools = base.all_definitions()
 
     # spec §8 会话治理：超轮次/token 上限 → 总结老会话、开新会话继承结论
@@ -356,7 +353,6 @@ async def run_turn(
                 conversation_id,
                 role="assistant",
                 content=refusal,
-                prompt_version=prompt_version,
             )
             await finalize_turn(turn_id, "done")
             yield {"type": "text", "text": refusal}
@@ -477,7 +473,6 @@ async def _agent_loop(
     conversation_id: int,
     ui_locale: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    prompt_version = pick_version(subject_id)
     self_check_done = False
     warned_budget = False
 
@@ -521,7 +516,7 @@ async def _agent_loop(
         # self-check 前的草稿轮不落库：它 live=False 不流给用户，会被 self-check 修订后的
         # 最终轮取代；若也落库，刷新历史回放会出现「同一回复两条」（直播只流最终轮）。
         if assistant_blocks and not _needs_self_check(resp, self_check_done, texts):
-            await _persist_assistant(conversation_id, assistant_blocks, prompt_version)
+            await _persist_assistant(conversation_id, assistant_blocks)
 
         if _is_tool_round(resp, tool_calls_in_round):
             async for ev in _emit_tool_round(
@@ -539,7 +534,7 @@ async def _agent_loop(
 
         if _needs_self_check(resp, self_check_done, texts):
             self_check_done = True
-            _inject_self_check(messages, prompt_version)
+            _inject_self_check(messages)
             continue
 
         # 未实时流出（无 self-check 的最终轮 / 无文本）：一次性流出最终文本
@@ -573,7 +568,6 @@ async def collect_full_response(
 async def _persist_assistant(
     conversation_id: int,
     assistant_blocks: list[dict[str, Any]],
-    prompt_version: str | None = None,
 ) -> None:
     await append_message(
         conversation_id,
@@ -581,12 +575,11 @@ async def _persist_assistant(
         content=json.dumps(
             [b for b in assistant_blocks if b["type"] == "text"], ensure_ascii=False
         ),
-        prompt_version=prompt_version,
     )
 
 
-def _inject_self_check(messages: list[dict[str, Any]], version: str) -> None:
-    self_check_md = read_prompt("self_check", version=version)
+def _inject_self_check(messages: list[dict[str, Any]]) -> None:
+    self_check_md = read_prompt("self_check")
     messages.append(
         {
             "role": "user",

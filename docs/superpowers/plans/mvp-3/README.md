@@ -46,7 +46,7 @@
 | 7 | [客服调 AI 工具](task-07-staff-ai-tools.md) | staff 端代查接口，结果仅客服可见 |
 | 8 | [多客服协作（转工程师 + KPI）](task-08-multi-staff.md) | transfer-to/{role} + KPI 端点 + 看板 |
 | 9 | [工单状态 SSE 长连](task-09-ticket-sse.md) | 替换 MVP-2 轮询为实时推送 |
-| 10 | [Prompt 版本化 + 哈希分桶灰度](task-10-prompt-versioning.md) | `prompts/v1.0.0/` 目录 + `registry.yaml` + rollout |
+| 10 | [Prompt 版本化 + 哈希分桶灰度](task-10-prompt-versioning.md) ⚠️ 2026-06 已废弃，回归单版本全量 | ~~`prompts/v1.0.0/` 目录 + `registry.yaml` + rollout~~ |
 | 11 | [Prompt 管理面板（admin）](task-11-prompt-admin.md) | admin 端点 + 前端可视化调比例 |
 | 12 | [Prometheus /metrics + 埋点](task-12-metrics.md) | 关键指标定义 + runtime/tools/tickets/staff 埋点 |
 | 13 | [Grafana 面板 JSON](task-13-grafana.md) | 4 类视角 dashboard + alert rules |
@@ -64,7 +64,7 @@
 - 单 BU/单 user 日 token 硬阈值生效
 - 客服工作台 C 方案上线：ai_draft / 旁观 / 工具代查 / 转工程师 / KPI
 - 工单状态变化 SSE 长连推前端（替换 MVP-2 轮询）
-- Prompt 版本化 + 哈希分桶灰度
+- ~~Prompt 版本化 + 哈希分桶灰度~~（2026-06 已下线，回归单版本全量）
 - Prompt 管理面板可调灰度
 - /metrics 暴露所有指标
 - Grafana 4 类面板正常显示

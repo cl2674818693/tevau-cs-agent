@@ -1,6 +1,6 @@
 """agent 子目录共享夹具：runtime 跑前清掉一系列全局状态/缓存，避免互相污染。
 
-- prompt registry 缓存 / loader 缓存 / tool_router 的 C 端 user_code 缓存。
+- prompt loader 缓存 / tool_router 的 C 端 user_code 缓存。
 - 关闭 topic_classifier（runtime 默认关；少数测试用 monkeypatch 显式开）。
 """
 
@@ -12,11 +12,10 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _clean_prompt_caches(monkeypatch):
-    """每个用例前清空 prompt registry / loader 缓存，确保 reload_registry 类用例隔离。"""
+    """每个用例前清空 prompt loader 缓存，保证用例隔离。"""
     from ai_engine.agent.tool_router import _c_user_id_cache
-    from ai_engine.prompts import loader, registry as preg
+    from ai_engine.prompts import loader
 
-    preg.reload_registry()
     loader.clear_cache()
     _c_user_id_cache.clear()
     yield

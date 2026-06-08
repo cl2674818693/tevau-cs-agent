@@ -124,11 +124,13 @@ class TestAppendMessage:
         assert rows[0]["role"] == "assistant"
         assert rows[0]["content"] == "hi"
 
-    async def test_append_with_prompt_version(self, db_ready) -> None:
+    async def test_append_persists_role_and_content(self, db_ready) -> None:
         cid = await conv.create_conversation("c", "U1")
-        await conv.append_message(cid, "assistant", "x", prompt_version="v1.1.0")
+        await conv.append_message(cid, "assistant", "x")
         rows = await conv.list_messages(cid)
-        assert rows[0]["prompt_version"] == "v1.1.0"
+        assert rows[0]["role"] == "assistant"
+        assert rows[0]["content"] == "x"
+        assert "prompt_version" not in rows[0]
 
 
 class TestUserTurnLifecycle:

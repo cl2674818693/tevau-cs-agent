@@ -155,22 +155,20 @@ async def insert_message(
     content: str = "x",
     status: str = "done",
     topic_verdict: str | None = None,
-    prompt_version: str | None = None,
     created_at: str | None = None,
 ) -> int:
     from ai_engine.persistence.schema import now_str
 
     return await db_mod.insert_returning_id(
         "INSERT INTO messages(conversation_id, role, content, status, topic_verdict, "
-        "prompt_version, created_at) "
-        "VALUES (:cid, :r, :c, :st, :tv, :pv, :now) RETURNING id",
+        "created_at) "
+        "VALUES (:cid, :r, :c, :st, :tv, :now) RETURNING id",
         {
             "cid": conv_id,
             "r": role,
             "c": content,
             "st": status,
             "tv": topic_verdict,
-            "pv": prompt_version,
             "now": created_at or now_str(),
         },
     )

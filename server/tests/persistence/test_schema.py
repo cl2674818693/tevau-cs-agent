@@ -77,7 +77,9 @@ class TestMetadataTables:
         cols = {c.name for c in metadata.tables["messages"].columns}
         assert {"id", "conversation_id", "role", "content", "sender_staff_id",
                 "status", "error_code", "client_message_id", "topic_verdict",
-                "prompt_version", "created_at"} <= cols
+                "created_at"} <= cols
+        # 灰度版本化已下线 2026-06：列已 drop
+        assert "prompt_version" not in cols
 
     def test_user_type_check_constraint(self) -> None:
         """conversations 上有 user_type IN ('c','b','g') 的 CHECK。"""

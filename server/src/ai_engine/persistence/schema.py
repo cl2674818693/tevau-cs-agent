@@ -61,7 +61,6 @@ messages = Table(
     Column("error_code", String(32)),  # status=failed 时写入（INTERNAL_ERROR / STALE_RECLAIMED）
     Column("client_message_id", String(64)),  # 幂等键，仅 user 行写
     Column("topic_verdict", String(16)),  # 话题判定，仅 user 行写：yes/no/uncertain
-    Column("prompt_version", String(16)),  # 灰度 A/B：仅 assistant 行写，本轮所用 prompt 版本
     Column("created_at", String(32), nullable=False),
 )
 Index("idx_msg_client", messages.c.conversation_id, messages.c.client_message_id)
