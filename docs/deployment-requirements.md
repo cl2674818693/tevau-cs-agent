@@ -20,7 +20,7 @@ cs-engine 是 Tevau 客服 AI 引擎，后端 Python FastAPI（**不是 Java Spr
 | 账号 | 需要该库**完整读写权限**（用于 `alembic upgrade head` 建表 + 持续读写）；与业务库只读账号 `tevau_test_read` 不同 |
 | 注入环境变量 | `DB_URL=mysql+aiomysql://<user>:<pwd>@<host>:3306/ai_engine` |
 
-> 没有自有库 MySQL 后端启动即 fail，是硬阻塞。
+> 自有库 MySQL 是硬依赖：缺失则后端启动时连不上库直接 fail。
 >
 > 不复用 `tevau_test_read`：那是业务库只读账号，cs-engine 自有库要持续写入对话/工单数据，必须独立读写账号 + 独立库，避免污染业务库。
 
