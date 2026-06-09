@@ -1,0 +1,25 @@
+# 一次性 Job：跑 alembic upgrade head 在 Postgres 上建/迁移自有库 schema。
+# 每次后端 schema 升级时 kubectl delete job && kubectl apply 重跑。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cs-engine-migrate
+  namespace: tevau-cs-engine-dev
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400  # 1 天后自动清理 Job 资源
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: <NEXUS_DOCKER>/tevau-cs-engine-api:dev-latest
+          imagePullPolicy: Always
+          command: ["sh", "-c", "cd /app && alembic upgrade head"]
+          envFrom:
+            - configMapRef:
+                name: cs-engine-config
+            - secretRef:
+                name: cs-engine-secrets
+      # imagePullSecrets:
+      #   - name: nexus-docker-creds

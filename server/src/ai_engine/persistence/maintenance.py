@@ -164,11 +164,20 @@ async def push_pending_takeover_timeouts() -> int:
             continue
         # B-P1-3: 并发 sweeper race —— A SELECT 没有 → A push → 期间 B 已 INSERT 占位 →
         # A 自己 INSERT 必须静默跳过（事项中心已用 event_id 幂等去重，重复 push 无副作用；
-        # 这里仅防主键冲突让 sweep 协程崩掉）。SQLite 3.24+ / PG 都支持 ON CONFLICT。
+        # 这里仅防主键冲突让 sweep 协程崩掉）。SQLite ON CONFLICT DO NOTHING / MySQL INSERT IGNORE。
+        if db.dialect_name() == "mysql":
+            sql = (
+                "INSERT IGNORE INTO pending_timeout_pushes(conversation_id, pushed_at, threshold_seconds) "
+                "VALUES (:cid, :at, :th)"
+            )
+        else:
+            sql = (
+                "INSERT INTO pending_timeout_pushes(conversation_id, pushed_at, threshold_seconds) "
+                "VALUES (:cid, :at, :th) "
+                "ON CONFLICT(conversation_id) DO NOTHING"
+            )
         await db.execute(
-            "INSERT INTO pending_timeout_pushes(conversation_id, pushed_at, threshold_seconds) "
-            "VALUES (:cid, :at, :th) "
-            "ON CONFLICT(conversation_id) DO NOTHING",
+            sql,
             {"cid": cid, "at": now_str(), "th": int(b["threshold_seconds"])},
         )
         pushed_count += 1

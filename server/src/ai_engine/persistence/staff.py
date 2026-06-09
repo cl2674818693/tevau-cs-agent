@@ -34,7 +34,7 @@ async def create_staff(staff_id: str, display_name: str, role: str, password: st
         raise ValueError("invalid role")
     return await db.insert_returning_id(
         "INSERT INTO staff(staff_id, display_name, role, password_hash, created_at) "
-        "VALUES (:sid, :name, :role, :pw, :now) RETURNING id",
+        "VALUES (:sid, :name, :role, :pw, :now)",
         {
             "sid": staff_id,
             "name": display_name,

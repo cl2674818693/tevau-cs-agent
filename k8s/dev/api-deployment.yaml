@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cs-engine-api
+  namespace: tevau-cs-engine-dev
+  labels:
+    app: cs-engine-api
+spec:
+  replicas: 1
+  strategy:
+    # 单副本 + RWO PVC 不允许多 Pod 同时挂，必须用 Recreate（默认 RollingUpdate 会卡）
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cs-engine-api
+  template:
+    metadata:
+      labels:
+        app: cs-engine-api
+      annotations:
+        # Prometheus 自动发现（如果集群启用了 prometheus.io/scrape 注解协议）
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: api
+          # 镜像 tag 在 CI/CD 推送后改；首次手动改成你 build 出来的 tag
+          image: <NEXUS_DOCKER>/tevau-cs-engine-api:dev-latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: cs-engine-config
+            - secretRef:
+                name: cs-engine-secrets
+          volumeMounts:
+            - name: repos
+              mountPath: /repos
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+      volumes:
+        - name: repos
+          persistentVolumeClaim:
+            claimName: cs-engine-repos
+      # 如果 Nexus docker repo 需要登录，建一个 imagePullSecret 后取消注释
+      # imagePullSecrets:
+      #   - name: nexus-docker-creds

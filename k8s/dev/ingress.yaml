@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cs-engine
+  namespace: tevau-cs-engine-dev
+  annotations:
+    # SSE 长连接：禁用 nginx-ingress 缓冲、放长超时（按 ACK 用的 ingress controller 调整）
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+spec:
+  # ACK 使用 alibaba-cloud-ingress 时改为 alb / mse；nginx-ingress 用 nginx
+  ingressClassName: nginx
+  rules:
+    # 改成运维分配给你的实际开发环境域名
+    - host: cs-engine-dev.tevau.internal
+      http:
+        paths:
+          # 静态资源 + SPA 路由 + 反代都由 web nginx 容器内部处理；
+          # Ingress 这一层只往 web Service 转发即可。
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cs-engine-web
+                port:
+                  number: 80
+  # TLS 视运维证书方案配置；HTTP-only 联调可省略
+  # tls:
+  #   - hosts: [cs-engine-dev.tevau.internal]
+  #     secretName: cs-engine-dev-tls

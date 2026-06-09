@@ -16,7 +16,7 @@ async def create_policy(
         raise ValueError("invalid metric")
     return await db.insert_returning_id(
         "INSERT INTO sla_policies(metric, threshold_seconds, scope, scope_value, created_at) "
-        "VALUES (:m, :th, :sc, :sv, :now) RETURNING id",
+        "VALUES (:m, :th, :sc, :sv, :now)",
         {
             "m": metric,
             "th": int(threshold_seconds),

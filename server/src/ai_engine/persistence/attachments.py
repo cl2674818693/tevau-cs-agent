@@ -18,7 +18,7 @@ async def create_attachment(
     return await db.insert_returning_id(
         "INSERT INTO attachments"
         "(conversation_id, uploader_type, uploader_id, object_key, mime, byte_size, sha256, "
-        "created_at) VALUES (:cid, :ut, :uid, :key, :mime, :sz, :sha, :now) RETURNING id",
+        "created_at) VALUES (:cid, :ut, :uid, :key, :mime, :sz, :sha, :now)",
         {
             "cid": conv_id,
             "ut": uploader_type,

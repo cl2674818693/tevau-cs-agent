@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cs-engine-web
+  namespace: tevau-cs-engine-dev
+  labels:
+    app: cs-engine-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cs-engine-web
+  template:
+    metadata:
+      labels:
+        app: cs-engine-web
+    spec:
+      containers:
+        - name: web
+          image: <NEXUS_DOCKER>/tevau-cs-engine-web:dev-latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 80
+          env:
+            # nginx.conf.template 用 ${API_UPSTREAM} 占位；同 namespace 走 Service DNS
+            - name: API_UPSTREAM
+              value: "http://cs-engine-api:8000"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+      # imagePullSecrets:
+      #   - name: nexus-docker-creds

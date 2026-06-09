@@ -27,7 +27,7 @@ def message_content_text(role: str, content: str) -> str:
 async def create_conversation(user_type: str, subject_id: str) -> int:
     return await db.insert_returning_id(
         "INSERT INTO conversations(user_type, subject_id, created_at) "
-        "VALUES (:ut, :sid, :now) RETURNING id",
+        "VALUES (:ut, :sid, :now)",
         {"ut": user_type, "sid": subject_id, "now": now_str()},
     )
 
@@ -68,7 +68,7 @@ async def append_message(conv_id: int, role: str, content: str) -> int:
     """写一条消息行。"""
     return await db.insert_returning_id(
         "INSERT INTO messages(conversation_id, role, content, created_at) "
-        "VALUES (:cid, :role, :content, :now) RETURNING id",
+        "VALUES (:cid, :role, :content, :now)",
         {
             "cid": conv_id,
             "role": role,
@@ -83,7 +83,7 @@ async def append_user_turn(conv_id: int, content: str, client_message_id: str | 
     return await db.insert_returning_id(
         "INSERT INTO messages"
         "(conversation_id, role, content, status, client_message_id, created_at) "
-        "VALUES (:cid, 'user', :content, 'processing', :cmid, :now) RETURNING id",
+        "VALUES (:cid, 'user', :content, 'processing', :cmid, :now)",
         {"cid": conv_id, "content": content, "cmid": client_message_id, "now": now_str()},
     )
 
@@ -336,7 +336,7 @@ async def clear_ai_drafts(conv_id: int) -> None:
 async def append_human_message(conv_id: int, sender_staff_id: str, content: str) -> int:
     return await db.insert_returning_id(
         "INSERT INTO messages(conversation_id, role, content, sender_staff_id, created_at) "
-        "VALUES (:cid, 'human_agent', :content, :sid, :now) RETURNING id",
+        "VALUES (:cid, 'human_agent', :content, :sid, :now)",
         {"cid": conv_id, "content": content, "sid": sender_staff_id, "now": now_str()},
     )
 

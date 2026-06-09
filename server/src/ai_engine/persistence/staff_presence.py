@@ -8,14 +8,22 @@ from ai_engine.persistence.schema import now_str
 
 
 async def heartbeat(staff_id: str, status: str = "online") -> None:
-    """心跳：upsert (staff_id, status, last_seen_at=now)。"""
-    await db.execute(
-        "INSERT INTO staff_presence(staff_id, status, last_seen_at) "
-        "VALUES (:sid, :s, :now) "
-        "ON CONFLICT(staff_id) DO UPDATE SET "
-        "status = excluded.status, last_seen_at = excluded.last_seen_at",
-        {"sid": staff_id, "s": status, "now": now_str()},
-    )
+    """心跳：upsert (staff_id, status, last_seen_at=now)。SQLite/MySQL 方言分发。"""
+    if db.dialect_name() == "mysql":
+        sql = (
+            "INSERT INTO staff_presence(staff_id, status, last_seen_at) "
+            "VALUES (:sid, :s, :now) "
+            "ON DUPLICATE KEY UPDATE "
+            "status = VALUES(status), last_seen_at = VALUES(last_seen_at)"
+        )
+    else:
+        sql = (
+            "INSERT INTO staff_presence(staff_id, status, last_seen_at) "
+            "VALUES (:sid, :s, :now) "
+            "ON CONFLICT(staff_id) DO UPDATE SET "
+            "status = excluded.status, last_seen_at = excluded.last_seen_at"
+        )
+    await db.execute(sql, {"sid": staff_id, "s": status, "now": now_str()})
 
 
 async def set_offline(staff_id: str) -> None:

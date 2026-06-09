@@ -17,7 +17,7 @@ async def add_feedback(
     return await db.insert_returning_id(
         "INSERT INTO message_feedback"
         "(conversation_id, message_id, rating, reason, subject_id, user_type, created_at) "
-        "VALUES (:cid, :mid, :r, :reason, :sid, :ut, :now) RETURNING id",
+        "VALUES (:cid, :mid, :r, :reason, :sid, :ut, :now)",
         {
             "cid": conversation_id,
             "mid": message_id,

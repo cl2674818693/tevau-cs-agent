@@ -1,0 +1,13 @@
+# /repos 持久化：api-docs/openapi.json 和 3 个代码仓库副本
+# RWO 即可（单 Pod 副本）。多副本扩展时改 storageClass 为 RWX（如 alicloud-nas）。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cs-engine-repos
+  namespace: tevau-cs-engine-dev
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: alicloud-disk-essd   # 按 ACK 实际可用 storageClass 改

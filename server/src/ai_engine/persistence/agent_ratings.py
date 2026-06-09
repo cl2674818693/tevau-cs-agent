@@ -19,7 +19,7 @@ async def record(
     return await db.insert_returning_id(
         "INSERT INTO agent_ratings(conversation_id, staff_id, subject_id, user_type, "
         "rating, comment, created_at) "
-        "VALUES (:cid, :sid, :subj, :ut, :rating, :cmt, :now) RETURNING id",
+        "VALUES (:cid, :sid, :subj, :ut, :rating, :cmt, :now)",
         {
             "cid": int(conversation_id),
             "sid": staff_id,

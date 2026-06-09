@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cs-engine-config
+  namespace: tevau-cs-engine-dev
+data:
+  ENV: "dev"
+  LOG_LEVEL: "INFO"
+
+  # LLM 网关
+  ANTHROPIC_BASE_URL: ""  # 公司网关；空走官方
+  DEFAULT_MODEL: "claude-sonnet-4-6"
+  HEAVY_MODEL: "claude-opus-4-7"
+  SUMMARY_MODEL: "claude-haiku-4-5"
+
+  # 自有库 - 由公司 DBA 在 MySQL RDS 新建的 ai_engine 库 + 读写账号
+  # 形如 mysql+aiomysql://<user>:<pwd>@<host>:3306/ai_engine
+  # 密码放 Secret 后通过 envFrom 注入完整 DB_URL；这里不写
+  PROMPTS_DIR: "/app/src/ai_engine/prompts"
+
+  # 代码搜索/读取（挂载在 /repos）
+  OPENAPI_DOCS_DIR: "/repos/api-docs"
+  OPENAPI_DOC_PATH: "/repos/api-docs/openapi.json"
+  CODE_REPO_PATHS: '{"app_frontend":"/repos/code/app_frontend","app_backend":"/repos/code/app_backend","openapi_backend":"/repos/code/openapi_backend"}'
+
+  # 事项中心（开发环境）
+  EVENT_CENTER_URL: "http://192.168.2.6:822/api/tasks"
+  MOCK_EVENT_CENTER: "false"
+  # cs-engine 自身回调地址：填 Ingress 域名 + 回调路径
+  EVENT_CENTER_CALLBACK_URL: "http://cs-engine-dev.tevau.internal/api/v1/event-center/callback"
+
+  # CORS：允许哪些前端源访问。同源部署（前端 nginx 反代后端）通常不用配；
+  # 跨域调试可以加 ["http://localhost:5173"]
+  CORS_ALLOW_ORIGINS: '[]'
+
+  # C 端 APP gateway
+  C_APP_API_BASE: "https://test2.tevaupay.com/gateway"
+  C_APP_API_VERSION: "2.0.002"
+
+  # 部署护栏
+  UVICORN_WORKERS: "2"
+  LLM_MAX_CONCURRENCY: "20"
+  LLM_ACQUIRE_TIMEOUT_SECONDS: "0.5"
+  TOOL_CACHE_TTL_SECONDS: "30"
+  TOPIC_CLASSIFIER_SKIP_AUTHED: "true"
+  DAILY_TOKEN_LIMIT: "500000"
+
+  # 图片附件对象存储（MinIO/OSS）
+  OBJECT_STORE_ENDPOINT: "http://minio.tevau-cs-engine-dev.svc.cluster.local:9000"
+  OBJECT_STORE_BUCKET: "cs-attachments"
+  OBJECT_STORE_REGION: "us-east-1"
+
+  # 业务库地址（aliyun RDS 公网/内网，密码在 Secret）
+  # 这里不放 URL，统一用 Secret 注入避免泄漏

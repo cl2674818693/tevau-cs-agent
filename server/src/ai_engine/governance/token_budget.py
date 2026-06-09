@@ -39,14 +39,29 @@ async def _record(
     model: str | None = None,
 ) -> None:
     # M4: 只写 by-model 拆分表（旧表已删）；model None 时用 "(unknown)" 占位。
+    # 方言分发：累加 upsert（SQLite ON CONFLICT / MySQL ON DUPLICATE KEY UPDATE）。
+    # MySQL 写法里裸 input_tokens 引用的是已存在行的原值（标准语义），等价 PG 的 table.input_tokens。
     m = model if model else "(unknown)"
+    if db.dialect_name() == "mysql":
+        sql = (
+            "INSERT INTO daily_token_usage_by_model"
+            "(subject_id, user_type, date, model, input_tokens, output_tokens) "
+            "VALUES (:s, :u, :d, :m, :it, :ot) "
+            "ON DUPLICATE KEY UPDATE "
+            "input_tokens = input_tokens + :it, "
+            "output_tokens = output_tokens + :ot"
+        )
+    else:
+        sql = (
+            "INSERT INTO daily_token_usage_by_model"
+            "(subject_id, user_type, date, model, input_tokens, output_tokens) "
+            "VALUES (:s, :u, :d, :m, :it, :ot) "
+            "ON CONFLICT(subject_id, user_type, date, model) DO UPDATE SET "
+            "input_tokens = daily_token_usage_by_model.input_tokens + :it, "
+            "output_tokens = daily_token_usage_by_model.output_tokens + :ot"
+        )
     await db.execute(
-        "INSERT INTO daily_token_usage_by_model"
-        "(subject_id, user_type, date, model, input_tokens, output_tokens) "
-        "VALUES (:s, :u, :d, :m, :it, :ot) "
-        "ON CONFLICT(subject_id, user_type, date, model) DO UPDATE SET "
-        "input_tokens = daily_token_usage_by_model.input_tokens + :it, "
-        "output_tokens = daily_token_usage_by_model.output_tokens + :ot",
+        sql,
         {"s": subject_id, "u": user_type, "d": day,
          "m": m, "it": int(in_tok), "ot": int(out_tok)},
     )

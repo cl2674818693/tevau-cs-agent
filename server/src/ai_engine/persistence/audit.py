@@ -22,7 +22,7 @@ async def log_tool_call(
         (conversation_id, tool_name, params_json, result_size, duration_ms,
          rejected, reject_reason, result_count, is_empty, subject_id, user_type, created_at)
         VALUES (:cid, :name, :params, :size, :ms, :rej, :reason,
-                :result_count, :is_empty, :subject_id, :user_type, :now) RETURNING id""",
+                :result_count, :is_empty, :subject_id, :user_type, :now)""",
         {
             "cid": conversation_id,
             "name": tool_name,

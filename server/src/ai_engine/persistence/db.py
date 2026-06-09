@@ -1,8 +1,10 @@
-"""自有库连接层（SQLAlchemy Core / async）。方言无关：sqlite+aiosqlite 或 postgresql+asyncpg。
+"""自有库连接层（SQLAlchemy Core / async）。方言无关：sqlite+aiosqlite 或 mysql+aiomysql。
 
 - engine 按 db_url 缓存（测试每用例切到独立临时库，按 url 各自建 engine）。
 - init_db = metadata.create_all（幂等，两库通用），替代原手写 SCHEMA + 丢列风险的 drift 重建。
 - 查询走 fetch_one/fetch_all/execute/insert_returning_id helper，返回 dict，消费方零改动。
+- 2026-06 公司统一 MySQL，下线 Postgres 支持：insert_returning_id 改用 cursor.lastrowid；
+  ON CONFLICT 在 4 处 UPSERT 用方言分发字符串（SQLite 保留原语法 dev/test 用，MySQL 出 ON DUPLICATE KEY UPDATE）。
 """
 
 from collections.abc import AsyncIterator
@@ -75,7 +77,17 @@ async def execute_rowcount(sql: str, params: dict[str, Any] | None = None) -> in
 
 
 async def insert_returning_id(sql: str, params: dict[str, Any] | None = None) -> int:
-    """sql 必须以 RETURNING id 结尾（SQLite>=3.35 与 Postgres 均支持）。"""
+    """INSERT 并返回自增 id（cursor.lastrowid）。MySQL / SQLite 通用。
+
+    历史遗留：SQL 字符串如果尾部带 RETURNING id（旧 PG/SQLite 写法）会被自动剥离，
+    实际靠 DBAPI 的 cursor.lastrowid（aiomysql/aiosqlite 均支持）拿自增 id。
+    """
+    cleaned = sql.rsplit("RETURNING", 1)[0].rstrip().rstrip(",")
     async with _engine().begin() as conn:
-        res = await conn.execute(text(sql), params or {})
-        return int(res.scalar_one())
+        res = await conn.execute(text(cleaned), params or {})
+        return int(res.lastrowid)
+
+
+def dialect_name() -> str:
+    """当前 engine 的方言名（'sqlite' / 'mysql' / ...）。UPSERT 等方言分发处用。"""
+    return _engine().dialect.name
